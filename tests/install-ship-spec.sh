@@ -3,6 +3,8 @@
 set -euo pipefail
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+public_source="${1:-}"
+expected_revision="${2:-}"
 installation_root="$(mktemp -d "${TMPDIR:-/tmp}/ship-spec-install.XXXXXX")"
 user_root="$(node -p 'require("node:os").homedir()')"
 sandbox_policy="(version 1)
@@ -35,30 +37,94 @@ run_installer() {
       >"${output_file}"
 }
 
+run_public_installer() {
+  local source="$1"
+  local expected_head="$2"
+  local output_file="$3"
+  local remote_head
+
+  remote_head="$(
+    GIT_CONFIG_GLOBAL=/dev/null \
+    GIT_CONFIG_SYSTEM=/dev/null \
+    GIT_TERMINAL_PROMPT=0 \
+    git -c credential.helper= \
+      ls-remote \
+      "https://github.com/${source}.git" \
+      HEAD |
+      awk '{print $1}'
+  )"
+  if [[ -z "${remote_head}" ]]; then
+    printf 'Expected an anonymously cloneable repository: %s\n' \
+      "${source}" >&2
+    return 1
+  fi
+  if [[ "${remote_head}" != "${expected_head}" ]]; then
+    printf 'Expected %s at remote HEAD, got %s\n' \
+      "${expected_head}" \
+      "${remote_head}" >&2
+    return 1
+  fi
+
+  (
+    unset GH_TOKEN GITHUB_TOKEN
+    export GIT_CONFIG_GLOBAL=/dev/null
+    export GIT_CONFIG_SYSTEM=/dev/null
+    export GIT_TERMINAL_PROMPT=0
+
+    sandbox-exec -p "${sandbox_policy}" \
+      npx --yes skills@latest add mattpocock/skills \
+      --skill '*' \
+      --agent codex \
+      --copy \
+      --yes
+    sandbox-exec -p "${sandbox_policy}" \
+      npx --yes skills@latest add "${source}" \
+      --skill ship-spec \
+      --agent codex \
+      --copy \
+      --yes
+  ) >"${output_file}"
+}
+
 install_scenario() {
   local scenario_root="$1"
-  local permission_response="$2"
-  local output_file="$3"
+  local scenario_runner="$2"
+  shift 2
 
   mkdir -p "${scenario_root}"
   git -C "${scenario_root}" init --quiet
 
   (
     cd "${scenario_root}"
-    run_installer "${permission_response}" "${output_file}"
+    "${scenario_runner}" "$@"
   )
 }
 
 project_root="${installation_root}/project"
-install_scenario \
-  "${project_root}" \
-  y \
-  "${installation_root}/accepted-install.log"
+if [[ -n "${public_source}" ]]; then
+  if [[ -z "${expected_revision}" ]]; then
+    printf '%s\n' \
+      'Public verification requires an expected remote revision.' >&2
+    exit 1
+  fi
+  install_scenario \
+    "${project_root}" \
+    run_public_installer \
+    "${public_source}" \
+    "${expected_revision}" \
+    "${installation_root}/public-install.log"
+else
+  install_scenario \
+    "${project_root}" \
+    run_installer \
+    y \
+    "${installation_root}/accepted-install.log"
 
-grep -Fq '$ship-spec and other skills in this collection will not work' \
-  "${installation_root}/accepted-install.log"
-grep -Fq 'Install mattpocock/skills now? [y/N]' \
-  "${installation_root}/accepted-install.log"
+  grep -Fq '$ship-spec and other skills in this collection will not work' \
+    "${installation_root}/accepted-install.log"
+  grep -Fq 'Install mattpocock/skills now? [y/N]' \
+    "${installation_root}/accepted-install.log"
+fi
 
 installed_skills="${project_root}/.agents/skills"
 installed_ship_spec="${installed_skills}/ship-spec"
@@ -100,15 +166,18 @@ abort "invalid agent interface" unless agent_metadata.dig("interface", "display_
 abort "invalid invocation policy" unless agent_metadata.dig("policy", "allow_implicit_invocation") == false
 RUBY
 
-declined_project="${installation_root}/declined-project"
-install_scenario \
-  "${declined_project}" \
-  n \
-  "${installation_root}/declined-install.log"
+if [[ -z "${public_source}" ]]; then
+  declined_project="${installation_root}/declined-project"
+  install_scenario \
+    "${declined_project}" \
+    run_installer \
+    n \
+    "${installation_root}/declined-install.log"
 
-grep -Fq 'Continuing without mattpocock/skills.' \
-  "${installation_root}/declined-install.log"
-grep -Fq '$ship-spec and other dependent skills will not work' \
-  "${installation_root}/declined-install.log"
-test -f "${declined_project}/.agents/skills/ship-spec/SKILL.md"
-test ! -e "${declined_project}/.agents/skills/implement"
+  grep -Fq 'Continuing without mattpocock/skills.' \
+    "${installation_root}/declined-install.log"
+  grep -Fq '$ship-spec and other dependent skills will not work' \
+    "${installation_root}/declined-install.log"
+  test -f "${declined_project}/.agents/skills/ship-spec/SKILL.md"
+  test ! -e "${declined_project}/.agents/skills/implement"
+fi
