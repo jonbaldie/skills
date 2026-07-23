@@ -13,6 +13,16 @@ other dependent skills will not work without that collection.
 These instructions require Bash, Git, Node.js/npm, and network access on macOS,
 Linux, or WSL.
 
+### Or just ask your agent
+
+These steps look like a lot? Paste this into your agent:
+
+```text
+Install jonbaldie/skills for me. It needs mattpocock/skills, so install that
+too. First ask: this project, or my user (global)? Use the same scope and agent
+for both, then check ship-spec can find implement.
+```
+
 ### Globally with the installer
 
 Clone this repository and pass `--global` so the skills are available across
