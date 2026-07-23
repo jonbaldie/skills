@@ -10,27 +10,60 @@ other dependent skills will not work without that collection.
 
 ## Install
 
-Clone this repository and run the installer:
+These instructions require Bash, Git, Node.js/npm, and network access on macOS,
+Linux, or WSL.
+
+### Globally with the installer
+
+Clone this repository and pass `--global` so the skills are available across
+projects:
 
 ```bash
 git clone https://github.com/jonbaldie/skills.git jonbaldie-skills
 cd jonbaldie-skills
-./install.sh
+agent=codex # Or claude-code, opencode, or another skills CLI agent
+./install.sh --global --agent "${agent}" --yes
+```
+
+### In one project with the installer
+
+Run the cloned installer while the project is the working directory:
+
+```bash
+cd "/path/to/your-project"
+git clone https://github.com/jonbaldie/skills.git ../jonbaldie-skills
+agent=codex # Or claude-code, opencode, or another skills CLI agent
+../jonbaldie-skills/install.sh --agent "${agent}" --yes
 ```
 
 The installer asks before installing the full `mattpocock/skills` prerequisite
-set. Choose the same agents or harnesses for the prerequisite and this
-collection.
+set. Any options, including agent selection, apply to both collections.
+If the collection is already cloned, skip the `git clone` command and rerun
+`install.sh` from the documented working directory.
 
-To install manually:
+### In one project manually
+
+Run both commands from the project that will use the skills:
 
 ```bash
-npx skills@latest add mattpocock/skills --skill '*'
-npx skills@latest add jonbaldie/skills --skill ship-spec
+agent=codex # Or claude-code, opencode, or another skills CLI agent
+npx --yes skills@latest add mattpocock/skills --skill '*' --agent "${agent}" --yes
+npx --yes skills@latest add jonbaldie/skills --skill ship-spec --agent "${agent}" --yes
+```
+
+### Globally manually
+
+Pass `--global` to both commands:
+
+```bash
+agent=codex # Or claude-code, opencode, or another skills CLI agent
+npx --yes skills@latest add mattpocock/skills --skill '*' --global --agent "${agent}" --yes
+npx --yes skills@latest add jonbaldie/skills --skill ship-spec --global --agent "${agent}" --yes
 ```
 
 The second command alone installs `ship-spec`, but it will not work until the
-first command's prerequisite workflow is installed for the same harness.
+first command's prerequisite workflow is installed for the same scope and
+harness.
 
 ## Skills
 
