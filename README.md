@@ -4,7 +4,7 @@ A small, curated subset of Jonathan Baldie's agent skills.
 
 ## Prerequisite
 
-These skills extend the engineering workflow from
+Some skills extend the engineering workflow from
 [`mattpocock/skills`](https://github.com/mattpocock/skills). `$ship-spec` and
 other dependent skills will not work without that collection.
 
@@ -76,6 +76,15 @@ first command's prerequisite workflow is installed for the same scope and
 harness.
 
 ## Skills
+
+### `to-summary`
+
+Progressively reduces one large source into a concise summary. Pass a file,
+URL, or pasted text:
+
+```text
+$to-summary /path/to/large-source.txt
+```
 
 ### `ship-spec`
 
