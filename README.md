@@ -10,8 +10,22 @@ other dependent skills will not work without that collection.
 
 ## Install
 
-These instructions require Bash, Git, Node.js/npm, and network access on macOS,
-Linux, or WSL.
+These instructions require Bash, Git, curl, and network access on macOS, Linux,
+or WSL. **No Node.js or npm.**
+
+### One-line global install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jonbaldie/skills/main/install.sh | bash
+```
+
+Installs this collection into your user skill directories and asks before also
+installing the `mattpocock/skills` prerequisite set. Pass flags after
+`bash -s --`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jonbaldie/skills/main/install.sh | bash -s -- --agent codex --with-prereqs
+```
 
 ### Just ask your agent
 
@@ -34,7 +48,7 @@ projects:
 ```bash
 git clone https://github.com/jonbaldie/skills.git jonbaldie-skills
 cd jonbaldie-skills
-agent=codex # Or claude-code, opencode, or another skills CLI agent
+agent=codex # Or claude-code, opencode, pi, or cursor
 ./install.sh --global --agent "${agent}" --yes
 ```
 
@@ -45,7 +59,7 @@ Run the cloned installer while the project is the working directory:
 ```bash
 cd "/path/to/your-project"
 git clone https://github.com/jonbaldie/skills.git ../jonbaldie-skills
-agent=codex # Or claude-code, opencode, or another skills CLI agent
+agent=codex # Or claude-code, opencode, pi, or cursor
 ../jonbaldie-skills/install.sh --agent "${agent}" --yes
 ```
 
@@ -56,22 +70,21 @@ If the collection is already cloned, skip the `git clone` command and rerun
 
 ### In one project manually
 
-Run both commands from the project that will use the skills:
+Run from the project that will use the skills. Clones this repo to a temp dir and
+installs both collections into the current project:
 
 ```bash
-agent=codex # Or claude-code, opencode, or another skills CLI agent
-npx --yes skills@latest add mattpocock/skills --skill '*' --agent "${agent}" --yes
-npx --yes skills@latest add jonbaldie/skills --skill '*' --agent "${agent}" --yes
+agent=codex # Or claude-code, opencode, pi, or cursor
+repo="$(mktemp -d)/jonbaldie-skills"
+git clone --depth 1 https://github.com/jonbaldie/skills.git "${repo}"
+printf 'y\n' | "${repo}/install.sh" --agent "${agent}" --yes
 ```
 
 ### Globally manually
 
-Pass `--global` to both commands:
-
 ```bash
-agent=codex # Or claude-code, opencode, or another skills CLI agent
-npx --yes skills@latest add mattpocock/skills --skill '*' --global --agent "${agent}" --yes
-npx --yes skills@latest add jonbaldie/skills --skill '*' --global --agent "${agent}" --yes
+agent=codex # Or claude-code, opencode, pi, or cursor
+curl -fsSL https://raw.githubusercontent.com/jonbaldie/skills/main/install.sh | bash -s -- --global --agent "${agent}" --with-prereqs
 ```
 
 `/ship-spec` will not work until the `mattpocock/skills` prerequisite workflow

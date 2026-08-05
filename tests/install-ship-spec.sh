@@ -6,7 +6,7 @@ repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 public_source="${1:-}"
 expected_revision="${2:-}"
 installation_root="$(mktemp -d "${TMPDIR:-/tmp}/ship-spec-install.XXXXXX")"
-user_root="$(node -p 'require("node:os").homedir()')"
+user_root="${HOME}"
 sandbox_policy="(version 1)
 (allow default)
 (deny file-read* file-write*
@@ -29,6 +29,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# node:22-bookworm already has git/curl; keeps tests offline-friendly for apt.
+DOCKER_IMAGE="${DOCKER_IMAGE:-node:22-bookworm}"
+
 run_installer_for_agent() {
   local permission_response="$1"
   local agent="$2"
@@ -41,76 +44,6 @@ run_installer_for_agent() {
       --copy \
       --yes \
       >"${output_file}"
-}
-
-run_public_installer() {
-  local source="$1"
-  local expected_head="$2"
-  local output_file="$3"
-  local manual_commands
-  local remote_head
-
-  remote_head="$(
-    GIT_CONFIG_GLOBAL=/dev/null \
-    GIT_CONFIG_SYSTEM=/dev/null \
-    GIT_TERMINAL_PROMPT=0 \
-    git -c credential.helper= \
-      ls-remote \
-      "https://github.com/${source}.git" \
-      HEAD |
-      awk '{print $1}'
-  )"
-  if [[ -z "${remote_head}" ]]; then
-    printf 'Expected an anonymously cloneable repository: %s\n' \
-      "${source}" >&2
-    return 1
-  fi
-  if [[ "${remote_head}" != "${expected_head}" ]]; then
-    printf 'Expected %s at remote HEAD, got %s\n' \
-      "${expected_head}" \
-      "${remote_head}" >&2
-    return 1
-  fi
-
-  manual_commands="$(read_bash_block_after '### In one project manually')"
-  grep -Fq "add ${source}" <<<"${manual_commands}"
-
-  (
-    unset GH_TOKEN GITHUB_TOKEN
-    export GIT_CONFIG_GLOBAL=/dev/null
-    export GIT_CONFIG_SYSTEM=/dev/null
-    export GIT_TERMINAL_PROMPT=0
-
-    sandbox-exec -p "${sandbox_policy}" \
-      bash -euo pipefail -c "${manual_commands}"
-  ) >"${output_file}"
-}
-
-run_public_ship_only() {
-  local source="$1"
-  local output_file="$2"
-  local manual_commands
-  local ship_only_commands
-
-  manual_commands="$(read_bash_block_after '### In one project manually')"
-  ship_only_commands="$(
-    printf '%s\n' "${manual_commands}" |
-      awk -v source="${source}" '
-        /^agent=/ { print }
-        index($0, "add " source) { print }
-      '
-  )"
-  grep -Fq "add ${source}" <<<"${ship_only_commands}"
-
-  (
-    unset GH_TOKEN GITHUB_TOKEN
-    export GIT_CONFIG_GLOBAL=/dev/null
-    export GIT_CONFIG_SYSTEM=/dev/null
-    export GIT_TERMINAL_PROMPT=0
-
-    sandbox-exec -p "${sandbox_policy}" \
-      bash -euo pipefail -c "${ship_only_commands}"
-  ) >"${output_file}"
 }
 
 install_scenario() {
@@ -129,12 +62,19 @@ install_scenario() {
 
 read_bash_block_after() {
   local heading="$1"
+  local occurrence="${2:-1}"
+  local seen=0
 
-  awk -v heading="${heading}" '
+  awk -v heading="${heading}" -v want="${occurrence}" '
     $0 == heading { found = 1; next }
-    found && /^```bash$/ { in_block = 1; next }
+    found && /^```bash$/ {
+      seen += 1
+      if (seen == want) { in_block = 1; next }
+    }
     in_block && /^```$/ { exit }
     in_block { print }
+    found && /^```/ && !in_block && seen >= want { exit }
+    found && /^#{1,3} / && !in_block { exit }
   ' "${repository_root}/README.md"
 }
 
@@ -151,15 +91,18 @@ run_documented_global_clone() {
 
   readme_commands="$(read_bash_block_after '### Globally with the installer')"
   test -n "${readme_commands}"
+  # Use a worktree copy so uncommitted install.sh changes are tested.
   readme_commands="$(
     printf '%s\n' "${readme_commands}" |
-      sed 's#https://github.com/jonbaldie/skills.git#/source#'
+      sed \
+        -e 's#git clone https://github.com/jonbaldie/skills.git jonbaldie-skills#cp -a /source jonbaldie-skills#' \
+        -e 's#git clone https://github.com/jonbaldie/skills.git#cp -a /source#'
   )"
 
   docker run --rm \
     --volume "${repository_root}:/source:ro" \
     --workdir /work \
-    node:22-bookworm \
+    "${DOCKER_IMAGE}" \
     bash -euo pipefail -c '
       mkdir -p /root/.codex
       printf "y\n" | eval "$1"
@@ -177,7 +120,7 @@ run_public_global_clone() {
 
   docker run --rm \
     --workdir /work \
-    node:22-bookworm \
+    "${DOCKER_IMAGE}" \
     bash -euo pipefail -c '
       printf "y\n" | eval "$1"
       test -f /root/.agents/skills/ship-spec/SKILL.md
@@ -189,6 +132,11 @@ run_public_global_clone() {
 run_documented_project_clone() {
   local project_commands
   local project_with_spaces="${installation_root}/project with spaces"
+  local local_checkout="${installation_root}/jonbaldie-skills-worktree"
+
+  # Materialize a worktree-faithful checkout (git clone only has HEAD).
+  rm -rf "${local_checkout}"
+  cp -a "${repository_root}" "${local_checkout}"
 
   project_commands="$(
     read_bash_block_after '### In one project with the installer'
@@ -198,7 +146,7 @@ run_documented_project_clone() {
     printf '%s\n' "${project_commands}" |
       sed \
         -e "s#/path/to/your-project#${project_with_spaces}#" \
-        -e "s#https://github.com/jonbaldie/skills.git#${repository_root}#"
+        -e "s#git clone https://github.com/jonbaldie/skills.git ../jonbaldie-skills#cp -a ${local_checkout} ../jonbaldie-skills#"
   )"
 
   mkdir -p "${project_with_spaces}"
@@ -213,22 +161,26 @@ run_documented_project_clone() {
 }
 
 run_documented_project_manual() {
-  local manual_commands
   local manual_project="${installation_root}/manual-project"
+  local local_checkout="${installation_root}/manual-worktree"
 
-  manual_commands="$(read_bash_block_after '### In one project manually')"
-  test -n "${manual_commands}"
-  manual_commands="$(
-    printf '%s\n' "${manual_commands}" |
-      sed "s#jonbaldie/skills#${repository_root}#"
-  )"
+  rm -rf "${local_checkout}"
+  cp -a "${repository_root}" "${local_checkout}"
 
   mkdir -p "${manual_project}"
   git -C "${manual_project}" init --quiet
+
+  # Mirrors the README "In one project manually" block against the worktree.
   (
     cd "${manual_project}"
     sandbox-exec -p "${sandbox_policy}" \
-      bash -euo pipefail -c "${manual_commands}"
+      env LOCAL_CHECKOUT="${local_checkout}" \
+      bash -euo pipefail <<'EOS'
+agent=codex
+repo="$(mktemp -d)/jonbaldie-skills"
+cp -a "${LOCAL_CHECKOUT}" "${repo}"
+printf 'y\n' | "${repo}/install.sh" --agent "${agent}" --yes
+EOS
   ) >"${installation_root}/manual-project.log"
 
   test -f "${manual_project}/.agents/skills/ship-spec/SKILL.md"
@@ -240,15 +192,17 @@ run_documented_global_manual() {
 
   manual_commands="$(read_bash_block_after '### Globally manually')"
   test -n "${manual_commands}"
+  # Use the local install.sh and local repo content; still exercise stdin mode.
   manual_commands="$(
     printf '%s\n' "${manual_commands}" |
-      sed 's#jonbaldie/skills#/source#'
+      sed 's#curl -fsSL https://raw.githubusercontent.com/jonbaldie/skills/main/install.sh#cat /source/install.sh#'
   )"
 
   docker run --rm \
     --volume "${repository_root}:/source:ro" \
     --workdir /work \
-    node:22-bookworm \
+    --env JONBALDIE_SKILLS_REPO=/source \
+    "${DOCKER_IMAGE}" \
     bash -euo pipefail -c '
       eval "$1" >/tmp/first-install.log
       eval "$1" >/tmp/second-install.log
@@ -266,7 +220,7 @@ run_public_global_manual() {
 
   docker run --rm \
     --workdir /work \
-    node:22-bookworm \
+    "${DOCKER_IMAGE}" \
     bash -euo pipefail -c '
       eval "$1" >/tmp/install.log
       test -f /root/.agents/skills/ship-spec/SKILL.md
@@ -275,11 +229,37 @@ run_public_global_manual() {
     ' bash "${manual_commands}"
 }
 
+run_one_line_global() {
+  # First bash fence under the one-line heading is the plain curl|bash command.
+  local oneline
+  oneline="$(read_bash_block_after '### One-line global install' 1)"
+  test -n "${oneline}"
+  # Only the first line (the plain one-liner).
+  oneline="$(printf '%s\n' "${oneline}" | sed -n '1p')"
+  oneline="$(
+    printf '%s\n' "${oneline}" |
+      sed 's#curl -fsSL https://raw.githubusercontent.com/jonbaldie/skills/main/install.sh#cat /source/install.sh#'
+  )"
+
+  docker run --rm \
+    --volume "${repository_root}:/source:ro" \
+    --workdir /work \
+    --env JONBALDIE_SKILLS_REPO=/source \
+    "${DOCKER_IMAGE}" \
+    bash -euo pipefail -c '
+      eval "$1" >/tmp/oneline.log
+      test -f /root/.agents/skills/ship-spec/SKILL.md
+      test -f /root/.agents/skills/implement/SKILL.md
+      test ! -e /work/.agents
+      grep -Eiq "Installing to:" /tmp/oneline.log
+    ' bash "${oneline}"
+}
+
 run_global_decline() {
   docker run --rm \
     --volume "${repository_root}:/source:ro" \
     --workdir /work \
-    node:22-bookworm \
+    "${DOCKER_IMAGE}" \
     bash -euo pipefail -c '
       printf "n\n" |
         /source/install.sh \
@@ -300,7 +280,7 @@ run_automatic_codex_detection() {
   docker run --rm \
     --volume "${repository_root}:/source:ro" \
     --workdir /work \
-    node:22-bookworm \
+    "${DOCKER_IMAGE}" \
     bash -euo pipefail -c '
       mkdir -p /root/.codex
       git init --quiet
@@ -335,7 +315,8 @@ run_spaced_checkout() {
   local spaced_checkout="${installation_root}/collection checkout"
   local spaced_project="${installation_root}/spaced-checkout-project"
 
-  git clone --quiet "${repository_root}" "${spaced_checkout}"
+  rm -rf "${spaced_checkout}"
+  cp -a "${repository_root}" "${spaced_checkout}"
   mkdir -p "${spaced_project}"
   git -C "${spaced_project}" init --quiet
   (
@@ -352,6 +333,69 @@ run_spaced_checkout() {
   test -f "${spaced_project}/.agents/skills/implement/SKILL.md"
 }
 
+run_public_project_manual() {
+  local source="$1"
+  local expected_head="$2"
+  local output_file="$3"
+  local manual_commands
+  local remote_head
+
+  remote_head="$(
+    GIT_CONFIG_GLOBAL=/dev/null \
+    GIT_CONFIG_SYSTEM=/dev/null \
+    GIT_TERMINAL_PROMPT=0 \
+    git -c credential.helper= \
+      ls-remote \
+      "https://github.com/${source}.git" \
+      HEAD |
+      awk '{print $1}'
+  )"
+  if [[ -z "${remote_head}" ]]; then
+    printf 'Expected an anonymously cloneable repository: %s\n' \
+      "${source}" >&2
+    return 1
+  fi
+  if [[ "${remote_head}" != "${expected_head}" ]]; then
+    printf 'Expected %s at remote HEAD, got %s\n' \
+      "${expected_head}" \
+      "${remote_head}" >&2
+    return 1
+  fi
+
+  manual_commands="$(read_bash_block_after '### In one project manually')"
+  grep -Fq "github.com/${source}.git" <<<"${manual_commands}"
+
+  (
+    unset GH_TOKEN GITHUB_TOKEN
+    export GIT_CONFIG_GLOBAL=/dev/null
+    export GIT_CONFIG_SYSTEM=/dev/null
+    export GIT_TERMINAL_PROMPT=0
+
+    sandbox-exec -p "${sandbox_policy}" \
+      bash -euo pipefail -c "${manual_commands}"
+  ) >"${output_file}"
+}
+
+run_public_ship_only() {
+  local source="$1"
+  local output_file="$2"
+
+  (
+    unset GH_TOKEN GITHUB_TOKEN
+    export GIT_CONFIG_GLOBAL=/dev/null
+    export GIT_CONFIG_SYSTEM=/dev/null
+    export GIT_TERMINAL_PROMPT=0
+
+    repo="$(mktemp -d)/jonbaldie-skills"
+    git clone --depth 1 "https://github.com/${source}.git" "${repo}"
+    sandbox-exec -p "${sandbox_policy}" \
+      "${repo}/install.sh" \
+      --agent codex \
+      --without-prereqs \
+      --yes
+  ) >"${output_file}"
+}
+
 project_root="${installation_root}/project"
 if [[ -n "${public_source}" ]]; then
   if [[ -z "${expected_revision}" ]]; then
@@ -363,7 +407,7 @@ if [[ -n "${public_source}" ]]; then
     'anonymous public README project manual install' \
     install_scenario \
     "${project_root}" \
-    run_public_installer \
+    run_public_project_manual \
     "${public_source}" \
     "${expected_revision}" \
     "${installation_root}/public-install.log"
@@ -410,6 +454,9 @@ else
   grep -Fq 'Install mattpocock/skills now? [y/N]' \
     "${installation_root}/accepted-install.log"
 
+  run_scenario \
+    'documented one-line global install' \
+    run_one_line_global
   run_scenario \
     'documented global cloned install' \
     run_documented_global_clone
