@@ -5,7 +5,7 @@ A small, curated subset of Jonathan Baldie's agent skills.
 ## Prerequisite
 
 Some skills extend the engineering workflow from
-[`mattpocock/skills`](https://github.com/mattpocock/skills). `$ship-spec` and
+[`mattpocock/skills`](https://github.com/mattpocock/skills). `/ship-spec` and
 other dependent skills will not work without that collection.
 
 ## Install
@@ -58,7 +58,7 @@ Run both commands from the project that will use the skills:
 ```bash
 agent=codex # Or claude-code, opencode, or another skills CLI agent
 npx --yes skills@latest add mattpocock/skills --skill '*' --agent "${agent}" --yes
-npx --yes skills@latest add jonbaldie/skills --skill ship-spec --agent "${agent}" --yes
+npx --yes skills@latest add jonbaldie/skills --skill '*' --agent "${agent}" --yes
 ```
 
 ### Globally manually
@@ -68,34 +68,74 @@ Pass `--global` to both commands:
 ```bash
 agent=codex # Or claude-code, opencode, or another skills CLI agent
 npx --yes skills@latest add mattpocock/skills --skill '*' --global --agent "${agent}" --yes
-npx --yes skills@latest add jonbaldie/skills --skill ship-spec --global --agent "${agent}" --yes
+npx --yes skills@latest add jonbaldie/skills --skill '*' --global --agent "${agent}" --yes
 ```
 
-The second command alone installs `ship-spec`, but it will not work until the
-first command's prerequisite workflow is installed for the same scope and
-harness.
+`/ship-spec` will not work until the `mattpocock/skills` prerequisite workflow
+is installed for the same scope and harness.
+
+Skill names below use the `/skill-name` form. In Codex, use `$skill-name`
+instead.
 
 ## Skills
 
-### `to-summary`
+### The session died mid-task
 
-Progressively reduces one large source into a concise summary. Pass a file,
-URL, or pasted text:
+**The problem.** Usage limits, crashes, and closed terminals kill agent sessions
+mid-change. Starting over wastes the work already done. Handing the next agent a
+vague summary loses the thread — what was in flight, which files mattered, and
+what the next concrete step was.
+
+**The fix.** Resume skills extract a brief from the interrupted session
+transcript, ground it against the live workspace, and continue the work — not
+report on it.
+
+| Skill | Harness |
+| --- | --- |
+| [`resume-from-claude`](./skills/resume-from-claude/SKILL.md) | Claude Code |
+| [`resume-from-pi`](./skills/resume-from-pi/SKILL.md) | Pi |
+| [`resume-from-codex`](./skills/resume-from-codex/SKILL.md) | Codex CLI |
+| [`resume-from-opencode`](./skills/resume-from-opencode/SKILL.md) | OpenCode |
 
 ```text
-$to-summary /path/to/large-source.txt
+/resume-from-claude
+/resume-from-pi
+/resume-from-codex
+/resume-from-opencode
 ```
 
-### `ship-spec`
+Pass an optional session id (or harness-specific name/slug) when you don't want
+the latest session for the current directory.
 
-Implements a parent spec's child issues serially and ships each completed issue
-to one target branch.
+### A parent spec has many child issues to ship
 
-Pass a parent spec when invoking it:
+**The problem.** A parent spec with a stack of child issues invites thrash:
+picking the wrong ticket next, mixing work on one branch, or calling something
+"done" before it's on the target branch. Agents drift; serial delivery stalls.
+
+**The fix.** [`ship-spec`](./skills/ship-spec/SKILL.md) walks ready child issues
+in dependency order, applies `/implement` to each on its own branch, and only
+moves on once that issue is integrated and reachable on the remote target
+branch.
 
 ```text
-$ship-spec https://github.com/owner/repository/issues/123
+/ship-spec https://github.com/owner/repository/issues/123
 ```
 
-Codex uses the `$ship-spec` form. Claude Code, OpenCode, and similar
-slash-command harnesses use `/ship-spec`.
+Requires [`mattpocock/skills`](https://github.com/mattpocock/skills) (for
+`/implement`) installed for the same scope and harness.
+
+### The source is too large to summarise in one pass
+
+**The problem.** Long docs, transcripts, and articles blow past context limits.
+A single-shot summary either truncates, hallucinates coverage, or never starts.
+
+**The fix.** [`to-summary`](./skills/to-summary/SKILL.md) reduces one source
+through successive layers — chunk, summarise, repeat — until a final pass fits,
+then writes the summary you asked for.
+
+```text
+/to-summary /path/to/large-source.txt
+```
+
+Accepts a file, URL, or pasted text. Optional focus, audience, format, or length.
