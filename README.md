@@ -1,6 +1,6 @@
 # Skills
 
-A small, curated subset of Jonathan Baldie's agent skills.
+A small, curated subset of my coding agent skills.
 
 ## Prerequisite
 
