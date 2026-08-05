@@ -102,15 +102,29 @@ report on it.
 | [`resume-from-codex`](./skills/resume-from-codex/SKILL.md) | Codex CLI |
 | [`resume-from-opencode`](./skills/resume-from-opencode/SKILL.md) | OpenCode |
 
-```text
-/resume-from-claude
-/resume-from-pi
-/resume-from-codex
-/resume-from-opencode
-```
+Pick the skill for the harness that died. With no argument, each uses the latest
+session for the current directory. Pass an id when you need a specific one:
 
-Pass an optional session id (or harness-specific name/slug) when you don't want
-the latest session for the current directory.
+```text
+# Claude Code — optional full session UUID
+/resume-from-claude
+/resume-from-claude 5d4a2d3b-121a-435a-beb0-2ec0d54dc859
+
+# Pi — optional full or partial session UUID
+/resume-from-pi
+/resume-from-pi 019fd33e-ae16
+
+# Codex — optional full/partial session UUID or thread name
+/resume-from-codex
+/resume-from-codex 019fb9a9-4c3f
+/resume-from-codex "fix auth middleware"
+
+# OpenCode — optional full/partial ses_ id, slug, or title
+/resume-from-opencode
+/resume-from-opencode ses_02cd32efbffeNwXYERC4uDu7OD
+/resume-from-opencode clever-canyon
+/resume-from-opencode "Resume Claude session skill"
+```
 
 ### I have a whole parent spec and I just want it shipped
 
