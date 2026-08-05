@@ -13,7 +13,7 @@ other dependent skills will not work without that collection.
 These instructions require Bash, Git, Node.js/npm, and network access on macOS,
 Linux, or WSL.
 
-### Or just ask your agent
+### Just ask your agent
 
 These steps look like a lot? Paste this into your agent:
 
@@ -22,6 +22,9 @@ Install jonbaldie/skills for me. It needs mattpocock/skills, so install that
 too. First ask: this project, or my user (global)? Use the same scope and agent
 for both, then check ship-spec can find implement.
 ```
+
+<details>
+<summary><strong>Manual install</strong></summary>
 
 ### Globally with the installer
 
@@ -77,9 +80,11 @@ is installed for the same scope and harness.
 Skill names below use the `/skill-name` form. In Codex, use `$skill-name`
 instead.
 
+</details>
+
 ## Skills
 
-### The session died mid-task
+### I ran out of Claude usage and need to continue!
 
 **The problem.** Usage limits, crashes, and closed terminals kill agent sessions
 mid-change. Starting over wastes the work already done. Handing the next agent a
@@ -107,7 +112,7 @@ report on it.
 Pass an optional session id (or harness-specific name/slug) when you don't want
 the latest session for the current directory.
 
-### A parent spec has many child issues to ship
+### I have a whole parent spec and I just want it shipped
 
 **The problem.** A parent spec with a stack of child issues invites thrash:
 picking the wrong ticket next, mixing work on one branch, or calling something
@@ -125,7 +130,7 @@ branch.
 Requires [`mattpocock/skills`](https://github.com/mattpocock/skills) (for
 `/implement`) installed for the same scope and harness.
 
-### The source is too large to summarise in one pass
+### I need an accurate summary of a massive amount of text
 
 **The problem.** Long docs, transcripts, and articles blow past context limits.
 A single-shot summary either truncates, hallucinates coverage, or never starts.
