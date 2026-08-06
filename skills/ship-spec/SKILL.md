@@ -7,7 +7,7 @@ description: Implement a parent spec's child issues serially and ship each to on
 
 Require a parent spec.
 
-Before starting, read [`$implement`](../implement/SKILL.md) completely. Apply
+Before starting, read [`/implement`](../implement/SKILL.md) completely. Apply
 it in full to every child issue.
 
 Resolve the target branch before starting:
@@ -22,10 +22,10 @@ Then repeat:
 2. Select one ready, unfinished child issue. Order by dependencies, then issue
    number.
 3. Create a dedicated branch from the latest target branch.
-4. Apply `$implement` to that issue only.
+4. Apply `/implement` to that issue only.
 5. Complete the issue only when:
    - its acceptance criteria are satisfied;
-   - `$implement`'s completion criteria are satisfied;
+   - `/implement`'s completion criteria are satisfied;
    - review findings are resolved;
    - required checks pass.
 6. Integrate the completed branch into the latest target branch and push it.
