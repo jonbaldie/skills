@@ -34,7 +34,7 @@ These steps look like a lot? Paste this into your agent:
 ```text
 Install jonbaldie/skills for me. It needs mattpocock/skills, so install that
 too. First ask: this project, or my user (global)? Use the same scope and agent
-for both, then check ship-spec can find implement.
+for both, then check /ship-spec can find /implement.
 ```
 
 <details>
