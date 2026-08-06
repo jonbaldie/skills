@@ -157,6 +157,23 @@ branch.
 Requires [`mattpocock/skills`](https://github.com/mattpocock/skills) (for
 `/implement`) installed for the same scope and harness.
 
+### I finished an /implement and the PR is up — just land it
+
+**The problem.** After `/implement` raises a PR, the last mile is rote and
+easy to half-do: merge before CI is green, forget the closes-issue trailer, or
+push locally instead of merging through the PR.
+
+**The fix.** [`ship-pr`](./skills/ship-pr/SKILL.md) waits for required checks
+to go green, merges through the PR onto the target branch (`main` by default,
+or the PR base / a branch you name), and adds `Closes #<n>` when an issue is
+attached.
+
+```text
+/ship-pr
+/ship-pr 42
+/ship-pr https://github.com/owner/repository/pull/42
+```
+
 ### I need an accurate summary of a massive amount of text
 
 **The problem.** Long docs, transcripts, and articles blow past context limits.
