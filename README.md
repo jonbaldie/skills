@@ -157,7 +157,7 @@ branch.
 Requires [`mattpocock/skills`](https://github.com/mattpocock/skills) (for
 `/implement`) installed for the same scope and harness.
 
-### I finished an implement and the PR is up — just land it
+### I finished an /implement and the PR is up — just land it
 
 **The problem.** After `/implement` raises a PR, the last mile is rote and
 easy to half-do: merge before CI is green, forget the closes-issue trailer, or
