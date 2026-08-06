@@ -110,15 +110,26 @@ report on it.
 
 | Skill | Harness |
 | --- | --- |
+| [`resume-from-agent`](./skills/resume-from-agent/SKILL.md) | **Any known agent** (cross-agent discovery) |
 | [`resume-from-claude`](./skills/resume-from-claude/SKILL.md) | Claude Code |
 | [`resume-from-pi`](./skills/resume-from-pi/SKILL.md) | Pi |
 | [`resume-from-codex`](./skills/resume-from-codex/SKILL.md) | Codex CLI |
 | [`resume-from-opencode`](./skills/resume-from-opencode/SKILL.md) | OpenCode |
 
-Pick the skill for the harness that died. With no argument, each uses the latest
-session for the current directory. Pass an id when you need a specific one:
+Prefer `/resume-from-agent` when you don't know which harness ran last — it ranks
+sessions for the current directory across Hermes, Dirac, Goose, Cursor, Gemini
+CLI, Antigravity/agy, Claude, Pi, Codex, and OpenCode. Use a per-harness skill
+when you already know which agent died.
+
+With no argument, each skill uses the latest session for the current directory.
+Pass an id (or agent name for the generic skill) when you need a specific one:
 
 ```text
+# Any agent — latest for $PWD, or pin agent / id
+/resume-from-agent
+/resume-from-agent hermes
+/resume-from-agent goose 20251016_150658
+
 # Claude Code — optional full session UUID
 /resume-from-claude
 /resume-from-claude 5d4a2d3b-121a-435a-beb0-2ec0d54dc859
