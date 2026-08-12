@@ -199,3 +199,15 @@ then writes the summary you asked for.
 ```
 
 Accepts a file, URL, or pasted text. Optional focus, audience, format, or length.
+
+### I need to know whether my tests observe production behavior
+
+**The problem.** A passing test can assert values made entirely by fixtures,
+mocks, helpers, or the test itself. The test is green, but its result may say
+nothing about the production system.
+
+**The fix.** [`deintrovert-tests`](./skills/deintrovert-tests/SKILL.md) traces
+every assertion back to its source, classifies its evidence, and highlights
+tests whose results never reach the system under test.
+
+Credit: [`unclebob/deintroverter4clj`](https://github.com/unclebob/deintroverter4clj?utm_source=chatgpt.com).
