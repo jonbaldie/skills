@@ -168,21 +168,35 @@ branch.
 Requires [`mattpocock/skills`](https://github.com/mattpocock/skills) (for
 `/implement`) installed for the same scope and harness.
 
-### I finished an /implement and the PR is up — just land it
+### I finished the work — ship it through a PR
 
-**The problem.** After `/implement` raises a PR, the last mile is rote and
-easy to half-do: merge before CI is green, forget the closes-issue trailer, or
-push locally instead of merging through the PR.
+**The problem.** Finished work may still be only a local branch. The last mile
+is easy to half-do: forget to open the PR, merge the wrong head, or stop at the
+merge queue instead of the target branch.
 
-**The fix.** [`ship-pr`](./skills/ship-pr/SKILL.md) waits for required checks
-to go green, merges through the PR onto the target branch (`main` by default,
-or the PR base / a branch you name), and adds `Closes #<n>` when an issue is
-attached.
+**The fix.** [`ship-pr`](./skills/ship-pr/SKILL.md) creates or reuses the PR for
+the current branch, waits for required checks on its exact head, merges it onto
+the target branch, closes linked issues, and verifies the remote result.
 
 ```text
 /ship-pr
 /ship-pr 42
 /ship-pr https://github.com/owner/repository/pull/42
+```
+
+### I have changes on a fork that belong upstream
+
+**The problem.** A fork branch can carry extra merges, setup commits, or other
+fork-only history. Opening it upstream as-is either creates a duplicate PR or
+asks maintainers to review changes that were never meant for them.
+
+**The fix.** [`promote-fork-pr-upstream`](./skills/promote-fork-pr-upstream/SKILL.md)
+finds the real upstream repository and any existing PR, audits the fork head,
+rebuilds contaminated history from the upstream base, and creates or updates
+one clean upstream PR.
+
+```text
+/promote-fork-pr-upstream https://github.com/fork-owner/repository/pull/42
 ```
 
 ### I need an accurate summary of a massive amount of text
