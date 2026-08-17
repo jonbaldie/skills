@@ -150,6 +150,29 @@ Pass an id (or agent name for the generic skill) when you need a specific one:
 /resume-from-opencode "Resume Claude session skill"
 ```
 
+### I have a pull request I need to pick up
+
+**The problem.** The work already lives on a pull or merge request — review
+threads, failing checks, a draft, a branch an earlier agent (or a teammate)
+left mid-change. Opening a fresh session without that thread loses the goal,
+the files, and the next action.
+
+**The fix.** [`resume-from-pr`](./skills/resume-from-pr/SKILL.md) extracts a
+brief from the PR/MR on any git host, grounds it against the live workspace,
+and continues the work — not report on it.
+
+```text
+/resume-from-pr https://github.com/owner/repository/pull/42
+/resume-from-pr https://gitlab.com/group/project/-/merge_requests/7
+/resume-from-pr https://bitbucket.org/owner/repository/pull-requests/3
+/resume-from-pr https://codeberg.org/owner/repository/pulls/9
+/resume-from-pr 42
+```
+
+Pass a URL from GitHub, GitLab, Bitbucket, Gitea/Forgejo, Azure DevOps, or
+another host. A number uses the current repository. No argument uses the open
+PR/MR for the current branch.
+
 ### I have a whole parent spec and I just want it shipped
 
 **The problem.** A parent spec with a stack of child issues invites thrash:
