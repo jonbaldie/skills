@@ -248,3 +248,20 @@ every assertion back to its source, classifies its evidence, and highlights
 tests whose results never reach the system under test.
 
 Credit: [`unclebob/deintroverter4clj`](https://github.com/unclebob/deintroverter4clj?utm_source=chatgpt.com).
+
+### I need to make slow code faster
+
+**The problem.** Performance work can point at the wrong code or produce a
+benchmark win that disappears in real use. A profiler only shows where time was
+spent in one run, a benchmark is only as good as its workload, and some
+algorithms fail only when their input gets large.
+
+**The fix.** [`seeking-performance`](./skills/seeking-performance/SKILL.md)
+defines the result to improve and a repeatable workload, takes a baseline,
+checks the code for poor Big-O behavior, and profiles the running program. It
+then changes one cause at a time and repeats the same measurement. A change is
+kept only when the improvement is repeatable and large enough to matter.
+
+```text
+/seeking-performance
+```
