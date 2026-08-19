@@ -108,14 +108,14 @@ Before raising a worker, ensure after What to build on that ticket (leave every
 other field):
 
 <if>
-  <when>The ticket is a bug</when>
+  <when>The ticket is a bug (broken, throwing, failing, or slow)</when>
   <then>Follow `/diagnosing-bugs`'s SKILL.md rigorously.</then>
 </if>
 
-<if>
-  <when>The ticket is production code</when>
+<elseif>
+  <when>The ticket is a piece of work to implement</when>
   <then>Follow `/implement`'s SKILL.md rigorously.</then>
-</if>
+</elseif>
 
 Paste this shape as their first instructions:
 
