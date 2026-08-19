@@ -11,8 +11,8 @@ into specs and tickets on the tracker, then dispatch exactly one role agent per
 assignment and advance from the tracker.
 
 _Avoid: doing the work in this session — exploration, architecture reviews,
-implementation, bug diagnosis, merges, or patrols. Ticketize those and dispatch
-a role agent._
+implementation, bug diagnosis, merges, ships, or patrols. Ticketize those and
+dispatch a role agent._
 
 Outpost is fully **stateless**: skills plus the harness's own sessions,
 subagents, and tools. No outpost store, no harness hooks — recover from the
@@ -82,9 +82,12 @@ Give each worker its own git worktree (or isolated checkout). Do not put two
 workers on the same working tree.
 
 Before raising another agent, honour `.outpost.json` caps from `/outpost-edict`
-(`maxWorkers` / `maxSplicers` / `maxPatrolDogs`). If at a cap, wait or advance
-instead of dispatching that role. Pass `model` and `thinking` when the harness
-accepts them.
+(`maxWorkers` / `maxSplicers` / `maxRunners` / `maxPatrolDogs`). If at a cap,
+wait or advance instead of dispatching that role. Pass `model` and `thinking`
+when the harness accepts them.
+
+Ready or merged work that still needs to land or release → dispatch a runner
+to learn what shipping looks like for this cwd, then ship once that way.
 
 Role briefs live on `/outpost-edict`. Read the matching brief from edict and
 include that file's full contents in the agent's first instructions.
@@ -132,6 +135,9 @@ Refresh the configured tracker. Chat `/outpost-done` / `/outpost-blocked`
 reports help; the tracker is authoritative.
 
 When worker branches must be joined, dispatch a splicer. Do not merge in this
+session.
+
+When work is ready to land or release, dispatch a runner. Do not ship in this
 session.
 
 <if>
