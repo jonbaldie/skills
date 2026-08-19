@@ -56,7 +56,7 @@ subagents — find:
 Record each finding with ticket identity and the smallest next action (re-sling
 hand/rigger, unblock, close, ask human).
 
-Done when every in-scope ticket is accounted for.
+Done when every in-scope ticket has one finding (or an explicit all-clear).
 
 ## 4. Signal
 
@@ -64,13 +64,13 @@ Done when every in-scope ticket is accounted for.
 - Cannot read the tracker or harness well enough to patrol → `/carnival-blocked`
 
 <if>
-  <when>Patrol finished with a clear report</when>
-  <then>Run `/carnival-done`</then>
+  <when>Every in-scope ticket has one finding recorded, or an explicit all-clear</when>
+  <then>Run `/carnival-done` — then this session ends</then>
 </if>
 
 <if>
-  <when>Cannot read the tracker or harness well enough to patrol</when>
-  <then>Run `/carnival-blocked`</then>
+  <when>The configured tracker (or needed harness view) cannot be read well enough to finish the patrol</when>
+  <then>Run `/carnival-blocked` — then this session ends</then>
 </if>
 
 Exit after signaling.

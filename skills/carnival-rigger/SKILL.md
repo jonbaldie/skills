@@ -41,8 +41,8 @@ rigorously.
   <then>Use `/resolving-merge-conflicts` rigorously</then>
 </if>
 
-Done when the merge is finished and checks the ticket requires are green, or you
-cannot proceed.
+Done when the merge is finished and every check this ticket requires is green,
+or a single external blocker stops the merge.
 
 ## 4. Signal
 
@@ -50,13 +50,13 @@ cannot proceed.
 - Stuck → `/carnival-blocked`
 
 <if>
-  <when>Merge finished and required checks are green</when>
-  <then>Run `/carnival-done`</then>
+  <when>Merge is finished and every check this ticket requires is green</when>
+  <then>Run `/carnival-done` — then this session ends</then>
 </if>
 
 <if>
-  <when>Stuck</when>
-  <then>Run `/carnival-blocked`</then>
+  <when>A single external blocker stops the merge (unresolvable conflict intent, missing access, or a required check you cannot fix inside this ticket)</when>
+  <then>Run `/carnival-blocked` — then this session ends</then>
 </if>
 
 Exit after signaling.

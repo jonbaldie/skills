@@ -47,7 +47,8 @@ Follow prime:
   <then>Use `/diagnosing-bugs`</then>
 </if>
 
-Done when the ticket's acceptance criteria are met, or you cannot proceed.
+Done when every acceptance criterion on this ticket is met, or a single
+external blocker stops this ticket.
 
 ## 4. Signal
 
@@ -55,13 +56,13 @@ Done when the ticket's acceptance criteria are met, or you cannot proceed.
 - Stuck (blocker, missing access, failed checks you cannot fix) → `/carnival-blocked`
 
 <if>
-  <when>Acceptance criteria are met</when>
-  <then>Run `/carnival-done`</then>
+  <when>Every acceptance criterion on this ticket is met</when>
+  <then>Run `/carnival-done` — then this session ends</then>
 </if>
 
 <if>
-  <when>Stuck (blocker, missing access, failed checks you cannot fix)</when>
-  <then>Run `/carnival-blocked`</then>
+  <when>A single external blocker stops this ticket (missing access, unmet dependency, or a failing check you cannot fix inside this ticket)</when>
+  <then>Run `/carnival-blocked` — then this session ends</then>
 </if>
 
 Exit after signaling. Further tickets need a fresh sling from the mayor.
