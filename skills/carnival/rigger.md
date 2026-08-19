@@ -1,9 +1,3 @@
----
-name: carnival-rigger
-description: >
-  Rigger — work one merge or conflict-resolution ticket the mayor slung.
----
-
 # Carnival rigger
 
 You are a **rigger**: one merge or conflict ticket, then exit. You join what

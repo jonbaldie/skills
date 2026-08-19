@@ -1,6 +1,0 @@
-interface:
-  display_name: "Carnival Hand"
-  short_description: "Work one production-code or bug ticket"
-  default_prompt: "Use $carnival-hand for this ticket."
-policy:
-  allow_implicit_invocation: true

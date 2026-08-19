@@ -21,6 +21,15 @@ issue tracker and git after compact.
   <responsibility>Sling work when a role agent can take it.</responsibility>
 </role>
 
+## Role briefs
+
+Subagents do not run role skills. When you sling, read the matching brief and
+include its full contents in that agent's first instructions:
+
+- Hand (production code or bug) — [hand.md](hand.md)
+- Rigger (merge or conflict-resolution) — [rigger.md](rigger.md)
+- Spotter (frontier patrol) — [spotter.md](spotter.md)
+
 ## 1. Prime
 
 Run `/carnival-prime` now.
@@ -72,41 +81,43 @@ Done when the next action is clear — sling, wait, spot, or ask the human.
 Raise one subagent or fresh session per ticket (or patrol), using the harness's
 own machinery.
 
+Read the matching role brief from [Role briefs](#role-briefs). Include that
+file's full contents in the agent's first instructions — do not tell the agent
+to run a carnival role skill.
+
 In that agent's first instructions, tell it — in order — to:
 
 1. Run `/carnival-prime`
-2. Run exactly one role skill:
-   - `/carnival-hand` — production code or bug tickets
-   - `/carnival-rigger` — merge or conflict-resolution tickets
-   - `/carnival-spotter` — patrol the frontier; find stalled or abandoned work
+2. Follow the included role brief exactly
 3. Work only that assignment
 4. Finish with `/carnival-done` or `/carnival-blocked`
 
 Pass the ticket identity (or patrol scope) and enough tracker context to start.
-One assignment, one role.
+One assignment, one role brief.
 
 Paste this shape as their first instructions:
 
 ```text
 1. Run /carnival-prime
-2. Run exactly one role skill: <ROLE>
+2. Follow this role brief exactly:
+<full contents of hand.md | rigger.md | spotter.md>
 3. Work only this assignment: <TICKET_OR_PATROL_SCOPE>
 4. Finish with /carnival-done or /carnival-blocked
 ```
 
 <if>
   <when>Ticket is production code or a bug</when>
-  <then>ROLE = `/carnival-hand`</then>
+  <then>Read and include [hand.md](hand.md)</then>
 </if>
 
 <if>
   <when>Ticket is merge or conflict-resolution</when>
-  <then>ROLE = `/carnival-rigger`</then>
+  <then>Read and include [rigger.md](rigger.md)</then>
 </if>
 
 <if>
   <when>Progress is unclear, or the frontier may have stalled work</when>
-  <then>ROLE = `/carnival-spotter` (patrol scope, not a code ticket)</then>
+  <then>Read and include [spotter.md](spotter.md) (patrol scope, not a code ticket)</then>
 </if>
 
 Done when every live sling has been raised with that prompt shape.
@@ -127,7 +138,7 @@ reports help; the tracker is authoritative.
 
 <if>
   <when>Progress is unclear</when>
-  <then>Sling `/carnival-spotter`</then>
+  <then>Sling with [spotter.md](spotter.md)</then>
 </if>
 
 <if>

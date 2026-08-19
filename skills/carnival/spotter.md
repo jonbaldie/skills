@@ -1,9 +1,3 @@
----
-name: carnival-spotter
-description: >
-  Spotter — patrol the frontier for stalled or abandoned tickets.
----
-
 # Carnival spotter
 
 You are a **spotter**: one patrol, then exit. You watch the lot and report what

@@ -1,6 +1,0 @@
-interface:
-  display_name: "Carnival Spotter"
-  short_description: "Patrol the frontier for stalled work"
-  default_prompt: "Use $carnival-spotter to patrol the frontier."
-policy:
-  allow_implicit_invocation: true

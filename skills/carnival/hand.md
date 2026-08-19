@@ -1,9 +1,3 @@
----
-name: carnival-hand
-description: >
-  Hand — work one production-code or bug ticket the mayor slung.
----
-
 # Carnival hand
 
 You are a **hand**: one ticket, then exit.
