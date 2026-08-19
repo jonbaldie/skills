@@ -266,7 +266,7 @@ kept only when the improvement is repeatable and large enough to matter.
 /seeking-performance
 ```
 
-### I want a travelling multi-agent lot without a harness plugin
+### I want Gas Town-style orchestration — but stateless, agent-agnostic, and without the Dolt install cruft
 
 **The problem.** Parallel agent work usually means custom orchestration state,
 harness hooks, or a private store. Compact drops the rules; roles blur; tickets
@@ -278,10 +278,15 @@ the tracker `/setup-matt-pocock-skills` configured. The mayor primes, turns
 goals into specs/tickets, slings one role agent per assignment, and advances
 from the tracker.
 
+Optional project config: put `.carnival.json` in the cwd (schema:
+[`carnival.json-FORMAT.md`](./skills/carnival-prime/carnival.json-FORMAT.md)).
+`/carnival-prime` reads it for caps (max hands and other agents) and model /
+thinking preferences. Interpretation is skill-driven — no harness plugin.
+
 | Skill | Role |
 | --- | --- |
 | [`carnival`](./skills/carnival/SKILL.md) | Mayor (user-invoked) |
-| [`carnival-prime`](./skills/carnival-prime/SKILL.md) | Standing rules + hand/rigger/spotter briefs |
+| [`carnival-prime`](./skills/carnival-prime/SKILL.md) | Standing rules, role briefs, `.carnival.json` |
 | [`carnival-done`](./skills/carnival-done/SKILL.md) | Assignment complete |
 | [`carnival-blocked`](./skills/carnival-blocked/SKILL.md) | Assignment blocked |
 

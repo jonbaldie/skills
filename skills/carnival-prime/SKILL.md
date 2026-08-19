@@ -77,11 +77,29 @@ agent's first instructions:
 Use the issue tracker `/setup-matt-pocock-skills` configured for this repo, unless
 context already makes the tracker obvious.
 
+## Config
+
+If `.carnival.json` exists in the cwd, read it per
+[carnival.json-FORMAT.md](carnival.json-FORMAT.md). Honour `maxHands` /
+`maxRiggers` / `maxSpotters` when slinging. Pass `model` and `thinking` into
+sling instructions when the harness accepts them. Missing file → defaults. Do
+not invent harness features.
+
+<if>
+  <when>`.carnival.json` exists in the cwd</when>
+  <then>Read it per [carnival.json-FORMAT.md](carnival.json-FORMAT.md) and apply caps/preferences when slinging</then>
+</if>
+
+<if>
+  <when>`.carnival.json` is missing</when>
+  <then>Use FORMAT defaults</then>
+</if>
+
 ## Done when
 
-These five rules are in force for this session, and the role briefs above are
-reachable. Re-run this skill after any session summary that may have dropped
-them.
+These five rules are in force for this session, the role briefs above are
+reachable, and any cwd `.carnival.json` has been applied or defaulted. Re-run
+this skill after any session summary that may have dropped them.
 
 <if>
   <when>Any session summary may have dropped them</when>
