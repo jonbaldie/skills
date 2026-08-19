@@ -127,9 +127,10 @@ Done when every live dispatch has been raised with that prompt shape.
 ## 4. Advance
 
 When an agent reports via `/outpost-done` or `/outpost-blocked`, update your
-picture from the tracker. Dispatch the next perimeter ticket, raise a patrol
-dog when progress is unclear, or stop when the spec's acceptance criteria are
-met.
+picture from the tracker. Dispatch the next perimeter ticket, dispatch a runner
+when the implementation perimeter is clear and work still needs to land, raise a
+patrol dog when progress is unclear, or stop when the spec's acceptance
+criteria are met.
 
 Refresh the configured tracker. Chat `/outpost-done` / `/outpost-blocked`
 reports help; the tracker is authoritative.
@@ -137,12 +138,17 @@ reports help; the tracker is authoritative.
 When worker branches must be joined, dispatch a splicer. Do not merge in this
 session.
 
-When work is ready to land or release, dispatch a runner. Do not ship in this
-session.
+When the implementation perimeter is clear and ready or merged work still needs
+to land or release, dispatch a runner. Do not ship in this session.
 
 <if>
   <when>Perimeter has an open, unblocked ticket</when>
   <then>Dispatch it (step 3)</then>
+</if>
+
+<if>
+  <when>Implementation perimeter is clear and ready or merged work still needs to land or release</when>
+  <then>Dispatch a runner (step 3)</then>
 </if>
 
 <if>
