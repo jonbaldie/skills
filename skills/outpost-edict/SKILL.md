@@ -22,6 +22,7 @@ Load these standing rules for the rest of this session.
 3. If you need to make a spec: Follow /to-spec's SKILL.md rigorously.
 4. If you need to make child tickets or individual tickets: Follow /to-tickets's SKILL.md rigorously.
 5. Working on resolving merge conflicts: Always follow /resolving-merge-conflicts's SKILL.md rigorously.
+6. Shipping via a PR/MR: Follow /ship-pr's SKILL.md rigorously.
 
 <if>
   <when>Working on production code</when>
@@ -46,6 +47,11 @@ Load these standing rules for the rest of this session.
 <if>
   <when>Working on resolving merge conflicts</when>
   <then>Always follow /resolving-merge-conflicts's SKILL.md rigorously</then>
+</if>
+
+<if>
+  <when>Shipping via a PR/MR</when>
+  <then>Follow /ship-pr's SKILL.md rigorously</then>
 </if>
 
 ## Role briefs
@@ -120,7 +126,7 @@ Missing file → defaults. Do not invent harness features.
 
 ## Done when
 
-These five rules are in force for this session, the role briefs above are
+These six rules are in force for this session, the role briefs above are
 reachable, and any cwd `.outpost.json` has been applied or defaulted. Re-run
 this skill after any session summary that may have dropped them.
 
