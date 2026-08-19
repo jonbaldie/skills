@@ -279,18 +279,21 @@ turns goals into specs/tickets, dispatches one role agent per assignment, and
 advances from the tracker.
 
 Optional project config: put `.outpost.json` in the cwd (schema:
-[`outpost.json-FORMAT.md`](./skills/outpost-edict/outpost.json-FORMAT.md)).
-`/outpost-edict` reads it for caps (max workers and other agents) and model /
-thinking preferences. Interpretation is skill-driven — no harness plugin.
+[`outpost.json-FORMAT.md`](./skills/outpost-edict/outpost.json-FORMAT.md)), or
+run [`/outpost-setup`](./skills/outpost-setup/SKILL.md) to write reasonable
+defaults. `/outpost-edict` reads it for caps (max workers and other agents) and
+model / thinking preferences. Interpretation is skill-driven — no harness plugin.
 
 | Skill | Role |
 | --- | --- |
 | [`outpost`](./skills/outpost/SKILL.md) | Prefect (user-invoked) |
+| [`outpost-setup`](./skills/outpost-setup/SKILL.md) | Write `.outpost.json` defaults (user-invoked) |
 | [`outpost-edict`](./skills/outpost-edict/SKILL.md) | Standing rules, role briefs, `.outpost.json` |
 | [`outpost-done`](./skills/outpost-done/SKILL.md) | Assignment complete |
 | [`outpost-blocked`](./skills/outpost-blocked/SKILL.md) | Assignment blocked |
 
 ```text
+/outpost-setup
 /outpost
 ```
 
