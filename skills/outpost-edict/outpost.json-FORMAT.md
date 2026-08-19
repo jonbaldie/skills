@@ -1,4 +1,4 @@
-# `.ration.json` format
+# `.outpost.json` format
 
 Optional file in the project cwd. `/outpost-edict` reads it when present.
 Missing file → defaults below. Invalid or unknown fields → ignore those fields;

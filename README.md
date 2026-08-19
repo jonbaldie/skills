@@ -278,15 +278,15 @@ get double-claimed or left open.
 turns goals into specs/tickets, dispatches one role agent per assignment, and
 advances from the tracker.
 
-Optional project config: put `.ration.json` in the cwd (schema:
-[`ration.json-FORMAT.md`](./skills/outpost-edict/ration.json-FORMAT.md)).
+Optional project config: put `.outpost.json` in the cwd (schema:
+[`outpost.json-FORMAT.md`](./skills/outpost-edict/outpost.json-FORMAT.md)).
 `/outpost-edict` reads it for caps (max workers and other agents) and model /
 thinking preferences. Interpretation is skill-driven — no harness plugin.
 
 | Skill | Role |
 | --- | --- |
 | [`outpost`](./skills/outpost/SKILL.md) | Prefect (user-invoked) |
-| [`outpost-edict`](./skills/outpost-edict/SKILL.md) | Standing rules, role briefs, `.ration.json` |
+| [`outpost-edict`](./skills/outpost-edict/SKILL.md) | Standing rules, role briefs, `.outpost.json` |
 | [`outpost-done`](./skills/outpost-done/SKILL.md) | Assignment complete |
 | [`outpost-blocked`](./skills/outpost-blocked/SKILL.md) | Assignment blocked |
 
