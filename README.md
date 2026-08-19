@@ -272,7 +272,7 @@ kept only when the improvement is repeatable and large enough to matter.
 harness hooks, or a private store. Compact drops the rules; roles blur; tickets
 get double-claimed or left open.
 
-**The fix.** [`outpost`](./skills/outpost/SKILL.md) makes this session the
+**The fix.** [`outpost-found`](./skills/outpost-found/SKILL.md) makes this session the
 **prefect** of a stateless outpost: skills + the harness's own sessions/subagents
 + the tracker `/setup-matt-pocock-skills` configured. The prefect loads edict,
 turns goals into specs/tickets, dispatches one role agent per assignment, and
@@ -286,15 +286,17 @@ model / thinking preferences. Interpretation is skill-driven — no harness plug
 
 | Skill | Role |
 | --- | --- |
-| [`outpost`](./skills/outpost/SKILL.md) | Prefect (user-invoked) |
+| [`outpost-found`](./skills/outpost-found/SKILL.md) | Prefect (user-invoked) |
 | [`outpost-setup`](./skills/outpost-setup/SKILL.md) | Write `.outpost.json` defaults (user-invoked) |
+| [`outpost-queue`](./skills/outpost-queue/SKILL.md) | Perimeter the goal and dispatch (user-invoked) |
 | [`outpost-edict`](./skills/outpost-edict/SKILL.md) | Standing rules, role briefs, `.outpost.json` |
 | [`outpost-done`](./skills/outpost-done/SKILL.md) | Assignment complete |
 | [`outpost-blocked`](./skills/outpost-blocked/SKILL.md) | Assignment blocked |
 
 ```text
 /outpost-setup
-/outpost
+/outpost-found
+/outpost-queue
 ```
 
 Workers write production code or bugs; splicers join merges; patrol dogs bark the

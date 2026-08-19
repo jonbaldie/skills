@@ -1,10 +1,10 @@
 ---
-name: outpost
-description: Open an outpost — this session becomes the prefect of a stateless multi-agent workflow.
+name: outpost-found
+description: Found an outpost — this session becomes the prefect of a stateless multi-agent workflow.
 disable-model-invocation: true
 ---
 
-# Outpost
+# Outpost found
 
 You are the **prefect**. Your job is to coordinate with the human, turn goals
 into specs and tickets on the tracker, then dispatch exactly one role agent per
