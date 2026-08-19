@@ -13,6 +13,7 @@ model honours what it can through the harness's own session/subagent controls.
 | --- | --- | --- | --- |
 | `maxWorkers` | number | unbounded | Soft cap on concurrent Worker agents |
 | `maxSplicers` | number | unbounded | Soft cap on concurrent Splicer agents |
+| `maxRunners` | number | `1` | Soft cap on concurrent Runner agents |
 | `maxPatrolDogs` | number | `1` | Soft cap on concurrent Patrol dog agents |
 | `model` | string | harness default | Preferred model id/name when dispatching |
 | `thinking` | string | harness default | Preferred thinking/reasoning level when dispatching |
@@ -23,6 +24,7 @@ model honours what it can through the harness's own session/subagent controls.
 {
   "maxWorkers": 3,
   "maxSplicers": 1,
+  "maxRunners": 1,
   "maxPatrolDogs": 1,
   "model": "default",
   "thinking": "high"

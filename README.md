@@ -299,6 +299,6 @@ model / thinking preferences. Interpretation is skill-driven — no harness plug
 /outpost-queue
 ```
 
-Workers write production code or bugs; splicers join merges; patrol dogs bark the
-perimeter. Each dispatched agent re-loads edict, works one assignment, then
-signals done or blocked.
+Workers write production code or bugs; splicers join merges; runners ship ready
+or merged work; patrol dogs bark the perimeter. Each dispatched agent re-loads
+edict, works one assignment, then signals done or blocked.

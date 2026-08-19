@@ -55,6 +55,7 @@ agent's first instructions:
 
 - Worker (production code or bug) — [worker.md](worker.md)
 - Splicer (merge or conflict-resolution) — [splicer.md](splicer.md)
+- Runner (ship ready or merged work) — [runner.md](runner.md)
 - Patrol dog (perimeter patrol) — [patrol-dog.md](patrol-dog.md)
 
 <if>
@@ -65,6 +66,11 @@ agent's first instructions:
 <if>
   <when>Ticket is merge or conflict-resolution</when>
   <then>Read and include [splicer.md](splicer.md)</then>
+</if>
+
+<if>
+  <when>Work is merged or otherwise ready to ship, and the next step is landing or releasing it</when>
+  <then>Read and include [runner.md](runner.md)</then>
 </if>
 
 <if>
@@ -81,9 +87,9 @@ context already makes the tracker obvious.
 
 If `.outpost.json` exists in the cwd, read it per
 [outpost.json-FORMAT.md](outpost.json-FORMAT.md). Honour `maxWorkers` /
-`maxSplicers` / `maxPatrolDogs` when dispatching. Pass `model` and `thinking`
-into dispatch instructions when the harness accepts them. Missing file →
-defaults. Do not invent harness features.
+`maxSplicers` / `maxRunners` / `maxPatrolDogs` when dispatching. Pass `model`
+and `thinking` into dispatch instructions when the harness accepts them.
+Missing file → defaults. Do not invent harness features.
 
 <if>
   <when>`.outpost.json` exists in the cwd</when>
