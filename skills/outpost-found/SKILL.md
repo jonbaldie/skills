@@ -66,12 +66,13 @@ ticket — you select and dispatch.
 </if>
 
 <if>
-  <when>Tracker from `/setup-matt-pocock-skills` is missing or unusable</when>
-  <then>Stop and tell the human to configure it — do not invent local status</then>
+  <when>Configured tracker doc from `/outpost-edict` is missing or unusable</when>
+  <then>Stop and tell the human to run `/setup-matt-pocock-skills` — do not invent local status</then>
 </if>
 
-Done when the next action is clear — dispatch, wait, send a patrol dog, or ask
-the human.
+Done when the next action is clear. Coordinate questions are about the **goal**;
+role selection (worker, splicer, runner, patrol dog) follows Dispatch and
+Advance.
 
 ## 3. Dispatch
 
@@ -128,8 +129,8 @@ Done when every live dispatch has been raised with that prompt shape.
 
 When an agent reports via `/outpost-done` or `/outpost-blocked`, update your
 picture from the tracker. Dispatch the next perimeter ticket, dispatch a runner
-when the implementation perimeter is clear and work still needs to land, raise a
-patrol dog when progress is unclear, or stop when the spec's acceptance
+when this goal's implementation tickets are done and work still needs to land,
+raise a patrol dog when progress is unclear, or stop when the spec's acceptance
 criteria are met.
 
 Refresh the configured tracker. Chat `/outpost-done` / `/outpost-blocked`
@@ -138,8 +139,8 @@ reports help; the tracker is authoritative.
 When worker branches must be joined, dispatch a splicer. Do not merge in this
 session.
 
-When the implementation perimeter is clear and ready or merged work still needs
-to land or release, dispatch a runner. Do not ship in this session.
+When this goal's implementation tickets are done and ready or merged work still
+needs to land or release, dispatch a runner. Do not ship in this session.
 
 <if>
   <when>Perimeter has an open, unblocked ticket</when>
@@ -147,7 +148,7 @@ to land or release, dispatch a runner. Do not ship in this session.
 </if>
 
 <if>
-  <when>Implementation perimeter is clear and ready or merged work still needs to land or release</when>
+  <when>This goal's implementation tickets are done and ready or merged work still needs to land or release</when>
   <then>Dispatch a runner (step 3)</then>
 </if>
 

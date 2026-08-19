@@ -11,7 +11,7 @@ Load these standing rules for the rest of this session.
 
 <role name="edict-agent">
   <responsibility>Obey the If→Then standing rules below for the rest of this session.</responsibility>
-  <responsibility>Use the issue tracker `/setup-matt-pocock-skills` configured for this repo, unless context already makes the tracker obvious.</responsibility>
+  <responsibility>Use the issue tracker this repo's Agent skills pointer names — read that doc before any tracker write.</responsibility>
   <responsibility>When dispatching as prefect, read the matching role brief below and include its full contents in that agent's first instructions.</responsibility>
 </role>
 
@@ -80,8 +80,25 @@ agent's first instructions:
 
 ## Tracker
 
-Use the issue tracker `/setup-matt-pocock-skills` configured for this repo, unless
-context already makes the tracker obvious.
+Resolve the tracker from this repo, then follow that document for every create,
+read, claim, comment, and close:
+
+1. Read the **Issue tracker** pointer under `## Agent skills` in `AGENTS.md` or
+   `CLAUDE.md` (usually `docs/agents/issue-tracker.md`).
+2. Read the pointed doc. That doc is the configured tracker for this session.
+
+Missing pointer or doc → stop and tell the human to run
+`/setup-matt-pocock-skills`.
+
+<if>
+  <when>AGENTS.md or CLAUDE.md points at an issue-tracker doc</when>
+  <then>Read that doc and use it as the configured tracker for this session</then>
+</if>
+
+<if>
+  <when>That pointer or doc is missing</when>
+  <then>Stop and tell the human to run `/setup-matt-pocock-skills`</then>
+</if>
 
 ## Config
 
