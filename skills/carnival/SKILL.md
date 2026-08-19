@@ -23,8 +23,8 @@ issue tracker and git after compact.
 
 ## Role briefs
 
-Subagents do not run role skills. When you sling, read the matching brief and
-include its full contents in that agent's first instructions:
+When you sling, read the matching brief and include its full contents in that
+agent's first instructions:
 
 - Hand (production code or bug) — [hand.md](hand.md)
 - Rigger (merge or conflict-resolution) — [rigger.md](rigger.md)
@@ -82,8 +82,7 @@ Raise one subagent or fresh session per ticket (or patrol), using the harness's
 own machinery.
 
 Read the matching role brief from [Role briefs](#role-briefs). Include that
-file's full contents in the agent's first instructions — do not tell the agent
-to run a carnival role skill.
+file's full contents in the agent's first instructions.
 
 In that agent's first instructions, tell it — in order — to:
 
