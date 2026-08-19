@@ -28,17 +28,17 @@ Done when the ticket is claimed and its acceptance criteria are clear.
 
 Follow prime:
 
-- Production code → `/implement`
-- Bug → `/diagnosing-bugs`
+- Production code → Follow `/implement`'s SKILL.md rigorously
+- Bug → Follow `/diagnosing-bugs`'s SKILL.md rigorously
 
 <if>
   <when>Ticket is production code</when>
-  <then>Use `/implement`</then>
+  <then>Follow `/implement`'s SKILL.md rigorously</then>
 </if>
 
 <if>
   <when>Ticket is a bug</when>
-  <then>Use `/diagnosing-bugs`</then>
+  <then>Follow `/diagnosing-bugs`'s SKILL.md rigorously</then>
 </if>
 
 Done when every acceptance criterion on this ticket is met, or a single

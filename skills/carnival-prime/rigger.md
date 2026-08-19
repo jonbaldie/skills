@@ -27,12 +27,12 @@ Done when the ticket is claimed and the conflict or merge target is clear.
 
 ## 3. Work
 
-Follow prime: resolving merge conflicts uses `/resolving-merge-conflicts`
-rigorously.
+Follow prime: resolving merge conflicts follows
+`/resolving-merge-conflicts`'s SKILL.md rigorously.
 
 <if>
   <when>Working on resolving merge conflicts</when>
-  <then>Use `/resolving-merge-conflicts` rigorously</then>
+  <then>Follow `/resolving-merge-conflicts`'s SKILL.md rigorously</then>
 </if>
 
 Done when the merge is finished and every check this ticket requires is green,

@@ -44,20 +44,20 @@ Done when prime is in force.
 
 Talk to the human. Turn goals into tickets on the configured tracker:
 
-- Spec / parent → `/to-spec` (via prime).
-- Child tickets / individual tickets → `/to-tickets` (via prime).
+- Spec / parent → Follow `/to-spec`'s SKILL.md rigorously (via prime).
+- Child tickets / individual tickets → Follow `/to-tickets`'s SKILL.md rigorously (via prime).
 
 Work the **frontier**: open, unblocked tickets. The slung role claims the
 ticket — you select and sling.
 
 <if>
   <when>Need a parent spec</when>
-  <then>Use `/to-spec` (via prime)</then>
+  <then>Follow `/to-spec`'s SKILL.md rigorously (via prime)</then>
 </if>
 
 <if>
   <when>Need child tickets or individual tickets</when>
-  <then>Use `/to-tickets` (via prime)</then>
+  <then>Follow `/to-tickets`'s SKILL.md rigorously (via prime)</then>
 </if>
 
 <if>
