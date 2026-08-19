@@ -265,3 +265,30 @@ kept only when the improvement is repeatable and large enough to matter.
 ```text
 /seeking-performance
 ```
+
+### I want a travelling multi-agent lot without a harness plugin
+
+**The problem.** Parallel agent work usually means custom orchestration state,
+harness hooks, or a private store. Compact drops the rules; roles blur; tickets
+get double-claimed or left open.
+
+**The fix.** [`carnival`](./skills/carnival/SKILL.md) makes this session the
+**mayor** of a stateless lot: skills + the harness's own sessions/subagents +
+the tracker `/setup-matt-pocock-skills` configured. The mayor primes, turns
+goals into specs/tickets, slings one role agent per assignment, and advances
+from the tracker.
+
+| Skill | Role |
+| --- | --- |
+| [`carnival`](./skills/carnival/SKILL.md) | Mayor (user-invoked) |
+| [`carnival-prime`](./skills/carnival-prime/SKILL.md) | Standing rules + hand/rigger/spotter briefs |
+| [`carnival-done`](./skills/carnival-done/SKILL.md) | Assignment complete |
+| [`carnival-blocked`](./skills/carnival-blocked/SKILL.md) | Assignment blocked |
+
+```text
+/carnival
+```
+
+Hands write production code or bugs; riggers join merges; spotters patrol the
+frontier. Each slung agent re-primes, works one assignment, then signals done or
+blocked.
