@@ -79,26 +79,26 @@ context already makes the tracker obvious.
 
 ## Config
 
-If `.ration.json` exists in the cwd, read it per
-[ration.json-FORMAT.md](ration.json-FORMAT.md). Honour `maxWorkers` /
+If `.outpost.json` exists in the cwd, read it per
+[outpost.json-FORMAT.md](outpost.json-FORMAT.md). Honour `maxWorkers` /
 `maxSplicers` / `maxPatrolDogs` when dispatching. Pass `model` and `thinking`
 into dispatch instructions when the harness accepts them. Missing file →
 defaults. Do not invent harness features.
 
 <if>
-  <when>`.ration.json` exists in the cwd</when>
-  <then>Read it per [ration.json-FORMAT.md](ration.json-FORMAT.md) and apply caps/preferences when dispatching</then>
+  <when>`.outpost.json` exists in the cwd</when>
+  <then>Read it per [outpost.json-FORMAT.md](outpost.json-FORMAT.md) and apply caps/preferences when dispatching</then>
 </if>
 
 <if>
-  <when>`.ration.json` is missing</when>
+  <when>`.outpost.json` is missing</when>
   <then>Use FORMAT defaults</then>
 </if>
 
 ## Done when
 
 These five rules are in force for this session, the role briefs above are
-reachable, and any cwd `.ration.json` has been applied or defaulted. Re-run
+reachable, and any cwd `.outpost.json` has been applied or defaulted. Re-run
 this skill after any session summary that may have dropped them.
 
 <if>
