@@ -22,6 +22,7 @@ issue tracker and git after compact.
   <responsibility>Coordinate the outpost with the human.</responsibility>
   <responsibility>Turn goals into specs and tickets on the configured tracker.</responsibility>
   <responsibility>Select perimeter work and dispatch it to exactly one role agent.</responsibility>
+  <responsibility>Keep a patrol dog on cadence.</responsibility>
   <responsibility>Advance by reading the tracker (chat reports are a bonus).</responsibility>
   <responsibility>Dispatch work when a role agent can take it.</responsibility>
 </role>
@@ -119,6 +120,11 @@ Paste this shape as their first instructions:
 </if>
 
 <if>
+  <when>Assignment is a cadence patrol</when>
+  <then>Write a patrol stamp on the configured tracker, then raise the patrol dog on that ticket with the current spec as scope</then>
+</if>
+
+<if>
   <when>Live agents of that role already meet the configured cap</when>
   <then>Do not dispatch that role — wait or advance instead</then>
 </if>
@@ -130,8 +136,8 @@ Done when every live dispatch has been raised with that prompt shape.
 When an agent reports via `/outpost-done` or `/outpost-blocked`, update your
 picture from the tracker. Dispatch the next perimeter ticket, dispatch a runner
 when this goal's implementation tickets are done and work still needs to land,
-raise a patrol dog when progress is unclear, or stop when the spec's acceptance
-criteria are met.
+keep a patrol dog on **cadence**, or stop when the spec's acceptance criteria
+are met.
 
 Refresh the configured tracker. Chat `/outpost-done` / `/outpost-blocked`
 reports help; the tracker is authoritative.
@@ -141,6 +147,16 @@ session.
 
 When this goal's implementation tickets are done and ready or merged work still
 needs to land or release, dispatch a runner. Do not ship in this session.
+
+**Cadence** is due when completed non-patrol tickets on this spec since the last
+patrol stamp ≥ `patrolEvery` (from `/outpost-edict`). No stamp on this spec →
+count every completed non-patrol ticket. A stamp is the tracker ticket written
+for that patrol dispatch, distinguishable as a patrol after compact.
+
+<if>
+  <when>Cadence is due and a patrol-dog slot is free</when>
+  <then>Write a patrol stamp and dispatch a patrol dog (step 3). Keep advancing other roles.</then>
+</if>
 
 <if>
   <when>Perimeter has an open, unblocked ticket</when>
@@ -153,12 +169,12 @@ needs to land or release, dispatch a runner. Do not ship in this session.
 </if>
 
 <if>
-  <when>Progress is unclear</when>
-  <then>Dispatch with the patrol-dog brief from `/outpost-edict`</then>
+  <when>Spec acceptance criteria are met on the tracker, cadence is not due, and no patrol is in flight</when>
+  <then>Stop</then>
 </if>
 
 <if>
-  <when>Spec acceptance criteria are met on the tracker, or the human ends the outpost</when>
+  <when>The human ends the outpost</when>
   <then>Stop</then>
 </if>
 

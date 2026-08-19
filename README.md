@@ -300,5 +300,5 @@ model / thinking preferences. Interpretation is skill-driven — no harness plug
 ```
 
 Workers write production code or bugs; splicers join merges; runners ship ready
-or merged work; patrol dogs bark the perimeter. Each dispatched agent re-loads
-edict, works one assignment, then signals done or blocked.
+or merged work; patrol dogs bark the perimeter on cadence. Each dispatched agent
+re-loads edict, works one assignment, then signals done or blocked.

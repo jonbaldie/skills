@@ -62,7 +62,7 @@ agent's first instructions:
 - Worker (production code or bug) — [worker.md](worker.md)
 - Splicer (merge or conflict-resolution) — [splicer.md](splicer.md)
 - Runner (ship ready or merged work) — [runner.md](runner.md)
-- Patrol dog (perimeter patrol) — [patrol-dog.md](patrol-dog.md)
+- Patrol dog (cadence patrol) — [patrol-dog.md](patrol-dog.md)
 
 <if>
   <when>Ticket is production code or a bug</when>
@@ -80,8 +80,8 @@ agent's first instructions:
 </if>
 
 <if>
-  <when>Progress is unclear, or the perimeter may have stalled work</when>
-  <then>Read and include [patrol-dog.md](patrol-dog.md) (patrol scope, not a code ticket)</then>
+  <when>Assignment is a patrol</when>
+  <then>Read and include [patrol-dog.md](patrol-dog.md)</then>
 </if>
 
 ## Tracker
@@ -110,13 +110,14 @@ Missing pointer or doc → stop and tell the human to run
 
 If `.outpost.json` exists in the cwd, read it per
 [outpost.json-FORMAT.md](outpost.json-FORMAT.md). Honour `maxWorkers` /
-`maxSplicers` / `maxRunners` / `maxPatrolDogs` when dispatching. Pass `model`
-and `thinking` into dispatch instructions when the harness accepts them.
-Missing file → defaults. Do not invent harness features.
+`maxSplicers` / `maxRunners` / `maxPatrolDogs` when dispatching, and
+`patrolEvery` when advancing. Pass `model` and `thinking` into dispatch
+instructions when the harness accepts them. Missing file → defaults. Do not
+invent harness features.
 
 <if>
   <when>`.outpost.json` exists in the cwd</when>
-  <then>Read it per [outpost.json-FORMAT.md](outpost.json-FORMAT.md) and apply caps/preferences when dispatching</then>
+  <then>Read it per [outpost.json-FORMAT.md](outpost.json-FORMAT.md) and apply caps, preferences, and `patrolEvery`</then>
 </if>
 
 <if>
