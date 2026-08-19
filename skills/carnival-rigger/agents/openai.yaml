@@ -1,0 +1,6 @@
+interface:
+  display_name: "Carnival Rigger"
+  short_description: "Work one merge or conflict ticket"
+  default_prompt: "Use $carnival-rigger for this ticket."
+policy:
+  allow_implicit_invocation: true
