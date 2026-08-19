@@ -1,0 +1,6 @@
+interface:
+  display_name: "Carnival Blocked"
+  short_description: "Signal this assignment cannot proceed"
+  default_prompt: "Use $carnival-blocked — this assignment is stuck."
+policy:
+  allow_implicit_invocation: true
