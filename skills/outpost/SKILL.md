@@ -78,6 +78,9 @@ the human.
 Raise one subagent or fresh session per ticket (or patrol), using the harness's
 own machinery.
 
+Give each worker its own git worktree (or isolated checkout). Do not put two
+workers on the same working tree.
+
 Before raising another agent, honour `.outpost.json` caps from `/outpost-edict`
 (`maxWorkers` / `maxSplicers` / `maxPatrolDogs`). If at a cap, wait or advance
 instead of dispatching that role. Pass `model` and `thinking` when the harness
@@ -127,6 +130,9 @@ met.
 
 Refresh the configured tracker. Chat `/outpost-done` / `/outpost-blocked`
 reports help; the tracker is authoritative.
+
+When worker branches must be joined, dispatch a splicer. Do not merge in this
+session.
 
 <if>
   <when>Perimeter has an open, unblocked ticket</when>

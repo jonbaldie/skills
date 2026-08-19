@@ -8,6 +8,10 @@ description: >
 
 Signal completion for the assignment this agent was dispatched.
 
+If acceptance criteria are unchecked, or code work is still uncommitted on the
+ticket branch, stop — use `/outpost-blocked` or keep working. Do not complete
+this skill.
+
 <role name="signaling-agent">
   <responsibility>Write completion to the tracker first (authoritative signal).</responsibility>
   <responsibility>Briefly report to the prefect or parent session if a channel exists.</responsibility>
