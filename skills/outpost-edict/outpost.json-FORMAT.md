@@ -24,7 +24,7 @@ model honours what it can through the harness's own session/subagent controls.
   "maxWorkers": 3,
   "maxSplicers": 1,
   "maxPatrolDogs": 1,
-  "model": "claude-opus-4",
+  "model": "default",
   "thinking": "high"
 }
 ```
