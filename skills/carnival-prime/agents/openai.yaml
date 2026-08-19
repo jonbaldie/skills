@@ -1,6 +1,0 @@
-interface:
-  display_name: "Carnival Prime"
-  short_description: "Inject standing carnival workflow rules"
-  default_prompt: "Use $carnival-prime to load carnival standing rules."
-policy:
-  allow_implicit_invocation: true
