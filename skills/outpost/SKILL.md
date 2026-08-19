@@ -74,7 +74,7 @@ Raise one subagent or fresh session per ticket (or patrol), using the harness's
 own machinery.
 
 Before raising another agent, honour `.ration.json` caps from `/outpost-edict`
-(`maxLabor` / `maxSplicers` / `maxPatrolDogs`). If at a cap, wait or advance
+(`maxWorkers` / `maxSplicers` / `maxPatrolDogs`). If at a cap, wait or advance
 instead of dispatching that role. Pass `model` and `thinking` when the harness
 accepts them.
 

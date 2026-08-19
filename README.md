@@ -280,7 +280,7 @@ advances from the tracker.
 
 Optional project config: put `.ration.json` in the cwd (schema:
 [`ration.json-FORMAT.md`](./skills/outpost-edict/ration.json-FORMAT.md)).
-`/outpost-edict` reads it for caps (max labor and other agents) and model /
+`/outpost-edict` reads it for caps (max workers and other agents) and model /
 thinking preferences. Interpretation is skill-driven — no harness plugin.
 
 | Skill | Role |
@@ -294,6 +294,6 @@ thinking preferences. Interpretation is skill-driven — no harness plugin.
 /outpost
 ```
 
-Labor writes production code or bugs; splicers join merges; patrol dogs bark the
+Workers write production code or bugs; splicers join merges; patrol dogs bark the
 perimeter. Each dispatched agent re-loads edict, works one assignment, then
 signals done or blocked.

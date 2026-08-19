@@ -53,13 +53,13 @@ Load these standing rules for the rest of this session.
 When you dispatch, read the matching brief and include its full contents in that
 agent's first instructions:
 
-- Labor (production code or bug) — [labor.md](labor.md)
+- Worker (production code or bug) — [worker.md](worker.md)
 - Splicer (merge or conflict-resolution) — [splicer.md](splicer.md)
 - Patrol dog (perimeter patrol) — [patrol-dog.md](patrol-dog.md)
 
 <if>
   <when>Ticket is production code or a bug</when>
-  <then>Read and include [labor.md](labor.md)</then>
+  <then>Read and include [worker.md](worker.md)</then>
 </if>
 
 <if>
@@ -80,7 +80,7 @@ context already makes the tracker obvious.
 ## Config
 
 If `.ration.json` exists in the cwd, read it per
-[ration.json-FORMAT.md](ration.json-FORMAT.md). Honour `maxLabor` /
+[ration.json-FORMAT.md](ration.json-FORMAT.md). Honour `maxWorkers` /
 `maxSplicers` / `maxPatrolDogs` when dispatching. Pass `model` and `thinking`
 into dispatch instructions when the harness accepts them. Missing file →
 defaults. Do not invent harness features.

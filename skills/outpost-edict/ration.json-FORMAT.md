@@ -11,7 +11,7 @@ model honours what it can through the harness's own session/subagent controls.
 
 | Field | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `maxLabor` | number | unbounded | Soft cap on concurrent Labor agents |
+| `maxWorkers` | number | unbounded | Soft cap on concurrent Worker agents |
 | `maxSplicers` | number | unbounded | Soft cap on concurrent Splicer agents |
 | `maxPatrolDogs` | number | `1` | Soft cap on concurrent Patrol dog agents |
 | `model` | string | harness default | Preferred model id/name when dispatching |
@@ -21,7 +21,7 @@ model honours what it can through the harness's own session/subagent controls.
 
 ```json
 {
-  "maxLabor": 3,
+  "maxWorkers": 3,
   "maxSplicers": 1,
   "maxPatrolDogs": 1,
   "model": "claude-opus-4",
