@@ -1,18 +1,18 @@
 ---
-name: carnival-prime
+name: outpost-edict
 description: >
-  Carnival mode only. Prime standing rules and role briefs; re-prime after
+  Outpost mode only. Edict standing rules and role briefs; re-edict after
   summary.
 ---
 
-# Carnival prime
+# Outpost edict
 
 Load these standing rules for the rest of this session.
 
-<role name="primed-agent">
+<role name="edict-agent">
   <responsibility>Obey the If→Then standing rules below for the rest of this session.</responsibility>
   <responsibility>Use the issue tracker `/setup-matt-pocock-skills` configured for this repo, unless context already makes the tracker obvious.</responsibility>
-  <responsibility>When slinging as mayor, read the matching role brief below and include its full contents in that agent's first instructions.</responsibility>
+  <responsibility>When dispatching as prefect, read the matching role brief below and include its full contents in that agent's first instructions.</responsibility>
 </role>
 
 ## Standing rules
@@ -50,26 +50,26 @@ Load these standing rules for the rest of this session.
 
 ## Role briefs
 
-When you sling, read the matching brief and include its full contents in that
+When you dispatch, read the matching brief and include its full contents in that
 agent's first instructions:
 
-- Hand (production code or bug) — [hand.md](hand.md)
-- Rigger (merge or conflict-resolution) — [rigger.md](rigger.md)
-- Spotter (frontier patrol) — [spotter.md](spotter.md)
+- Labor (production code or bug) — [labor.md](labor.md)
+- Splicer (merge or conflict-resolution) — [splicer.md](splicer.md)
+- Patrol dog (perimeter patrol) — [patrol-dog.md](patrol-dog.md)
 
 <if>
   <when>Ticket is production code or a bug</when>
-  <then>Read and include [hand.md](hand.md)</then>
+  <then>Read and include [labor.md](labor.md)</then>
 </if>
 
 <if>
   <when>Ticket is merge or conflict-resolution</when>
-  <then>Read and include [rigger.md](rigger.md)</then>
+  <then>Read and include [splicer.md](splicer.md)</then>
 </if>
 
 <if>
-  <when>Progress is unclear, or the frontier may have stalled work</when>
-  <then>Read and include [spotter.md](spotter.md) (patrol scope, not a code ticket)</then>
+  <when>Progress is unclear, or the perimeter may have stalled work</when>
+  <then>Read and include [patrol-dog.md](patrol-dog.md) (patrol scope, not a code ticket)</then>
 </if>
 
 ## Tracker
@@ -79,26 +79,26 @@ context already makes the tracker obvious.
 
 ## Config
 
-If `.carnival.json` exists in the cwd, read it per
-[carnival.json-FORMAT.md](carnival.json-FORMAT.md). Honour `maxHands` /
-`maxRiggers` / `maxSpotters` when slinging. Pass `model` and `thinking` into
-sling instructions when the harness accepts them. Missing file → defaults. Do
-not invent harness features.
+If `.ration.json` exists in the cwd, read it per
+[ration.json-FORMAT.md](ration.json-FORMAT.md). Honour `maxLabor` /
+`maxSplicers` / `maxPatrolDogs` when dispatching. Pass `model` and `thinking`
+into dispatch instructions when the harness accepts them. Missing file →
+defaults. Do not invent harness features.
 
 <if>
-  <when>`.carnival.json` exists in the cwd</when>
-  <then>Read it per [carnival.json-FORMAT.md](carnival.json-FORMAT.md) and apply caps/preferences when slinging</then>
+  <when>`.ration.json` exists in the cwd</when>
+  <then>Read it per [ration.json-FORMAT.md](ration.json-FORMAT.md) and apply caps/preferences when dispatching</then>
 </if>
 
 <if>
-  <when>`.carnival.json` is missing</when>
+  <when>`.ration.json` is missing</when>
   <then>Use FORMAT defaults</then>
 </if>
 
 ## Done when
 
 These five rules are in force for this session, the role briefs above are
-reachable, and any cwd `.carnival.json` has been applied or defaulted. Re-run
+reachable, and any cwd `.ration.json` has been applied or defaulted. Re-run
 this skill after any session summary that may have dropped them.
 
 <if>

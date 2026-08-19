@@ -272,28 +272,28 @@ kept only when the improvement is repeatable and large enough to matter.
 harness hooks, or a private store. Compact drops the rules; roles blur; tickets
 get double-claimed or left open.
 
-**The fix.** [`carnival`](./skills/carnival/SKILL.md) makes this session the
-**mayor** of a stateless lot: skills + the harness's own sessions/subagents +
-the tracker `/setup-matt-pocock-skills` configured. The mayor primes, turns
-goals into specs/tickets, slings one role agent per assignment, and advances
-from the tracker.
+**The fix.** [`outpost`](./skills/outpost/SKILL.md) makes this session the
+**prefect** of a stateless outpost: skills + the harness's own sessions/subagents
++ the tracker `/setup-matt-pocock-skills` configured. The prefect loads edict,
+turns goals into specs/tickets, dispatches one role agent per assignment, and
+advances from the tracker.
 
-Optional project config: put `.carnival.json` in the cwd (schema:
-[`carnival.json-FORMAT.md`](./skills/carnival-prime/carnival.json-FORMAT.md)).
-`/carnival-prime` reads it for caps (max hands and other agents) and model /
+Optional project config: put `.ration.json` in the cwd (schema:
+[`ration.json-FORMAT.md`](./skills/outpost-edict/ration.json-FORMAT.md)).
+`/outpost-edict` reads it for caps (max labor and other agents) and model /
 thinking preferences. Interpretation is skill-driven — no harness plugin.
 
 | Skill | Role |
 | --- | --- |
-| [`carnival`](./skills/carnival/SKILL.md) | Mayor (user-invoked) |
-| [`carnival-prime`](./skills/carnival-prime/SKILL.md) | Standing rules, role briefs, `.carnival.json` |
-| [`carnival-done`](./skills/carnival-done/SKILL.md) | Assignment complete |
-| [`carnival-blocked`](./skills/carnival-blocked/SKILL.md) | Assignment blocked |
+| [`outpost`](./skills/outpost/SKILL.md) | Prefect (user-invoked) |
+| [`outpost-edict`](./skills/outpost-edict/SKILL.md) | Standing rules, role briefs, `.ration.json` |
+| [`outpost-done`](./skills/outpost-done/SKILL.md) | Assignment complete |
+| [`outpost-blocked`](./skills/outpost-blocked/SKILL.md) | Assignment blocked |
 
 ```text
-/carnival
+/outpost
 ```
 
-Hands write production code or bugs; riggers join merges; spotters patrol the
-frontier. Each slung agent re-primes, works one assignment, then signals done or
-blocked.
+Labor writes production code or bugs; splicers join merges; patrol dogs bark the
+perimeter. Each dispatched agent re-loads edict, works one assignment, then
+signals done or blocked.

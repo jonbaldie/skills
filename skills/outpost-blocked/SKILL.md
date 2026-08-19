@@ -1,17 +1,17 @@
 ---
-name: carnival-blocked
+name: outpost-blocked
 description: >
-  Carnival mode only. Signal this assignment blocked for the mayor.
+  Outpost mode only. Signal this assignment blocked for the prefect.
 ---
 
-# Carnival blocked
+# Outpost blocked
 
-Signal that the assignment this agent was slung cannot proceed.
+Signal that the assignment this agent was dispatched cannot proceed.
 
 <role name="signaling-agent">
   <responsibility>Write the blocker to the tracker first (authoritative signal).</responsibility>
-  <responsibility>Briefly report to the mayor or parent session if a channel exists.</responsibility>
-  <responsibility>Exit — no further assignment without a fresh sling.</responsibility>
+  <responsibility>Briefly report to the prefect or parent session if a channel exists.</responsibility>
+  <responsibility>Exit — no further assignment without a fresh dispatch.</responsibility>
 </role>
 
 ## 1. Update the tracker
@@ -20,7 +20,7 @@ For a ticket assignment: mark it blocked (or equivalent) on the configured
 tracker. Write the blocker in plain language: what failed, what is missing, who
 or what can unblock it.
 
-For a spotter patrol: say what prevented the patrol (tracker access, missing
+For a patrol-dog patrol: say what prevented the patrol (tracker access, missing
 scope, harness opaque).
 
 <if>
@@ -29,16 +29,16 @@ scope, harness opaque).
 </if>
 
 <if>
-  <when>Assignment was a spotter patrol</when>
+  <when>Assignment was a patrol-dog patrol</when>
   <then>Say what prevented the patrol (tracker access, missing scope, harness opaque)</then>
 </if>
 
-Done when the tracker or report carries the blocker clearly enough for the
-mayor to act.
+Done when the tracker or bark carries the blocker clearly enough for the
+prefect to act.
 
 ## 2. Report
 
-Tell the mayor (or parent session), briefly:
+Tell the prefect (or parent session), briefly:
 
 - which assignment is blocked
 - the blocker

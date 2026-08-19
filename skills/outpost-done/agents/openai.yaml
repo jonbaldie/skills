@@ -1,6 +1,6 @@
 interface:
-  display_name: "Carnival Done"
+  display_name: "Outpost Done"
   short_description: "Signal this assignment is complete"
-  default_prompt: "Use $carnival-done — this assignment is finished."
+  default_prompt: "Use $outpost-done — this assignment is finished."
 policy:
   allow_implicit_invocation: true
