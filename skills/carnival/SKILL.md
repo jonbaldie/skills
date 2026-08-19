@@ -72,6 +72,10 @@ Done when the next action is clear — sling, wait, spot, or ask the human.
 Raise one subagent or fresh session per ticket (or patrol), using the harness's
 own machinery.
 
+Before raising another agent, honour `.carnival.json` caps from `/carnival-prime`
+(`maxHands` / `maxRiggers` / `maxSpotters`). If at a cap, wait or advance instead
+of slinging that role. Pass `model` and `thinking` when the harness accepts them.
+
 Role briefs live on `/carnival-prime`. Read the matching brief from prime and
 include that file's full contents in the agent's first instructions.
 
@@ -98,6 +102,11 @@ Paste this shape as their first instructions:
 <if>
   <when>Choosing which role brief to include</when>
   <then>Follow the Role briefs If→Then rules on `/carnival-prime`</then>
+</if>
+
+<if>
+  <when>Live agents of that role already meet the configured cap</when>
+  <then>Do not sling that role — wait or advance instead</then>
 </if>
 
 Done when every live sling has been raised with that prompt shape.
