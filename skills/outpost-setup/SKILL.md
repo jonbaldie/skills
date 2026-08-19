@@ -41,5 +41,5 @@ Done when that file exists on disk with those three fields.
 
 ## 3. Confirm
 
-Tell the human the path written and that `/outpost` / `/outpost-edict` will
+Tell the human the path written and that `/outpost-found` / `/outpost-edict` will
 honour these caps. Stop.
