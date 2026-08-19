@@ -1,9 +1,8 @@
 ---
 name: carnival-prime
 description: >
-  Prime carnival standing workflow rules and role briefs. Use when opening a
-  carnival, priming a slung agent, slinging a role, or restoring adherence after
-  the session was summarised.
+  Carnival mode only. Prime standing rules and role briefs; re-prime after
+  summary.
 ---
 
 # Carnival prime

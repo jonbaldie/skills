@@ -1,8 +1,7 @@
 ---
 name: carnival-blocked
 description: >
-  Blocked — signal that this carnival assignment cannot proceed and the mayor
-  must decide.
+  Carnival mode only. Signal this assignment blocked for the mayor.
 ---
 
 # Carnival blocked

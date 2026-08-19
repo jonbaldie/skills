@@ -1,8 +1,7 @@
 ---
 name: carnival-done
 description: >
-  Done — signal that this carnival assignment is complete and ready for the
-  mayor.
+  Carnival mode only. Signal this assignment complete to the mayor.
 ---
 
 # Carnival done
