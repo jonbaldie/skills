@@ -104,6 +104,19 @@ In that agent's first instructions, tell it — in order — to:
 Pass the ticket identity (or patrol scope) and enough tracker context to start.
 One assignment, one role brief.
 
+Before raising a worker, ensure after What to build on that ticket (leave every
+other field):
+
+<if>
+  <when>The ticket is a bug</when>
+  <then>Follow `/diagnosing-bugs`'s SKILL.md rigorously.</then>
+</if>
+
+<if>
+  <when>The ticket is production code</when>
+  <then>Follow `/implement`'s SKILL.md rigorously.</then>
+</if>
+
 Paste this shape as their first instructions:
 
 ```text
