@@ -23,6 +23,8 @@ Installs this collection into your user skill directories and asks before also
 installing the `mattpocock/skills` prerequisite set. Pass flags after
 `bash -s --`:
 
+Once installed successfully, use `/sync-jonbaldie-skills` to update them.
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jonbaldie/skills/main/install.sh | bash -s -- --agent codex --with-prereqs
 ```
