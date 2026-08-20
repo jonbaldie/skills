@@ -99,10 +99,10 @@ instead.
 
 ### I ran out of Claude usage and need to continue!
 
-**The problem.** Usage limits, crashes, and closed terminals kill agent sessions
-mid-change. Starting over wastes the work already done. Handing the next agent a
-vague summary loses the thread — what was in flight, which files mattered, and
-what the next concrete step was.
+**The problem.** Usage limits, crashes, and closed terminals interrupt agent work
+mid-change, leaving its useful context stranded in a transcript. Starting over
+wastes completed work. An informal handoff loses the thread—what was in flight,
+which files mattered, and what needed to happen next.
 
 **The fix.** Resume skills extract a brief from the interrupted session
 transcript, ground it against the live workspace, and continue the work — not
@@ -224,8 +224,10 @@ one clean upstream PR.
 
 ### I need an accurate summary of a massive amount of text
 
-**The problem.** Long docs, transcripts, and articles blow past context limits.
-A single-shot summary either truncates, hallucinates coverage, or never starts.
+**The problem.** Long documents, transcripts, and articles can be too large for
+one summarisation pass. Ad hoc chunking risks omitting sections, losing their
+order, or applying the requested focus inconsistently, leaving a final summary
+that does not faithfully cover the whole source.
 
 **The fix.** [`to-summary`](./skills/to-summary/SKILL.md) reduces one source
 through successive layers — chunk, summarise, repeat — until a final pass fits,
@@ -292,9 +294,11 @@ kept only when the improvement is repeatable and large enough to matter.
 
 ### I want Gas Town-style orchestration — but stateless, agent-agnostic, and without the Dolt install cruft
 
-**The problem.** Parallel agent work usually means custom orchestration state,
-harness hooks, or a private store. Compact drops the rules; roles blur; tickets
-get double-claimed or left open.
+**The problem.** Parallel agent work is easy to start and hard to coordinate
+across tickets and context compactions. Without a stable source of truth and
+repeatable role rules, assignments overlap, stall, or get shipped
+inconsistently—and dedicated orchestration infrastructure adds another system
+to operate.
 
 **The fix.** [`outpost-found`](./skills/outpost-found/SKILL.md) makes this session the
 **prefect** of a stateless outpost: skills + the harness's own sessions/subagents
