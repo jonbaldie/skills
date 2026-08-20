@@ -249,6 +249,30 @@ tests whose results never reach the system under test.
 
 Credit: [`unclebob/deintroverter4clj`](https://github.com/unclebob/deintroverter4clj?utm_source=chatgpt.com).
 
+### I want to find real bugs before my users do
+
+**The problem.** Agents wrote the code. TDD says the behavior you anticipated
+works, so you are reasonably confident—but you will not really know until
+people use it. Their time is the expensive part. Before asking humans to test
+the software, you want automation to explore beyond the examples you thought
+to write and find as many of the remaining bugs as it can.
+
+**The fix.** [`finding-bugs`](./skills/finding-bugs/SKILL.md) gives the code an
+automated shakedown before it reaches human testers. It targets the riskiest
+boundaries, builds fast deterministic experiments, and chooses the strongest
+search technique and failure oracle for each one. Fuzzing, generated
+properties, state models, differential tests, concurrency exploration, and
+other loops search for counterexamples; every failure is reduced to a minimal
+reproducer and preserved as a regression test.
+
+You enter human testing with fewer avoidable defects and a clear account of
+what automation searched, what it found, and which blind spots still deserve
+human judgment.
+
+```text
+/finding-bugs
+```
+
 ### I need to make slow code faster
 
 **The problem.** Performance work can point at the wrong code or produce a
