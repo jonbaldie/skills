@@ -89,4 +89,6 @@ For discovery-only work, report the proposed regression and detector improvement
 
 Report the target and contract; **TIGHT** harness; **RED** oracle and exemption audit; **GUIDE** loop and exact commands; budget and telemetry; minimized findings; detector blind spots; and the next improvement.
 
+For every real bug, write a **Bug explanation** in ASD-STE100 Simplified Technical English. Explain what the bug *actually* means to an end-user.
+
 A passing campaign means no defect was found under its oracle and budget. It does not establish correctness.
