@@ -3,6 +3,6 @@ name: finding-bugs
 description: Use coverage-guided fuzzing to automatically find reproducible bugs.
 ---
 
-Find real bugs in this codebase using static analysis and sanitizer-backed, coverage-guided fuzzing with property or differential checks.
+Find reproducible, user-impacting or domain-logic bugs across the full public API surface of this codebase through coverage-guided fuzzing and static analysis.
 
-Report only deterministically reproducible failures, each with a tight, minimal red-capable test case.
+Report your findings in simple ways a layman can understand, using /diagnosing-bugs to confirm reproducibility of all defects found.
