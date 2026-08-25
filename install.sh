@@ -405,6 +405,16 @@ copy_tree() {
   cp -R "${src}" "${dest}"
 }
 
+physical_entry_path() {
+  local path="$1"
+  local parent name
+
+  parent="$(dirname "${path}")"
+  name="$(basename "${path}")"
+  parent="$(cd -P "${parent}" && pwd)"
+  printf '%s/%s\n' "${parent}" "${name}"
+}
+
 install_skill_dir() {
   local skill_dir="$1"
   local name canonical agent_name agent_dir
@@ -431,6 +441,10 @@ install_skill_dir() {
         continue
       fi
       mkdir -p "$(dirname "${agent_dir}")"
+      if [[ "$(physical_entry_path "${agent_dir}")" == \
+        "$(physical_entry_path "${canonical}")" ]]; then
+        continue
+      fi
       rm -rf "${agent_dir}"
       if ! ln -s "${canonical}" "${agent_dir}" 2>/dev/null; then
         copy_tree "${canonical}" "${agent_dir}"

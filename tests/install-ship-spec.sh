@@ -476,6 +476,9 @@ else
     'automatic Codex project detection' \
     run_automatic_codex_detection
   run_scenario \
+    'symlinked global agent root' \
+    "${repository_root}/tests/install-symlinked-agent-root.sh"
+  run_scenario \
     'explicit slash-command harness' \
     run_slash_command_harness
   run_scenario \
