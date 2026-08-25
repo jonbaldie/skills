@@ -4,4 +4,4 @@ description: Sync jonbaldie/skills and mattpocock/skills into the user's agent s
 disable-model-invocation: true
 ---
 
-Mirror every skill directory from the current default branches of `github.com/mattpocock/skills` and `github.com/jonbaldie/skills` into every user-level agent skill directory. Install Matt Pocock's collection first, then Jonathan Baldie's so Jonathan-owned name collisions win. Preserve unrelated skills, remove stale files only inside matching destinations, and verify every mirrored directory byte-for-byte against its source.
+Clone each current default branch once. Discover every existing user-level agent skill path, resolve it to a physical directory, and deduplicate aliases. Mirror Matt Pocock's collection into each directory, then Jonathan Baldie's so Jonathan-owned name collisions win. Replace only same-named skill directories. Verify each mirror byte-for-byte against its winning source and verify all other top-level entries are unchanged.
