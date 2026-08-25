@@ -4,4 +4,4 @@ description: Sync jonbaldie/skills and mattpocock/skills into the user's agent s
 disable-model-invocation: true
 ---
 
-Clone each current default branch once. Discover every existing user-level agent skill path, resolve it to a physical directory, and deduplicate aliases. Mirror Matt Pocock's collection into each directory, then Jonathan Baldie's so Jonathan-owned name collisions win. Replace only same-named skill directories. Verify each mirror byte-for-byte against its winning source and verify all other top-level entries are unchanged.
+Clone the current default branches of `github.com/mattpocock/skills` and `github.com/jonbaldie/skills` once each. Discover every existing user-level agent skill path, resolve it to a physical directory, and deduplicate aliases. Mirror every Matt Pocock skill into each directory, then every Jonathan Baldie skill so Jonathan-owned name collisions win. Replace only same-named skill directories. Verify each mirror byte-for-byte against its winning source and verify all other top-level entries are unchanged.
