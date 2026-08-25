@@ -1,0 +1,22 @@
+name: Installer tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check shell syntax
+        run: bash -n install.sh tests/install-ship-spec.sh tests/install-symlinked-agent-root.sh
+      - name: Lint changed installer scripts
+        run: shellcheck -e SC2016 install.sh tests/install-symlinked-agent-root.sh
+      - name: Test a symlinked agent skill root
+        run: tests/install-symlinked-agent-root.sh
