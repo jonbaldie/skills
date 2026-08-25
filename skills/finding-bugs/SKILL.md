@@ -1,8 +1,10 @@
 ---
 name: finding-bugs
-description: Use coverage-guided fuzzing to automatically find reproducible bugs.
+description: Coverage-guided API and domain bug finding.
 ---
 
-Find reproducible, user-impacting or domain-logic bugs across the full public API surface of this codebase through coverage-guided fuzzing and static analysis.
+Intent: Find bugs hidden from random testing by sparse preconditions.
 
-Report your findings in simple ways a layman can understand, using /diagnosing-bugs to confirm reproducibility of all defects found.
+1. Specify every API behavior and domain rule as executable properties. Instrument properties and targets only.
+2. Seed randomly. Keep inputs adding coverage; favor precondition passes, keep novel discards. Apply type-aware mutations; restart randomly when coverage stalls.
+3. Shrink failures. Rerun to confirm. Plainly report user-impacting counterexamples.
