@@ -262,16 +262,13 @@ the software, you want automation to explore beyond the examples you thought
 to write and find as many of the remaining bugs as it can.
 
 **The fix.** [`finding-bugs`](./skills/finding-bugs/SKILL.md) gives the code an
-automated shakedown before it reaches human testers. It targets the riskiest
-boundaries, builds fast deterministic experiments, and chooses the strongest
-search technique and failure oracle for each one. Fuzzing, generated
-properties, state models, differential tests, concurrency exploration, and
-other loops search for counterexamples; every failure is reduced to a minimal
-reproducer and preserved as a regression test.
+automated shakedown before it reaches human testers. It checks invariants over
+SUT observations, drives generated and mutated inputs through the actual system
+under test, and grows a corpus from coverage until saturation. Every
+counterexample is diagnosed and kept only when it is tightly reproducible.
 
 You enter human testing with fewer avoidable defects and a clear account of
-what automation searched, what it found, and which blind spots still deserve
-human judgment.
+what coverage-guided testing found.
 
 ```text
 /finding-bugs

@@ -1,12 +1,13 @@
 ---
 name: finding-bugs
-description: Find bugs using coverage-guided, property-based testing.
+description: Find bugs by coverage-guided, property-based testing of the system under test.
 ---
 
-Your task is to find reproducible bugs using **coverage-guided, property-based testing** (CGPT).
+Find reproducible bugs by running **coverage-guided, property-based testing** (CGPT) against the actual system under test (SUT).
 
-1. Specify every API behavior and domain rule as executable properties. Instrument properties and targets only.
-2. Seed randomly. Keep inputs that add coverage; favor precondition passes, keep novel discards. Apply type-aware mutations; restart randomly when coverage stalls.
-3. Use /diagnosing-bugs on each finding and keep only the tightly reproducible bugs. Report them to the user in really simple (but domain-accurate) language.
+1. **Invariant.** Specify predicates over SUT observations: return values, exceptions, and visible effects. The invariant is the oracle. Done when each invariant is decidable from a single SUT run.
+2. **Entry point.** Run generated and mutated inputs through the SUT's real entry points. Instrument the SUT for control-flow coverage. Keep behavior-affecting state and effects on the execution path; make them repeatable and resettable between runs. Done when every execution observes the SUT.
+3. **Corpus.** Seed randomly. Retain SUT executions that add coverage; favor precondition passes and retain novel discards. Apply type-aware mutations to the corpus. A stall widens the surface — a new SUT entry point or process — then mutates again. Done at saturation: a widened surface that adds no SUT coverage.
+4. **Counterexample.** Minimise, then use /diagnosing-bugs. Keep only the tight bugs. Report them to the user in really simple, domain-accurate language.
 
-Follow this logic: "Rather than just generating a fresh random input at each iteration, CGPT can also produce new inputs by mutating previous ones using type-aware, generic mutation operators. The target program is instrumented to track which control flow branches are executed during a run and inputs whose runs expand control-flow coverage are retained for future mutations. This means that, when sparse conditions in the target are satisfied and new coverage is observed, the input that triggered them will be retained and used as a springboard to go further."
+Each execution must test the SUT. Coverage guides the search; a violated invariant is the bug signal.
