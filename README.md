@@ -282,10 +282,10 @@ spent in one run, a benchmark is only as good as its workload, and some
 algorithms fail only when their input gets large.
 
 **The fix.** [`seeking-performance`](./skills/seeking-performance/SKILL.md)
-defines the result to improve and a repeatable workload, takes a baseline,
-checks the code for poor Big-O behavior, and profiles the running program. It
-then changes one cause at a time and repeats the same measurement. A change is
-kept only when the improvement is repeatable and large enough to matter.
+audits every production subsystem, traces reachable bottlenecks, and ranks them
+by time complexity. Its report includes reproducible runtime evidence, space
+costs, remediation directions, and the expected Big-O improvement without
+changing the code unless you also ask for fixes.
 
 ```text
 /seeking-performance
