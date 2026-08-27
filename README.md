@@ -24,6 +24,9 @@ installing the `mattpocock/skills` prerequisite set. Pass flags after
 `bash -s --`:
 
 Once installed successfully, use `/sync-jonbaldie-skills` to update them.
+The skill installs both collections into the requested project's
+`.agents/skills` directory first, then asks whether to copy them into
+`.claude/skills`, `.gemini/skills`, or another skill directory.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jonbaldie/skills/main/install.sh | bash -s -- --agent codex --with-prereqs
