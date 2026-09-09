@@ -27,9 +27,8 @@ concrete blocker and what was attempted.
 
 ## 2. Attempt complete journeys
 
-Follow the user's scope and budget. Otherwise explore a few user-critical
-journeys, normally no more than three. Choose depth according to what happens;
-the number is a ceiling, not a quota.
+Follow the user's scope and any explicit budget. Otherwise select up to three
+user-critical journeys and explore each thoroughly.
 
 For each journey, name the user's goal and the observable result that would
 satisfy it. Ground that expectation in the request, documentation, or promises
@@ -65,10 +64,13 @@ Record a blocked journey with its failed step and prerequisite. Keep product
 fixes for a subsequent task; `/diagnosing-bugs` can take the confirmed reproducer
 into root-cause investigation and fixing.
 
-Finish within the user's budget, with each selected journey explored or its
-remaining work explained. Classify every candidate as confirmed, rejected with
-evidence, or unresolved. Preserve useful driving scripts when they help replay;
-a reusable harness is optional.
+Finish exploring when each selected journey has been explored or has a concrete
+blocker recorded. An explored journey has its ordinary path and a relevant
+variation attempted, observable outcomes and lasting effects checked, and
+suspected failures replayed from a known starting state. If an explicit user
+budget ends the pass sooner, record the unfinished work. Classify every candidate
+as confirmed, rejected with evidence, or unresolved. Preserve useful driving
+scripts when they help replay; a reusable harness is optional.
 
 ## 5. Report the evidence
 
@@ -80,6 +82,10 @@ from confirmed findings.
 Include the journeys exercised, blocked and unexplored areas, and any limitations
 introduced by the environment or instrumentation. A pass with no confirmed bugs
 still reports what was exercised and observed.
+
+File confirmed bugs in the project's issue tracker, following its conventions
+and including the replay steps and evidence. If filing is blocked, record the
+blocker and preserve ready-to-file bug reports.
 
 Clean up instances and scratch state created by the pass, preserving the report
 and evidence. Link the report in the final response.
