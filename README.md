@@ -277,6 +277,22 @@ what coverage-guided testing found.
 /finding-bugs
 ```
 
+### I want an agent to actually use my software
+
+**The problem.** Individual operations can work while a complete user journey
+fails. You want an agent to attempt real tasks through the interface and check
+whether the intended outcomes actually happen.
+
+**The fix.** [`exploratory-testing`](./skills/exploratory-testing/SKILL.md) drives
+a few user-critical journeys, follows unexpected behaviour, and records
+reproducible bugs with evidence. It reports what was explored and what remains
+unexplored, leaving product fixes for a subsequent task.
+
+```text
+/exploratory-testing
+/exploratory-testing Try implementing a small feature through the TUI
+```
+
 ### I need to make slow code faster
 
 **The problem.** Performance work can point at the wrong code or produce a

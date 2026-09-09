@@ -31,3 +31,10 @@ learning across sessions. _Avoid_: Course directory, lesson directory
 **Learning record**: A short Markdown record of understanding that changes what
 Tutor should teach next. It is evidence of learning, not a record of activity.
 _Avoid_: Lesson log, session log
+
+## Bug finding
+
+**Exploratory pass**: A bug-finding investigation centred on a few complete user
+journeys through the software's supported interface, judged by their observable
+outcomes. Its scope includes which journeys were explored and which areas remain
+unexplored.
