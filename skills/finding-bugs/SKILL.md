@@ -3,6 +3,10 @@ name: finding-bugs
 description: Find bugs in the current codebase through a number of time-tested methodologies.
 ---
 
+When the investigation calls for trying the software as a user and following what
+breaks, use [`/exploratory-testing`](../exploratory-testing/SKILL.md) to drive
+complete user journeys and capture reproducible findings.
+
 ## Coverage-guided, property-based testing (CGPT)
 
 Find reproducible bugs by running **coverage-guided, property-based testing** (CGPT) against the system under test (SUT).
