@@ -1,0 +1,6 @@
+interface:
+  display_name: "Tutor"
+  short_description: "Learn one small thing at a time"
+  default_prompt: "Use $tutor to teach me this topic."
+policy:
+  allow_implicit_invocation: false
