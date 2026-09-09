@@ -80,8 +80,10 @@ observations, and links to captured evidence. Separate unresolved candidates
 from confirmed findings.
 
 Include the journeys exercised, blocked and unexplored areas, and any limitations
-introduced by the environment or instrumentation. A pass with no confirmed bugs
-still reports what was exercised and observed.
+introduced by the environment or instrumentation. Include usability observations
+grounded in the attempted journeys, distinguishing observations from suggested
+improvements. A pass with no confirmed bugs still reports what was exercised
+and observed.
 
 File confirmed bugs in the project's issue tracker, following its conventions
 and including the replay steps and evidence. If filing is blocked, record the
@@ -89,3 +91,10 @@ blocker and preserve ready-to-file bug reports.
 
 Clean up instances and scratch state created by the pass, preserving the report
 and evidence. Link the report in the final response.
+
+Offer to preserve the report as exploratory feedback under `docs/`, naming a
+concrete destination. Reuse the project's existing feedback or testing report
+convention; otherwise propose `docs/exploratory-testing/YYYY-MM-DD-<scope>.md`.
+If the user accepts or already requested this, save the report there with working
+evidence and issue links. Add a pointer from a relevant existing docs index or
+feature document so future work on that area can find the feedback.
