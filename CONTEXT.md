@@ -17,3 +17,17 @@ instructions.
 
 **Final summary**: The user-facing result of the last Reduction layer.
 Intermediate summaries remain working material. _Avoid_: General summary
+
+## Tutoring
+
+**Tutor**: A user-invoked skill that teaches through a stateful, in-chat
+conversation. It teaches one small idea, checks the user's understanding, and
+waits before teaching another. _Avoid_: Lesson generator, course generator
+
+**Teaching workspace**: The current directory used by Tutor to retain the
+user's learning purpose, sources, preferences, understood terms, and proved
+learning across sessions. _Avoid_: Course directory, lesson directory
+
+**Learning record**: A short Markdown record of understanding that changes what
+Tutor should teach next. It is evidence of learning, not a record of activity.
+_Avoid_: Lesson log, session log
