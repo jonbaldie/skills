@@ -20,6 +20,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 
@@ -402,6 +403,33 @@ def login_of(obj: Any, *keys: str) -> str:
     return ""
 
 
+def parse_timestamp(value: str | None) -> datetime | None:
+    """Parse a provider ISO timestamp into an aware datetime, else None."""
+    if not value:
+        return None
+    text = value.strip()
+    if text.upper().endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def chronological_events(comments: list[Comment]) -> list[Comment]:
+    """Merge review and discussion events, ordered by provider timestamp.
+
+    Events without a parseable timestamp sort first, keeping their insertion
+    order, without disturbing the relative order of timestamped events.
+    """
+    events = [c for c in comments if c.kind in ("review", "discussion")]
+    floor = datetime(1, 1, 1, tzinfo=timezone.utc)
+    return sorted(events, key=lambda c: parse_timestamp(c.created) or floor)
+
+
 def render(brief: Brief) -> str:
     lines: list[str] = []
     lines.append("# Pull request brief")
@@ -463,6 +491,7 @@ def render(brief: Brief) -> str:
     inline = [c for c in brief.comments if c.kind == "inline"]
     reviews = [c for c in brief.comments if c.kind == "review"]
     discussion = [c for c in brief.comments if c.kind == "discussion"]
+    events = chronological_events(brief.comments)
 
     if inline:
         lines.append("")
@@ -478,7 +507,7 @@ def render(brief: Brief) -> str:
     if reviews or discussion:
         lines.append("")
         lines.append("## Discussion")
-        recent = (reviews + discussion)[-12:]
+        recent = events[-12:]
         for comment in recent:
             lines.append("")
             kind = "Review" if comment.kind == "review" else "Comment"
@@ -507,9 +536,10 @@ def render(brief: Brief) -> str:
 
 
 def ending_text(brief: Brief) -> str:
+    events = chronological_events(brief.comments)
     requested = [
         c
-        for c in brief.comments
+        for c in events
         if c.kind == "review" and "CHANGES_REQUESTED" in (c.body or "").upper()
     ]
     if brief.review_decision:
@@ -528,7 +558,7 @@ def ending_text(brief: Brief) -> str:
         names = ", ".join(c.name for c in failing[:5])
         return f"Failing checks: {names}"
     last = next(
-        (c for c in reversed(brief.comments) if (c.body or "").strip()),
+        (c for c in reversed(events) if (c.body or "").strip()),
         None,
     )
     if last:
