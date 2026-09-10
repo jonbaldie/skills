@@ -244,6 +244,29 @@ then writes the summary you asked for.
 
 Accepts a file, URL, or pasted text. Optional focus, audience, format, or length.
 
+### I need an LLM to improve an important spec without changing what it means
+
+**The problem.** You have an important specification and want an LLM's help
+turning it into a clean, implementable design. A fluent rewrite can quietly
+change behavior, drop an edge case, or smuggle in an assumption—and still sound
+completely convincing. With correctness at stake, "looks reasonable" is not
+enough.
+
+**The fix.** [`bmf`](./skills/bmf/SKILL.md) uses the Bird–Meertens formalism, a
+calculational method for deriving programs from specifications. It starts from
+the obviously correct version and changes one thing at a time, showing why each
+step preserves the meaning you care about. You get the practical design first,
+followed by an audit trail of every transformation, assumption, and unresolved
+obligation—written for developers, not mathematicians.
+
+```text
+/bmf
+/bmf path/to/spec.md
+```
+
+Pass an idea or specification, or invoke it without an argument to use the
+accepted conversation so far. In Codex, use `$bmf`.
+
 ### I need to know whether my tests observe production behavior
 
 **The problem.** A passing test can assert values made entirely by fixtures,

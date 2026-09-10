@@ -1,0 +1,6 @@
+interface:
+  display_name: "BMF"
+  short_description: "Derive an auditable computational design"
+  default_prompt: "Use $bmf to derive an auditable computational design from this idea or specification."
+policy:
+  allow_implicit_invocation: false
