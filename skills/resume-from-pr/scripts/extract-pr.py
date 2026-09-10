@@ -145,6 +145,17 @@ _SHORTHAND_GL = re.compile(
 )
 _NUMBER = re.compile(r"^#?(?P<num>\d+)$")
 _GITLAB_BANG = re.compile(r"^!(?P<num>\d+)$")
+# Remote path shapes for providers without a hostname giveaway.
+_AZURE_REMOTE_HTTPS = re.compile(
+    r"^(?P<org>[^/]+)/(?P<project>[^/]+)/_git/(?P<repo>.+)$"
+)
+_AZURE_REMOTE_SHORT = re.compile(r"^(?P<org>[^/]+)/_git/(?P<repo>.+)$")
+_AZURE_REMOTE_VS = re.compile(r"^(?:(?P<project>[^/]+)/)?_git/(?P<repo>.+)$")
+_AZURE_REMOTE_SSH = re.compile(r"^v3/(?P<org>[^/]+)/(?P<project>[^/]+)/(?P<repo>.+)$")
+_BITBUCKET_SERVER_REMOTE = re.compile(
+    r"^(?:projects/(?P<key>[^/]+)/repos/(?P<slug>[^/]+)"
+    r"|scm/(?P<key2>[^/]+)/(?P<slug2>[^/]+))$"
+)
 
 
 def parse_pr_url(url: str) -> Target:
@@ -1460,8 +1471,10 @@ def target_from_remote(number: str, remote_url: str) -> Target | None:
             repo=repo,
             url=f"https://bitbucket.org/{owner}/{repo}/pull-requests/{number}",
         )
-    if host_l in {"dev.azure.com"} or host_l.endswith(".visualstudio.com"):
-        return None
+    if host_l in {"dev.azure.com", "ssh.dev.azure.com"} or host_l.endswith(
+        ".visualstudio.com"
+    ):
+        return _azure_remote_target(host, path, number)
     if host_l in {"codeberg.org", "gitea.com"} or "gitea" in host_l or "forgejo" in host_l:
         return Target(
             provider="gitea",
@@ -1471,12 +1484,72 @@ def target_from_remote(number: str, remote_url: str) -> Target | None:
             repo=repo,
             url=f"https://{host}/{owner}/{repo}/pulls/{number}",
         )
+    m = _BITBUCKET_SERVER_REMOTE.match(path)
+    if m:
+        key = m.group("key") or m.group("key2")
+        slug = m.group("slug") or m.group("slug2")
+        return Target(
+            provider="bitbucket-server",
+            host=host,
+            number=number,
+            owner=key,
+            repo=slug,
+            url=f"https://{host}/projects/{key}/repos/{slug}/pull-requests/{number}",
+        )
     return Target(
         provider="unknown",
         host=host,
         number=number,
         owner=owner,
         repo=repo,
+    )
+
+
+def _azure_remote_target(host: str, path: str, number: str) -> Target | None:
+    """Build an Azure DevOps target from a git remote host and path."""
+    host_l = host.lower()
+    if host_l == "ssh.dev.azure.com":
+        m = _AZURE_REMOTE_SSH.match(path)
+        if not m:
+            return None
+        org = m.group("org")
+        project = m.group("project")
+        repo = m.group("repo")
+    elif host_l.endswith(".visualstudio.com"):
+        org = host.split(".", 1)[0]
+        path = urllib.parse.unquote(re.sub(r"^DefaultCollection/", "", path, flags=re.I))
+        m = _AZURE_REMOTE_VS.match(path)
+        if not m:
+            return None
+        project = m.group("project") or org
+        repo = m.group("repo")
+    else:
+        path = urllib.parse.unquote(path)
+        m = _AZURE_REMOTE_HTTPS.match(path)
+        if m:
+            org = m.group("org")
+            project = m.group("project")
+            repo = m.group("repo")
+        else:
+            m = _AZURE_REMOTE_SHORT.match(path)
+            if not m:
+                return None
+            org = m.group("org")
+            project = org  # project defaults to the organisation name
+            repo = m.group("repo")
+    return Target(
+        provider="azure",
+        host=host,
+        number=number,
+        owner=org,
+        repo=repo,
+        project=project,
+        org=org,
+        url=(
+            f"https://dev.azure.com/{urllib.parse.quote(org)}/"
+            f"{urllib.parse.quote(project)}/_git/{urllib.parse.quote(repo)}"
+            f"/pullrequest/{number}"
+        ),
     )
 
 
@@ -1592,28 +1665,354 @@ FETCHERS: dict[str, list[Callable[[Target, str | None], Brief]]] = {
 }
 
 
-def resolve_current_branch(cwd: str) -> Target:
-    errors: list[str] = []
+def git_current_branch(cwd: str) -> str | None:
     try:
-        raw = run_cmd(["gh", "pr", "view", "--json", "url"], cwd=cwd)
+        raw = run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=cwd)
+    except Skip:
+        return None
+    branch = raw.strip()
+    if not branch or branch == "HEAD":
+        return None
+    return branch
+
+
+def _gh_cli_branch_target(cwd: str) -> Target:
+    raw = run_cmd(["gh", "pr", "view", "--json", "url"], cwd=cwd)
+    try:
         data = json.loads(raw)
-        url = data.get("url")
-        if url:
-            return parse_pr_url(url)
-    except (Skip, json.JSONDecodeError, FetchError) as exc:
+    except json.JSONDecodeError as exc:
+        raise Skip("gh returned non-JSON") from exc
+    url = data.get("url")
+    if not url:
+        raise Skip("gh returned no pull request url")
+    return parse_pr_url(url)
+
+
+def _glab_cli_branch_target(cwd: str) -> Target:
+    raw = run_cmd(["glab", "mr", "view", "--output", "json"], cwd=cwd)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise Skip("glab returned non-JSON") from exc
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    url = data.get("web_url") or data.get("url")
+    if url:
+        return parse_pr_url(url)
+    iid = data.get("iid")
+    if iid:
+        return Target(provider="gitlab", host="gitlab.com", number=str(iid))
+    raise Skip("glab returned no merge request")
+
+
+def github_branch_target(remote: Target, branch: str) -> Target:
+    if not remote.slug:
+        raise Skip("no owner/repo for GitHub API")
+    root = f"{github_api_root(remote.host or 'github.com')}/repos/{remote.slug}/pulls"
+    query = f"?head={urllib.parse.quote(f'{remote.owner}:{branch}', safe='')}&state=open"
+    try:
+        data = http_json(root + query, headers=github_headers())
+    except Skip as exc:
+        raise _branch_lookup_failure("github", remote, branch, f"network error: {exc}") from exc
+    except FetchError as exc:
+        raise _branch_lookup_failure("github", remote, branch, str(exc)) from exc
+    prs = data if isinstance(data, list) else []
+    pr = next((p for p in prs if isinstance(p, dict)), None)
+    if not pr:
+        raise _branch_lookup_empty("github", remote, branch)
+    return Target(
+        provider="github",
+        host=remote.host or "github.com",
+        number=str(pr.get("number") or ""),
+        owner=remote.owner,
+        repo=remote.repo,
+        url=pr.get("html_url") or "",
+    )
+
+
+def gitlab_branch_target(remote: Target, branch: str) -> Target:
+    project = gitlab_project_id(remote)
+    if not project:
+        raise Skip("no GitLab project path")
+    host = remote.host or "gitlab.com"
+    query = f"?source_branch={urllib.parse.quote(branch, safe='')}&state=opened"
+    root = f"https://{host}/api/v4/projects/{project}/merge_requests{query}"
+    try:
+        data = http_json(root, headers=gitlab_headers())
+    except Skip as exc:
+        raise _branch_lookup_failure("gitlab", remote, branch, f"network error: {exc}") from exc
+    except FetchError as exc:
+        raise _branch_lookup_failure("gitlab", remote, branch, str(exc)) from exc
+    mrs = data if isinstance(data, list) else []
+    mr = next((m for m in mrs if isinstance(m, dict)), None)
+    if not mr:
+        raise _branch_lookup_empty("gitlab", remote, branch)
+    return Target(
+        provider="gitlab",
+        host=remote.host,
+        number=str(mr.get("iid") or ""),
+        owner=remote.owner,
+        repo=remote.repo,
+        project=remote.project,
+        url=mr.get("web_url") or "",
+    )
+
+
+def bitbucket_branch_target(remote: Target, branch: str) -> Target:
+    if not remote.slug:
+        raise Skip("no workspace/repo for Bitbucket API")
+    q = f'source.branch.name="{branch}" AND state="OPEN"'
+    root = (
+        f"https://api.bitbucket.org/2.0/repositories/{remote.slug}"
+        f"/pullrequests?q={urllib.parse.quote(q, safe='')}"
+    )
+    try:
+        data = http_json(root, headers=bitbucket_headers())
+    except Skip as exc:
+        raise _branch_lookup_failure("bitbucket", remote, branch, f"network error: {exc}") from exc
+    except FetchError as exc:
+        raise _branch_lookup_failure("bitbucket", remote, branch, str(exc)) from exc
+    values = data.get("values") or [] if isinstance(data, dict) else []
+    pr = next((p for p in values if isinstance(p, dict)), None)
+    if not pr:
+        raise _branch_lookup_empty("bitbucket", remote, branch)
+    href = ((pr.get("links") or {}).get("html") or {}).get("href") or ""
+    return Target(
+        provider="bitbucket",
+        host=remote.host or "bitbucket.org",
+        number=str(pr.get("id") or ""),
+        owner=remote.owner,
+        repo=remote.repo,
+        url=href,
+    )
+
+
+def bitbucket_server_branch_target(remote: Target, branch: str) -> Target:
+    if not (remote.owner and remote.repo):
+        raise Skip("no project/repo for Bitbucket Server")
+    query = (
+        f"?at={urllib.parse.quote('refs/heads/' + branch, safe='')}"
+        "&direction=outgoing&state=OPEN"
+    )
+    root = (
+        f"https://{remote.host}/rest/api/1.0/projects/{remote.owner}"
+        f"/repos/{remote.repo}/pull-requests{query}"
+    )
+    try:
+        data = http_json(root, headers=bitbucket_headers())
+    except Skip as exc:
+        raise _branch_lookup_failure(
+            "bitbucket-server", remote, branch, f"network error: {exc}"
+        ) from exc
+    except FetchError as exc:
+        raise _branch_lookup_failure("bitbucket-server", remote, branch, str(exc)) from exc
+    values = data.get("values") or [] if isinstance(data, dict) else []
+    pr = next((p for p in values if isinstance(p, dict)), None)
+    if not pr:
+        raise _branch_lookup_empty("bitbucket-server", remote, branch)
+    number = str(pr.get("id") or "")
+    return Target(
+        provider="bitbucket-server",
+        host=remote.host,
+        number=number,
+        owner=remote.owner,
+        repo=remote.repo,
+        url=(
+            f"https://{remote.host}/projects/{remote.owner}/repos/{remote.repo}"
+            f"/pull-requests/{number}"
+        ),
+    )
+
+
+def gitea_branch_target(remote: Target, branch: str) -> Target:
+    if not remote.slug:
+        raise Skip("no owner/repo for Gitea API")
+    host = remote.host
+    root = f"https://{host}/api/v1/repos/{remote.slug}/pulls?state=open"
+    try:
+        data = http_json(root, headers=gitea_headers())
+    except Skip as exc:
+        raise _branch_lookup_failure("gitea", remote, branch, f"network error: {exc}") from exc
+    except FetchError as exc:
+        raise _branch_lookup_failure("gitea", remote, branch, str(exc)) from exc
+    prs = data if isinstance(data, list) else []
+    same_repo = fork = None
+    for pr in prs:
+        if not isinstance(pr, dict):
+            continue
+        head = pr.get("head") or {}
+        if head.get("ref") != branch:
+            continue
+        if ((head.get("repo") or {}).get("full_name") or "").lower() == (
+            remote.slug or ""
+        ).lower():
+            same_repo = same_repo or pr
+        else:
+            fork = fork or pr
+    pr = same_repo or fork
+    if not pr:
+        raise _branch_lookup_empty("gitea", remote, branch)
+    return Target(
+        provider="gitea",
+        host=host,
+        number=str(pr.get("number") or pr.get("id") or ""),
+        owner=remote.owner,
+        repo=remote.repo,
+        url=pr.get("html_url") or "",
+    )
+
+
+def azure_branch_target(remote: Target, branch: str) -> Target:
+    if not (remote.org and remote.project and remote.repo):
+        raise _branch_lookup_failure(
+            "azure",
+            remote,
+            branch,
+            "could not parse org/project/repo from the git remote "
+            f"({remote.url or remote.host})",
+        )
+    org = urllib.parse.quote(remote.org)
+    project = urllib.parse.quote(remote.project)
+    repo = urllib.parse.quote(remote.repo)
+    root = (
+        f"https://dev.azure.com/{org}/{project}/_apis/git/repositories/{repo}"
+        "/pullrequests"
+    )
+    query = (
+        f"?searchCriteria.sourceRefName="
+        f"{urllib.parse.quote('refs/heads/' + branch, safe='')}"
+        "&searchCriteria.status=active&api-version=7.1"
+    )
+    try:
+        data = http_json(root + query, headers=azure_headers())
+    except Skip as exc:
+        raise _branch_lookup_failure("azure", remote, branch, f"network error: {exc}") from exc
+    except FetchError as exc:
+        raise _branch_lookup_failure("azure", remote, branch, str(exc)) from exc
+    values = data.get("value") or [] if isinstance(data, dict) else []
+    pr = next((p for p in values if isinstance(p, dict)), None)
+    if not pr:
+        raise _branch_lookup_empty("azure", remote, branch)
+    number = str(pr.get("pullRequestId") or "")
+    repository = pr.get("repository") or {}
+    repo_name = repository.get("name") or remote.repo
+    project_name = (repository.get("project") or {}).get("name") or remote.project
+    return Target(
+        provider="azure",
+        host=remote.host,
+        number=number,
+        owner=remote.org,
+        repo=repo_name,
+        project=project_name,
+        org=remote.org,
+        url=(
+            f"https://dev.azure.com/{org}/{urllib.parse.quote(project_name)}"
+            f"/_git/{urllib.parse.quote(repo_name)}/pullrequest/{number}"
+        ),
+    )
+
+
+PROVIDER_LABELS = {
+    "github": "GitHub",
+    "gitlab": "GitLab",
+    "bitbucket": "Bitbucket",
+    "bitbucket-server": "Bitbucket Server",
+    "gitea": "Gitea/Forgejo",
+    "azure": "Azure DevOps",
+}
+
+PROVIDER_TOKEN_HINTS = {
+    "github": "for private repositories set GH_TOKEN or GITHUB_TOKEN",
+    "gitlab": "for private projects set GITLAB_TOKEN, GL_TOKEN, or PRIVATE_TOKEN",
+    "bitbucket": "for private repositories set BITBUCKET_TOKEN, "
+    "BITBUCKET_ACCESS_TOKEN, or BITBUCKET_USERNAME with BITBUCKET_APP_PASSWORD",
+    "bitbucket-server": "for private servers set BITBUCKET_TOKEN or "
+    "BITBUCKET_ACCESS_TOKEN",
+    "gitea": "for private instances set GITEA_TOKEN, FORGEJO_TOKEN, or CODEBERG_TOKEN",
+    "azure": "for private projects set AZURE_DEVOPS_TOKEN, SYSTEM_ACCESSTOKEN, "
+    "or AZURE_TOKEN",
+}
+
+
+def _branch_lookup_failure(
+    provider: str, remote: Target, branch: str, detail: str
+) -> FetchError:
+    label = PROVIDER_LABELS.get(provider, provider)
+    message = (
+        f"{label}: could not look up the open pull request for branch "
+        f"'{branch}' on {remote.host or label}: {detail}"
+    )
+    hint = PROVIDER_TOKEN_HINTS.get(provider)
+    if hint:
+        message += f" ({hint})"
+    return FetchError(message)
+
+
+def _branch_lookup_empty(provider: str, remote: Target, branch: str) -> FetchError:
+    label = PROVIDER_LABELS.get(provider, provider)
+    return FetchError(
+        f"{label}: no open pull request for branch '{branch}' on "
+        f"{remote.host or label}. Pass a PR/MR URL."
+    )
+
+
+# Provider-appropriate lookups for the no-argument current-branch mode.
+BRANCH_LOOKUPS: dict[str, Callable[[Target, str], Target]] = {
+    "github": github_branch_target,
+    "gitlab": gitlab_branch_target,
+    "bitbucket": bitbucket_branch_target,
+    "bitbucket-server": bitbucket_server_branch_target,
+    "gitea": gitea_branch_target,
+    "azure": azure_branch_target,
+}
+
+# CLI helpers preferred where the provider ships one.
+CLI_LOOKUPS: dict[str, Callable[[str], Target]] = {
+    "github": _gh_cli_branch_target,
+    "gitlab": _glab_cli_branch_target,
+}
+
+
+def resolve_current_branch(cwd: str) -> Target:
+    branch = git_current_branch(cwd)
+    remotes = git_remotes(cwd)
+    remote = None
+    for _, url in remotes:
+        candidate = target_from_remote("0", url)
+        if candidate and candidate.provider != "unknown":
+            remote = candidate
+            break
+    if remote is not None and remote.provider != "unknown":
+        label = PROVIDER_LABELS.get(remote.provider, remote.provider)
+        if not branch:
+            raise FetchError(
+                f"{label}: cannot find the current-branch pull request because this "
+                "workspace has no current branch (detached HEAD?). Pass a PR/MR URL."
+            )
+        errors: list[str] = []
+        cli_lookup = CLI_LOOKUPS.get(remote.provider)
+        if cli_lookup:
+            try:
+                return cli_lookup(cwd)
+            except (Skip, FetchError) as exc:
+                errors.append(str(exc))
+        api_lookup = BRANCH_LOOKUPS.get(remote.provider)
+        if api_lookup:
+            try:
+                return api_lookup(remote, branch)
+            except (Skip, FetchError) as exc:
+                errors.append(str(exc))
+        raise FetchError("; ".join(errors) if errors else f"{label}: lookup failed")
+    # Unrecognised host (or no git metadata): keep the GitHub/GitLab CLI
+    # probing that used to be the only current-branch path.
+    errors = []
+    try:
+        return _gh_cli_branch_target(cwd)
+    except (Skip, FetchError) as exc:
         errors.append(str(exc))
     try:
-        raw = run_cmd(["glab", "mr", "view", "--output", "json"], cwd=cwd)
-        data = json.loads(raw)
-        if isinstance(data, list):
-            data = data[0] if data else {}
-        url = data.get("web_url") or data.get("url")
-        if url:
-            return parse_pr_url(url)
-        iid = data.get("iid")
-        if iid:
-            return Target(provider="gitlab", host="gitlab.com", number=str(iid))
-    except (Skip, json.JSONDecodeError, FetchError) as exc:
+        return _glab_cli_branch_target(cwd)
+    except (Skip, FetchError) as exc:
         errors.append(str(exc))
     raise FetchError(
         "No open pull/merge request for the current branch. "
@@ -1626,7 +2025,9 @@ def resolve_number(number: str, cwd: str) -> Target:
     remotes = git_remotes(cwd)
     if not remotes:
         raise FetchError(
-            f"Number {number} needs a git remote or a full PR/MR URL."
+            f"Number {number} needs a git remote pointing at a supported provider "
+            "(GitHub, GitLab, Bitbucket, Gitea/Forgejo, Azure DevOps), "
+            "or a full PR/MR URL."
         )
     for _, url in remotes:
         target = target_from_remote(number, url)
@@ -1637,8 +2038,9 @@ def resolve_number(number: str, cwd: str) -> Target:
         if fallback:
             return fallback
     raise FetchError(
-        f"Could not resolve pull/merge request {number} from git remotes. "
-        "Pass a full URL."
+        f"Could not resolve pull/merge request {number} from git remotes: no remote "
+        "points at a supported provider (GitHub, GitLab, Bitbucket, Gitea/Forgejo, "
+        "Azure DevOps). Pass a full PR/MR URL."
     )
 
 
@@ -1657,8 +2059,14 @@ def fetch_brief(target: Target, cwd: str | None) -> Brief:
             if fetcher is not fetch_git and fetch_git in fetchers:
                 continue
             break
+    label = PROVIDER_LABELS.get(target.provider, target.provider)
+    if target.provider == "unknown":
+        raise FetchError(
+            "Failed to fetch pull/merge request "
+            f"{target.url or target.number}: " + "; ".join(errors)
+        )
     raise FetchError(
-        "Failed to fetch pull/merge request "
+        f"{label}: failed to fetch pull/merge request "
         f"{target.url or target.number}: " + "; ".join(errors)
     )
 

@@ -24,9 +24,13 @@ python3 /absolute/path/to/resume-from-pr/scripts/extract-pr.py --cwd "$PWD" [url
 ```
 
 - If the user passed a **PR/MR URL** (GitHub, GitLab, Bitbucket, Gitea/Forgejo,
-  Azure DevOps, or another host) or a **number**, pass it through.
-- If they passed none, omit it — the script selects the open PR/MR for the
-  current branch.
+  Azure DevOps, or another host) or a **number**, pass it through. A bare
+  number is resolved against the current repository's remote for the
+  first-class providers — GitHub, GitLab, Bitbucket, Gitea/Forgejo, and Azure
+  DevOps.
+- If they passed none, omit it — the script looks up the open PR/MR for the
+  current branch using the provider's CLI (`gh`, `glab`) where one exists and
+  its API otherwise.
 - On failure (unparsed URL, missing PR, auth, empty current-branch lookup),
   stop and report the error. Do not invent a PR.
 

@@ -361,6 +361,202 @@ class BriefRenderTests(unittest.TestCase):
         self.assertIn(ctx.exception.code, (0, None))
 
 
+class BareNumberResolutionTests(unittest.TestCase):
+    """Bare-number lookup against the current git remote (issue #62)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_mod()
+
+    def patch_run_cmd(self, remotes_output, branch=None):
+        mod = self.mod
+        original = mod.run_cmd
+
+        def fake(argv, cwd=None, timeout=45):
+            key = " ".join(argv)
+            if key.startswith("git remote -v"):
+                return remotes_output
+            if key.startswith("git rev-parse"):
+                if branch is None:
+                    raise mod.Skip("no branch")
+                return branch
+            raise mod.Skip(f"unmocked command: {argv}")
+
+        mod.run_cmd = fake
+        self.addCleanup(setattr, mod, "run_cmd", original)
+
+    def patch_http_json(self, handler):
+        mod = self.mod
+        original = mod.http_json
+        mod.http_json = handler
+        self.addCleanup(setattr, mod, "http_json", original)
+
+    def test_resolve_number_azure_devops_remote(self):
+        self.patch_run_cmd(
+            "origin\thttps://org@dev.azure.com/org/project/_git/repo (fetch)\n"
+        )
+        t = self.mod.resolve_number("15", "workspace")
+        self.assertEqual(t.provider, "azure")
+        self.assertEqual(t.org, "org")
+        self.assertEqual(t.project, "project")
+        self.assertEqual(t.repo, "repo")
+        self.assertEqual(t.number, "15")
+        self.assertIn("/pullrequest/15", t.url)
+
+    def test_resolve_number_azure_visualstudio_remote(self):
+        self.patch_run_cmd(
+            "origin\thttps://contoso@contoso.visualstudio.com/proj/_git/repo (fetch)\n"
+        )
+        t = self.mod.resolve_number("2", "workspace")
+        self.assertEqual(t.provider, "azure")
+        self.assertEqual(t.org, "contoso")
+        self.assertEqual(t.project, "proj")
+        self.assertIn("/pullrequest/2", t.url)
+
+    def test_resolve_number_azure_ssh_remote(self):
+        self.patch_run_cmd("origin\tgit@ssh.dev.azure.com:v3/org/project/repo\n")
+        t = self.mod.resolve_number("7", "workspace")
+        self.assertEqual(t.provider, "azure")
+        self.assertEqual(t.org, "org")
+        self.assertEqual(t.project, "project")
+        self.assertEqual(t.repo, "repo")
+
+    def test_resolve_number_bitbucket_server_remote(self):
+        self.patch_run_cmd(
+            "origin\thttps://git.example.com/projects/KEY/repos/slug.git (fetch)\n"
+        )
+        t = self.mod.resolve_number("4", "workspace")
+        self.assertEqual(t.provider, "bitbucket-server")
+        self.assertEqual(t.owner, "KEY")
+        self.assertEqual(t.repo, "slug")
+
+    def test_resolve_number_bitbucket_server_scm_remote(self):
+        self.patch_run_cmd("origin\thttps://git.example.com/scm/KEY/slug.git (fetch)\n")
+        t = self.mod.resolve_number("4", "workspace")
+        self.assertEqual(t.provider, "bitbucket-server")
+
+    def test_resolve_number_keeps_unknown_provider_fallback(self):
+        self.patch_run_cmd("origin\thttps://ghe.example.com/acme/app.git (fetch)\n")
+        t = self.mod.resolve_number("9", "workspace")
+        self.assertEqual(t.provider, "unknown")
+        self.assertEqual(t.host, "ghe.example.com")
+
+    def test_current_branch_azure_resolves(self):
+        self.patch_run_cmd(
+            "origin\thttps://org@dev.azure.com/org/project/_git/repo (fetch)\n",
+            branch="feature/x",
+        )
+        self.patch_http_json(
+            lambda url, headers=None, timeout=30: {
+                "value": [
+                    {
+                        "pullRequestId": 15,
+                        "repository": {"name": "repo", "project": {"name": "project"}},
+                    }
+                ]
+            }
+        )
+        t = self.mod.resolve_current_branch("workspace")
+        self.assertEqual(t.provider, "azure")
+        self.assertEqual(t.number, "15")
+        self.assertEqual(t.project, "project")
+
+    def test_current_branch_azure_auth_failure_names_provider(self):
+        self.patch_run_cmd(
+            "origin\thttps://org@dev.azure.com/org/project/_git/repo (fetch)\n",
+            branch="feature/x",
+        )
+
+        def fail(url, headers=None, timeout=30):
+            raise self.mod.FetchError("HTTP 401 for https://dev.azure.com/…")
+
+        self.patch_http_json(fail)
+        with self.assertRaises(self.mod.FetchError) as ctx:
+            self.mod.resolve_current_branch("workspace")
+        message = str(ctx.exception)
+        self.assertIn("Azure DevOps", message)
+        self.assertIn("feature/x", message)
+        self.assertIn("AZURE_DEVOPS_TOKEN", message)
+
+    def test_current_branch_gitea_resolves(self):
+        self.patch_run_cmd(
+            "origin\thttps://codeberg.org/owner/repo.git (fetch)\n", branch="feature/x"
+        )
+        self.patch_http_json(
+            lambda url, headers=None, timeout=30: [
+                {
+                    "number": 9,
+                    "html_url": "https://codeberg.org/owner/repo/pulls/9",
+                    "head": {"ref": "feature/x", "repo": {"full_name": "owner/repo"}},
+                }
+            ]
+        )
+        t = self.mod.resolve_current_branch("workspace")
+        self.assertEqual(t.provider, "gitea")
+        self.assertEqual(t.number, "9")
+
+    def test_current_branch_bitbucket_resolves(self):
+        self.patch_run_cmd(
+            "origin\thttps://bitbucket.org/workspace/repo.git (fetch)\n",
+            branch="docs",
+        )
+        self.patch_http_json(
+            lambda url, headers=None, timeout=30: {
+                "values": [
+                    {
+                        "id": 3,
+                        "links": {
+                            "html": {"href": "https://bitbucket.org/w/r/pull-requests/3"}
+                        },
+                    }
+                ]
+            }
+        )
+        t = self.mod.resolve_current_branch("workspace")
+        self.assertEqual(t.provider, "bitbucket")
+        self.assertEqual(t.number, "3")
+
+    def test_current_branch_bitbucket_server_resolves(self):
+        self.patch_run_cmd(
+            "origin\thttps://git.example.com/projects/KEY/repos/slug.git (fetch)\n",
+            branch="feature/x",
+        )
+        self.patch_http_json(
+            lambda url, headers=None, timeout=30: {"values": [{"id": 4}]}
+        )
+        t = self.mod.resolve_current_branch("workspace")
+        self.assertEqual(t.provider, "bitbucket-server")
+        self.assertEqual(t.number, "4")
+
+    def test_current_branch_github_without_gh_names_provider(self):
+        self.patch_run_cmd(
+            "origin\thttps://github.com/acme/app.git (fetch)\n", branch="fix/auth"
+        )
+        self.patch_http_json(lambda url, headers=None, timeout=30: [])
+        with self.assertRaises(self.mod.FetchError) as ctx:
+            self.mod.resolve_current_branch("workspace")
+        message = str(ctx.exception)
+        self.assertIn("GitHub", message)
+        self.assertIn("fix/auth", message)
+
+    def test_current_branch_unknown_host_keeps_generic_error(self):
+        self.patch_run_cmd("origin\thttps://git.example.com/foo/bar (fetch)\n")
+        with self.assertRaises(self.mod.FetchError) as ctx:
+            self.mod.resolve_current_branch("workspace")
+        self.assertIn("No open pull/merge request for the current branch", str(ctx.exception))
+
+    def test_current_branch_detached_head_names_blocker(self):
+        self.patch_run_cmd(
+            "origin\thttps://org@dev.azure.com/org/project/_git/repo (fetch)\n",
+            branch="HEAD",
+        )
+        with self.assertRaises(self.mod.FetchError) as ctx:
+            self.mod.resolve_current_branch("workspace")
+        message = str(ctx.exception)
+        self.assertIn("Azure DevOps", message)
+        self.assertIn("current branch", message)
+
+
 class CliFailureTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
