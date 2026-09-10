@@ -325,6 +325,7 @@ discover_skill_dirs() {
 
   find "${search_root}" \
     \( -name node_modules -o -name .git -o -name dist -o -name build -o -name __pycache__ \
+       -o -name in-progress -o -name deprecated \
        -o -name .agents -o -name .claude -o -name .codex -o -name .pi -o -name .cursor \) -prune -o \
     -type f -name SKILL.md -print 2>/dev/null |
     while IFS= read -r skill_md; do

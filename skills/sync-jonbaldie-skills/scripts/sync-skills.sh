@@ -91,7 +91,8 @@ install_collection() {
     count=$((count + 1))
   done < <(
     find "${repository_root}/skills" \
-      \( -name node_modules -o -name .git -o -name deprecated -o -name .agents -o -name .claude -o -name .gemini \) -prune -o \
+      \( -name node_modules -o -name .git -o -name in-progress -o -name deprecated \
+         -o -name .agents -o -name .claude -o -name .gemini \) -prune -o \
       -type f -name SKILL.md -print0
   )
 
