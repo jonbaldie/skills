@@ -18,11 +18,14 @@ jobs:
         run: >-
           bash -n install.sh tests/install-ship-spec.sh
           tests/install-symlinked-agent-root.sh tests/install-skill-filter.sh
+          tests/install-in-progress.sh
       - name: Lint changed installer scripts
         run: >-
           shellcheck -e SC2016 install.sh tests/install-symlinked-agent-root.sh
-          tests/install-skill-filter.sh
+          tests/install-skill-filter.sh tests/install-in-progress.sh
       - name: Test a symlinked agent skill root
         run: tests/install-symlinked-agent-root.sh
       - name: Test --skill filter across collections
         run: tests/install-skill-filter.sh
+      - name: Test in-progress skills are not distributed
+        run: tests/install-in-progress.sh
