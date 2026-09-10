@@ -282,6 +282,184 @@ class ExtractSessionTests(unittest.TestCase):
             self.assertNotIn("<session_context>", text)
             self.assertIn("README.md", text)
 
+    def _write_hermes_db(self, db_path: Path, cwd: str = "/ws"):
+        conn = sqlite3.connect(db_path)
+        conn.executescript(
+            """
+            CREATE TABLE sessions (
+              id TEXT PRIMARY KEY,
+              title TEXT,
+              cwd TEXT,
+              model TEXT,
+              started_at REAL,
+              ended_at REAL,
+              message_count INTEGER,
+              git_branch TEXT,
+              end_reason TEXT,
+              source TEXT,
+              active INTEGER DEFAULT 1
+            );
+            CREATE TABLE messages (
+              id INTEGER PRIMARY KEY,
+              session_id TEXT,
+              role TEXT,
+              content TEXT,
+              tool_calls TEXT,
+              tool_name TEXT,
+              timestamp REAL,
+              finish_reason TEXT,
+              active INTEGER DEFAULT 1
+            );
+            """
+        )
+        conn.execute(
+            "INSERT INTO sessions VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "sess_abc",
+                "Ship resume skill",
+                cwd,
+                "test-model",
+                1_700_000_000,
+                1_700_000_100,
+                2,
+                "main",
+                None,
+                "cli",
+                1,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,?)",
+            (
+                1,
+                "sess_abc",
+                "user",
+                "Implement resume-from-agent",
+                None,
+                None,
+                1_700_000_000,
+                None,
+                1,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,?)",
+            (
+                2,
+                "sess_abc",
+                "assistant",
+                "Done reading.",
+                None,
+                None,
+                1_700_000_050,
+                "stop",
+                1,
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+    def _write_codex_rollout(self, path: Path):
+        lines = [
+            json.dumps(
+                {
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "type": "session_meta",
+                    "payload": {
+                        "id": "rollout-xyz",
+                        "cwd": "/ws",
+                        "git": {"branch": "main"},
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "timestamp": "2026-01-01T00:00:01Z",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": "Ship the PR"}
+                        ],
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "timestamp": "2026-01-01T00:00:02Z",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [
+                            {"type": "output_text", "text": "All shipped."}
+                        ],
+                    },
+                }
+            ),
+        ]
+        path.write_text("\n".join(lines) + "\n")
+
+    def _main_output(self, argv):
+        from contextlib import redirect_stdout
+        import io
+
+        buf = io.StringIO()
+        code = None
+        try:
+            with redirect_stdout(buf):
+                code = self.mod.main(argv)
+        except SystemExit as exc:
+            code = exc
+        return code, buf.getvalue()
+
+    def test_path_agent_hermes_uses_hermes_adapter(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "state.db"
+            self._write_hermes_db(db_path)
+            code, out = self._main_output(
+                ["--agent", "hermes", "--path", str(db_path)]
+            )
+            self.assertEqual(code, 0)
+            self.assertIn("agent: hermes", out)
+            self.assertIn("session_id: sess_abc", out)
+            self.assertIn("Implement resume-from-agent", out)
+            self.assertIn("Done reading.", out)
+
+    def test_path_agent_codex_parses_rollout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rollout = Path(tmp) / "rollout-xyz.jsonl"
+            self._write_codex_rollout(rollout)
+            code, out = self._main_output(
+                ["--agent", "codex", "--path", str(rollout)]
+            )
+            self.assertEqual(code, 0)
+            self.assertIn("agent: codex", out)
+            self.assertIn("Ship the PR", out)
+            self.assertIn("All shipped.", out)
+
+    def test_path_agent_mismatch_fails_nonzero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "state.db"
+            self._write_hermes_db(db_path)
+            with self.assertRaises(SystemExit) as ctx:
+                self.mod.main(
+                    ["--agent", "codex", "--path", str(db_path)]
+                )
+            message = str(ctx.exception)
+            self.assertIn("codex", message)
+            self.assertIn(str(db_path), message)
+
+    def test_path_no_agent_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "state.db"
+            self._write_hermes_db(db_path)
+            code, out = self._main_output(["--path", str(db_path)])
+            self.assertEqual(code, 0)
+            self.assertIn("agent: agy", out)
+            self.assertIn("session_id: state", out)
+
     def test_pick_candidate_notes_close_runner_up(self):
         a = self.mod.Candidate(
             agent="hermes", session_id="1", cwd="/x", mtime=1000.0
