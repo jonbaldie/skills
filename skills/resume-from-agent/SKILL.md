@@ -55,8 +55,9 @@ python3 .../extract-session.py --cwd "$PWD" dirac <task-id>
 python3 .../extract-session.py --cwd "$PWD" --list
 python3 .../extract-session.py --cwd "$PWD" --agent cursor --list
 
-# Escape hatch: explicit transcript/db path
+# Escape hatch: explicit transcript/db path (combine with --agent to force the parser)
 python3 .../extract-session.py --path ~/path/to/session.jsonl
+python3 .../extract-session.py --agent codex --path ~/.codex/sessions/.../rollout-x.jsonl
 ```
 
 - If the user passed an **agent** name and/or **session** id, pass them through (positional args or `--agent`).

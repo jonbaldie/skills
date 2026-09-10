@@ -512,7 +512,8 @@ def discover_hermes(cwd: str, session_id: str | None) -> list[Candidate]:
 
 
 def extract_hermes(cand: Candidate) -> Brief:
-    conn = open_sqlite_ro(hermes_db())
+    db = Path(cand.path) if cand.path else hermes_db()
+    conn = open_sqlite_ro(db)
     try:
         session = conn.execute(
             "SELECT * FROM sessions WHERE id = ?", (cand.session_id,)
@@ -603,7 +604,7 @@ def extract_hermes(cand: Candidate) -> Brief:
     return brief_from_turns(
         agent="hermes",
         session_id=session["id"],
-        path=str(hermes_db()),
+        path=str(db),
         cwd=session["cwd"],
         title=session["title"],
         model=session["model"],
@@ -709,7 +710,11 @@ def discover_dirac(cwd: str, session_id: str | None) -> list[Candidate]:
 
 
 def extract_dirac(cand: Candidate) -> Brief:
-    task_dir = dirac_root() / "tasks" / cand.session_id
+    override = Path(cand.path) if cand.path else None
+    if override and override.is_dir():
+        task_dir = override
+    else:
+        task_dir = dirac_root() / "tasks" / cand.session_id
     if not task_dir.is_dir():
         raise SystemExit(f"Dirac task directory missing: {task_dir}")
 
@@ -1730,11 +1735,17 @@ def discover_claude(cwd: str, session_id: str | None) -> list[Candidate]:
 
 
 def extract_claude_or_sibling(cand: Candidate) -> Brief:
+    path = Path(cand.path or "")
+    if cand.extra.get("explicit_path"):
+        if not path.is_file():
+            raise SystemExit(f"Claude transcript not found: {cand.path}")
+        return _generic_jsonl_brief(
+            path, agent="claude", session_id=cand.session_id, cwd=cand.cwd
+        )
     text = run_sibling_extractor("claude", cand.cwd or os.getcwd(), cand.session_id)
     if text:
         return _brief_from_preformatted(text, agent="claude", cand=cand)
     # Minimal fallback parse
-    path = Path(cand.path or "")
     if not path.is_file():
         raise SystemExit(
             "Claude session found but no extractor available and path missing"
@@ -1784,10 +1795,16 @@ def discover_pi(cwd: str, session_id: str | None) -> list[Candidate]:
 
 
 def extract_pi_or_sibling(cand: Candidate) -> Brief:
+    path = Path(cand.path or "")
+    if cand.extra.get("explicit_path"):
+        if not path.is_file():
+            raise SystemExit(f"Pi session transcript not found: {cand.path}")
+        return _generic_jsonl_brief(
+            path, agent="pi", session_id=cand.session_id, cwd=cand.cwd
+        )
     text = run_sibling_extractor("pi", cand.cwd or os.getcwd(), cand.session_id)
     if text:
         return _brief_from_preformatted(text, agent="pi", cand=cand)
-    path = Path(cand.path or "")
     if not path.is_file():
         raise SystemExit("Pi session found but extractor unavailable")
     return _generic_jsonl_brief(path, agent="pi", session_id=cand.session_id, cwd=cand.cwd)
@@ -1837,10 +1854,14 @@ def discover_codex(cwd: str, session_id: str | None) -> list[Candidate]:
 
 
 def extract_codex_or_sibling(cand: Candidate) -> Brief:
+    path = Path(cand.path or "")
+    if cand.extra.get("explicit_path"):
+        if not path.is_file():
+            raise SystemExit(f"Codex rollout not found: {cand.path}")
+        return _codex_rollout_brief(path, session_id=cand.session_id)
     text = run_sibling_extractor("codex", cand.cwd or os.getcwd(), cand.session_id)
     if text:
         return _brief_from_preformatted(text, agent="codex", cand=cand)
-    path = Path(cand.path or "")
     if not path.is_file():
         raise SystemExit("Codex session found but extractor unavailable")
     return _generic_jsonl_brief(path, agent="codex", session_id=cand.session_id, cwd=cand.cwd)
@@ -1911,6 +1932,11 @@ def discover_opencode(cwd: str, session_id: str | None) -> list[Candidate]:
 
 
 def extract_opencode_or_sibling(cand: Candidate) -> Brief:
+    if cand.extra.get("explicit_path"):
+        raise SystemExit(
+            f"OpenCode sessions live in a store db; cannot parse {cand.path!r} "
+            "directly. Install resume-from-opencode and pass the session id instead."
+        )
     text = run_sibling_extractor(
         "opencode", cand.cwd or os.getcwd(), cand.session_id
     )
@@ -1952,6 +1978,109 @@ def _brief_from_preformatted(text: str, agent: str, cand: Candidate) -> Brief:
     # Stash full text in extras for main() to print directly.
     brief.extras["__raw__"] = text
     return brief
+
+
+def _codex_rollout_payloads(path: Path) -> list[dict]:
+    """Parse a Codex rollout JSONL; raise SystemExit if it isn't codex format."""
+    payloads: list[dict] = []
+    identified = False
+    with path.open() as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(obj, dict):
+                continue
+            payload = obj.get("payload")
+            if not isinstance(payload, dict):
+                continue
+            if obj.get("type") in {
+                "session_meta",
+                "response_item",
+                "event_msg",
+                "turn_context",
+            } or payload.get("type"):
+                identified = True
+                payloads.append(payload)
+    if not identified:
+        raise SystemExit(
+            f"Could not identify {path} as a codex rollout: no payload records found"
+        )
+    return payloads
+
+
+def _codex_rollout_brief(path: Path, session_id: str | None = None) -> Brief:
+    payloads = _codex_rollout_payloads(path)
+
+    sid = session_id or path.stem
+    cwd: str | None = None
+    git_branch: str | None = None
+    model: str | None = None
+    turns: list[dict[str, Any]] = []
+    files: Counter[str] = Counter()
+    tools: Counter[str] = Counter()
+    skills: list[str] = []
+    endings: list[str] = []
+
+    for payload in payloads:
+        ptype = payload.get("type")
+        if ptype == "session_meta":
+            sid = str(payload.get("id") or sid)
+            cwd = str(payload.get("cwd")) if payload.get("cwd") else cwd
+            git = payload.get("git")
+            if isinstance(git, dict) and git.get("branch"):
+                git_branch = str(git["branch"])
+        elif ptype == "turn_context":
+            if payload.get("model"):
+                model = str(payload["model"])
+        elif ptype == "event_msg":
+            if payload.get("type") in {"task_complete", "turn_complete"}:
+                endings.append(f"event: {payload.get('type')}")
+            continue
+        elif ptype == "function_call":
+            name = str(payload.get("name") or "tool")
+            tools[name] += 1
+            args = parse_json_maybe(payload.get("arguments"))
+            if isinstance(args, dict):
+                file_path = path_from_mapping(name, args)
+                if file_path:
+                    files[file_path] += 1
+            continue
+        elif ptype == "function_call_output":
+            continue
+
+        role = payload.get("role")
+        if role not in {"user", "assistant"}:
+            continue
+        text = extract_text(payload.get("content"))
+        if role == "user":
+            text, found = clean_skill_injections(text)
+            skills.extend(found)
+            if text:
+                turns.append({"role": "user", "text": text})
+        elif text:
+            turns.append({"role": "assistant", "text": text})
+
+    return brief_from_turns(
+        agent="codex",
+        session_id=sid,
+        path=str(path),
+        cwd=cwd,
+        title=None,
+        model=model,
+        git_branch=git_branch,
+        mtime_label=iso_mtime(path),
+        turns=turns,
+        files=files,
+        skills=skills,
+        tools=tools,
+        ending_signals=endings or None,
+        notes=None,
+    )
 
 
 def _generic_jsonl_brief(
@@ -2158,7 +2287,83 @@ def pick_candidate(
     return winner, notes
 
 
+def _resolve_hermes_session(path: Path) -> str:
+    """Verify a Hermes-format db and return its most recent session id."""
+    try:
+        conn = open_sqlite_ro(path)
+    except sqlite3.DatabaseError as exc:
+        raise SystemExit(
+            f"Could not open {path} as a hermes database: {exc}"
+        ) from None
+    try:
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+        if not {"sessions", "messages"} <= tables:
+            raise SystemExit(
+                f"Could not identify {path} as a hermes session database "
+                "(missing sessions/messages tables)"
+            )
+        row = conn.execute(
+            """
+            SELECT id FROM sessions
+            ORDER BY COALESCE(ended_at, started_at) DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        if not row:
+            raise SystemExit(f"Hermes database contains no sessions: {path}")
+        return str(row["id"])
+    except sqlite3.DatabaseError as exc:
+        raise SystemExit(
+            f"Could not read {path} as a hermes database: {exc}"
+        ) from None
+    finally:
+        conn.close()
+
+
+def extract_path_with_adapter(adapter: Adapter, path: Path) -> Brief:
+    cand = Candidate(
+        agent=adapter.name,
+        session_id=path.stem,
+        cwd=None,
+        mtime=path.stat().st_mtime,
+        path=str(path),
+        extra={"explicit_path": True},
+    )
+    if adapter.name == "hermes":
+        cand.session_id = _resolve_hermes_session(path)
+    try:
+        brief = adapter.extract(cand)
+    except (sqlite3.DatabaseError, UnicodeDecodeError) as exc:
+        raise SystemExit(
+            f"Could not parse {path} as {adapter.name} content: {exc}"
+        ) from None
+    if not brief.extras.get("__raw__"):
+        _require_identified_content(adapter, path, brief)
+    return brief
+
+
+def _require_identified_content(adapter: Adapter, path: Path, brief: Brief) -> None:
+    if not (brief.opening_users or brief.recent_turns or brief.ending):
+        raise SystemExit(
+            f"Could not identify {path} as a {adapter.name} session "
+            "(no recognizable messages); refusing to emit a brief."
+        )
+
+
 def extract_path_generic(path: Path, agent_label: str = "unknown") -> Brief:
+    if agent_label and agent_label != "unknown":
+        key = agent_aliases().get(agent_label.lower())
+        if not key:
+            known = ", ".join(sorted(ADAPTERS))
+            raise SystemExit(
+                f"Unknown agent {agent_label!r} for path {path}. Known: {known}"
+            )
+        return extract_path_with_adapter(ADAPTERS[key], path)
     if path.suffix == ".db":
         # Try agy-style
         cand = Candidate(
