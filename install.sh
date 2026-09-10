@@ -457,6 +457,12 @@ install_skill_dir() {
   fi
 }
 
+# Prints (via the root_skill_matches global) how many skills this root
+# contributed. A zero-match root is not fatal on its own: --skill filters may
+# legitimately target only one collection, so the caller decides when the
+# combined total across collections is fatal.
+root_skill_matches=0
+
 install_from_root() {
   local root="$1"
   local skill_dir
@@ -471,9 +477,7 @@ install_from_root() {
     count=$((count + 1))
   done < <(discover_skill_dirs "${root}" | sort -u)
 
-  if [[ "${count}" -eq 0 ]]; then
-    die "No matching skills found under ${root}"
-  fi
+  root_skill_matches="${count}"
 }
 
 ask_prereqs() {
@@ -559,6 +563,7 @@ main() {
   print_install_targets
 
   local jon_root
+  local total_matches=0
   jon_root="$(resolve_jonbaldie_root)"
 
   if ask_prereqs; then
@@ -566,10 +571,19 @@ main() {
     mp_root="$(resolve_mattpocock_root)"
     log "Installing mattpocock/skills..."
     install_from_root "${mp_root}"
+    total_matches=$((total_matches + root_skill_matches))
   fi
 
   log "Installing jonbaldie/skills..."
   install_from_root "${jon_root}"
+  total_matches=$((total_matches + root_skill_matches))
+
+  if [[ "${total_matches}" -eq 0 ]]; then
+    if [[ ${#selected_skills[@]} -gt 0 ]]; then
+      die "No matching skills found for: ${selected_skills[*]}"
+    fi
+    die "No skills found under ${jon_root}"
+  fi
 
   if [[ "${global_install}" == true ]]; then
     log "Done. Skills installed under $(canonical_skills_dir) (and agent paths as needed)."

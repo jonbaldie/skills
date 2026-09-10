@@ -15,8 +15,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check shell syntax
-        run: bash -n install.sh tests/install-ship-spec.sh tests/install-symlinked-agent-root.sh
+        run: >-
+          bash -n install.sh tests/install-ship-spec.sh
+          tests/install-symlinked-agent-root.sh tests/install-skill-filter.sh
       - name: Lint changed installer scripts
-        run: shellcheck -e SC2016 install.sh tests/install-symlinked-agent-root.sh
+        run: >-
+          shellcheck -e SC2016 install.sh tests/install-symlinked-agent-root.sh
+          tests/install-skill-filter.sh
       - name: Test a symlinked agent skill root
         run: tests/install-symlinked-agent-root.sh
+      - name: Test --skill filter across collections
+        run: tests/install-skill-filter.sh
