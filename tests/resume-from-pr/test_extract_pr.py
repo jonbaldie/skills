@@ -365,6 +365,75 @@ class BriefRenderTests(unittest.TestCase):
         self.assertIn("README.md:1 — Kim", text)
         self.assertIn("README.md (+2/-1)", text)
 
+    def test_reviews_and_comments_interleave_chronologically(self):
+        """Issue #65: a maintainer comment at 11:00 and a review at 12:00 must
+        interleave by timestamp; the Ending must be the newer review."""
+        data = {
+            "title": "Fix auth middleware",
+            "body": "",
+            "state": "OPEN",
+            "author": {"login": "ada"},
+            "url": "https://github.com/acme/app/pull/5",
+            "number": 5,
+            "reviews": [
+                {
+                    "body": "Looks good now.",
+                    "state": "COMMENTED",
+                    "author": {"login": "linus"},
+                    "submittedAt": "2026-01-01T12:00:00Z",
+                }
+            ],
+            "comments": [
+                {
+                    "body": "I hit the usage limit mid-change.",
+                    "author": {"login": "ada"},
+                    "createdAt": "2026-01-01T11:00:00Z",
+                }
+            ],
+        }
+        brief = self.mod.brief_from_github_view(data)
+        text = self.mod.render(brief)
+        discussion = text.split("## Discussion", 1)[1].split("## Checks", 1)[0]
+        self.assertLess(
+            discussion.index("Comment — ada"),
+            discussion.index("Review — linus"),
+            "Discussion must list events chronologically, not grouped by kind",
+        )
+        ending = self.mod.ending_text(brief)
+        self.assertIn("linus", ending)
+        self.assertIn("Looks good now.", ending)
+        self.assertNotIn("ada", ending)
+
+    def test_events_without_timestamps_keep_stable_position(self):
+        """Issue #65: undated events must not disturb the chronological order
+        of timestamped events, and keep their own relative order."""
+        comment = lambda kind, body, created: self.mod.Comment(  # noqa: E731
+            author="u", body=body, created=created, kind=kind
+        )
+        brief = self.mod.Brief(
+            provider="github",
+            url="https://example.com/pull/1",
+            number="1",
+            title="T",
+            state="open",
+            author="ada",
+            comments=[
+                comment("review", "review at noon", "2026-01-01T12:00:00Z"),
+                comment("discussion", "undated comment", None),
+                comment("review", "review at ten", "2026-01-01T10:00:00Z"),
+            ],
+        )
+        events = self.mod.chronological_events(brief.comments)
+        bodies = [e.body for e in events if e.created]
+        self.assertEqual(
+            bodies, ["review at ten", "review at noon"], "timestamped order broken"
+        )
+        self.assertEqual(
+            [e.body for e in events][-2:],
+            ["review at ten", "review at noon"],
+            "undated event disturbed timestamped ordering",
+        )
+
     def test_ending_draft_without_comments(self):
         brief = self.mod.Brief(
             provider="github",
