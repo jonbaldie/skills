@@ -124,6 +124,28 @@ class ParseUrlTests(unittest.TestCase):
         )
         self.assertEqual(t.number, "8")
 
+    def test_embedded_url_trailing_punctuation(self):
+        for punct in ".,;:!?":
+            t = self.mod.parse_argument(
+                f"please resume https://github.com/owner/repo/pull/8{punct}"
+            )
+            self.assertEqual(t.number, "8", f"trailing {punct!r} leaked")
+            self.assertEqual(t.url, f"https://github.com/owner/repo/pull/8")
+        t = self.mod.parse_argument(
+            "resume https://github.com/owner/repo/pull/8..."
+        )
+        self.assertEqual(t.url, "https://github.com/owner/repo/pull/8")
+
+    def test_embedded_url_preserves_inner_punctuation(self):
+        self.assertEqual(
+            self.mod.first_url("see https://example.com/a.b/pull/8, done."),
+            "https://example.com/a.b/pull/8",
+        )
+        self.assertEqual(
+            self.mod.first_url("check https://host/x?q=1. next"),
+            "https://host/x?q=1",
+        )
+
     def test_scheme_optional(self):
         t = self.parse("github.com/owner/repo/pull/3")
         self.assertEqual(t.provider, "github")
