@@ -40,7 +40,10 @@ def truncate(text: str | None, limit: int) -> str:
 
 def first_url(text: str) -> str | None:
     match = re.search(r"https?://[^\s)>\]]+", text, flags=re.I)
-    return match.group(0) if match else None
+    if not match:
+        return None
+    # Trim trailing sentence punctuation from prose-embedded URLs.
+    return match.group(0).rstrip(".,;:!?")
 
 
 def strip_wrap(text: str) -> str:
