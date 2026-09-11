@@ -9,6 +9,7 @@ set -euo pipefail
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 readonly repository_root
 readonly sync_script="${repository_root}/skills/sync-jonbaldie-skills/scripts/sync-skills.sh"
+readonly copy_script="${repository_root}/skills/sync-jonbaldie-skills/scripts/copy-to-skill-dirs.sh"
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/skills-pycache-test.XXXXXX")"
 readonly test_root
 
@@ -66,8 +67,9 @@ EOF
 assert_clean_installation() {
   local target_dir="$1"
   local mode_desc="$2"
+  local relative_skill_dir="${3:-.agents/skills/fixture-pycache}"
 
-  local skill_installed="${target_dir}/.agents/skills/fixture-pycache"
+  local skill_installed="${target_dir}/${relative_skill_dir}"
   [[ -f "${skill_installed}/SKILL.md" ]] ||
     fail "Skill not installed (${mode_desc})"
   [[ -f "${skill_installed}/scripts/tool.py" ]] ||
@@ -182,5 +184,25 @@ JONBALDIE_SKILLS_REPO="${fixture_repo}" \
   fail "sync-skills.sh exited non-zero"
 }
 assert_clean_installation "${sync_project}" "sync-skills.sh"
+
+# Test 5: Defense-in-depth in copy-to-skill-dirs.sh
+# Re-introduce python caches into the canonical skills directory to simulate post-sync execution
+mkdir -p "${sync_project}/.agents/skills/fixture-pycache/scripts/__pycache__"
+mkdir -p "${sync_project}/.agents/skills/fixture-pycache/scripts/.pytest_cache"
+cat >"${sync_project}/.agents/skills/fixture-pycache/scripts/__pycache__/tool.cpython-312.pyc" <<'EOF'
+<fake-pyc-bytecode>
+EOF
+cat >"${sync_project}/.agents/skills/fixture-pycache/scripts/.pytest_cache/dummy" <<'EOF'
+<fake-pytest-cache>
+EOF
+cat >"${sync_project}/.agents/skills/fixture-pycache/stray.pyc" <<'EOF'
+<stray-pyc>
+EOF
+
+"${copy_script}" "${sync_project}" .claude/skills >"${test_root}/copy.log" 2>&1 || {
+  cat "${test_root}/copy.log" >&2
+  fail "copy-to-skill-dirs.sh exited non-zero"
+}
+assert_clean_installation "${sync_project}/.claude/skills" "copy-to-skill-dirs.sh" "fixture-pycache"
 
 printf '%s\n' 'install-pycache-exclusion: all scenarios passed'

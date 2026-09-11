@@ -16,9 +16,15 @@ die() {
   exit 2
 }
 
-for command_name in mkdir rm cp grep mv; do
+for command_name in mkdir rm cp grep mv find; do
   command -v "${command_name}" >/dev/null 2>&1 || die "missing required command: ${command_name}"
 done
+
+prune_build_artifacts() {
+  local target="$1"
+  find "${target}" \( -name "__pycache__" -o -name ".pytest_cache" \) -prune -exec rm -rf {} +
+  find "${target}" -type f -name "*.pyc" -exec rm -f {} +
+}
 
 [[ -d "$1" ]] || die "project directory does not exist: $1"
 project_root="$(cd "$1" && pwd -P)"
@@ -70,6 +76,7 @@ copy_to_directory() {
     [[ -d "${canonical_skills_dir}/${name}" ]] || die "managed skill is missing: ${canonical_skills_dir}/${name}"
     rm -rf "${destination:?}/${name}"
     cp -a "${canonical_skills_dir}/${name}" "${destination}/${name}"
+    prune_build_artifacts "${destination}/${name}"
     printf '  copied %s -> %s\n' "${name}" "${destination}"
   done <"${canonical_manifest}"
 
