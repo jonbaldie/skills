@@ -167,6 +167,47 @@ class ParseUrlTests(unittest.TestCase):
             "https://host/x?q=1",
         )
 
+    def test_embedded_url_quotes_and_backticks(self):
+        cases = [
+            'resume "https://github.com/owner/repo/pull/8"',
+            "resume 'https://github.com/owner/repo/pull/8'",
+            "resume `https://github.com/owner/repo/pull/8`",
+        ]
+        for arg in cases:
+            t = self.mod.parse_argument(arg)
+            self.assertEqual(t.number, "8", f"failed parsing number from {arg!r}")
+            self.assertEqual(
+                t.url,
+                "https://github.com/owner/repo/pull/8",
+                f"trailing quote/backtick leaked from {arg!r}",
+            )
+
+    def test_embedded_url_trailing_quotes_with_punctuation(self):
+        cases = [
+            'see "https://github.com/owner/repo/pull/8", thanks',
+            "see 'https://github.com/owner/repo/pull/8.' next",
+            "see `https://github.com/owner/repo/pull/8`? next",
+            '("https://github.com/owner/repo/pull/8")',
+            "('https://github.com/owner/repo/pull/8')",
+            "(`https://github.com/owner/repo/pull/8`)",
+        ]
+        for arg in cases:
+            t = self.mod.parse_argument(arg)
+            self.assertEqual(t.number, "8", f"failed parsing number from {arg!r}")
+            self.assertEqual(
+                t.url,
+                "https://github.com/owner/repo/pull/8",
+                f"malformed url from {arg!r}",
+            )
+
+    def test_wrapped_single_quotes_and_backticks(self):
+        t = self.mod.parse_argument("'https://github.com/owner/repo/pull/8'")
+        self.assertEqual(t.number, "8")
+        self.assertEqual(t.url, "https://github.com/owner/repo/pull/8")
+        t = self.mod.parse_argument("`https://github.com/owner/repo/pull/8`")
+        self.assertEqual(t.number, "8")
+        self.assertEqual(t.url, "https://github.com/owner/repo/pull/8")
+
     def test_scheme_optional(self):
         t = self.parse("github.com/owner/repo/pull/3")
         self.assertEqual(t.provider, "github")

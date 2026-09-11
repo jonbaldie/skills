@@ -43,14 +43,17 @@ def first_url(text: str) -> str | None:
     match = re.search(r"https?://[^\s)>\]]+", text, flags=re.I)
     if not match:
         return None
-    # Trim trailing sentence punctuation from prose-embedded URLs.
-    return match.group(0).rstrip(".,;:!?")
+    # Trim trailing sentence punctuation, quotes, and backticks from prose-embedded URLs.
+    return match.group(0).rstrip(".,;:!?\"'`")
 
 
 def strip_wrap(text: str) -> str:
     text = text.strip()
-    if (text.startswith("<") and text.endswith(">")) or (
-        text.startswith('"') and text.endswith('"')
+    if (
+        (text.startswith("<") and text.endswith(">"))
+        or (text.startswith('"') and text.endswith('"'))
+        or (text.startswith("'") and text.endswith("'"))
+        or (text.startswith("`") and text.endswith("`"))
     ):
         return text[1:-1].strip()
     md = re.fullmatch(r"\[([^\]]*)\]\((https?://[^)]+)\)", text)
