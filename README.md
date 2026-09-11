@@ -332,3 +332,20 @@ changing the code unless you also ask for fixes.
 ```text
 /seeking-performance
 ```
+
+### I need to find clean modular boundaries in a tangled codebase
+
+**The problem.** Codebases grow tangled when domain capabilities couple directly
+to UI, database, or transport details. Logic gets duplicated across frontends and
+background jobs, callers reach through backdoors instead of stable interfaces,
+and public APIs diverge from internal capabilities.
+
+**The fix.** [`finding-seams`](./skills/finding-seams/SKILL.md) audits the
+codebase for capability-oriented boundaries, deep modules, and architectural
+backdoors. It produces a ranked list of incremental, in-process enhancements to
+help UI and API consumers dogfood the same underlying capabilities.
+
+```text
+/finding-seams
+```
+
