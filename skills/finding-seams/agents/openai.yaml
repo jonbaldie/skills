@@ -1,0 +1,4 @@
+interface:
+  display_name: "Find Architectural Seams"
+  short_description: "Audit codebase for capability boundaries, deep modules, and backdoors"
+  default_prompt: "Use $finding-seams to audit this codebase for architectural seams and capability boundaries."
