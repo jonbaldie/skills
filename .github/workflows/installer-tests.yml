@@ -19,11 +19,13 @@ jobs:
           bash -n install.sh tests/install-ship-spec.sh
           tests/install-symlinked-agent-root.sh tests/install-skill-filter.sh
           tests/install-in-progress.sh tests/install-pycache-exclusion.sh
+          tests/copy-to-skill-dirs-project-root.sh
       - name: Lint changed installer scripts
         run: >-
           shellcheck -e SC2016 install.sh tests/install-symlinked-agent-root.sh
           tests/install-skill-filter.sh tests/install-in-progress.sh
-          tests/install-pycache-exclusion.sh
+          tests/install-pycache-exclusion.sh tests/copy-to-skill-dirs-project-root.sh
+          skills/sync-jonbaldie-skills/scripts/copy-to-skill-dirs.sh
       - name: Test a symlinked agent skill root
         run: tests/install-symlinked-agent-root.sh
       - name: Test --skill filter across collections
@@ -32,3 +34,5 @@ jobs:
         run: tests/install-in-progress.sh
       - name: Test build artifacts are excluded from installs
         run: tests/install-pycache-exclusion.sh
+      - name: Test copy-to-skill-dirs rejects the project root
+        run: tests/copy-to-skill-dirs-project-root.sh

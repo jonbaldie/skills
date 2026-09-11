@@ -38,17 +38,34 @@ shift
 canonical_skills_dir="$(cd "${canonical_skills_dir}" && pwd -P)"
 readonly canonical_skills_dir
 
+requested_path() {
+  if [[ "$1" = /* ]]; then
+    printf '%s\n' "$1"
+  else
+    printf '%s\n' "${project_root}/$1"
+  fi
+}
+
+validate_requested_directory() {
+  local requested_directory="$1"
+  local resolved
+
+  [[ -n "${requested_directory}" ]] || die "skill directory must not be empty"
+  resolved="$(requested_path "${requested_directory}")"
+  [[ -d "${resolved}" ]] || return 0
+  resolved="$(cd "${resolved}" && pwd -P)"
+  if [[ "${project_root}" == "${resolved}" || "${project_root}" == "${resolved%/}/"* ]]; then
+    die "skill directory must not be the project root or one of its ancestors: ${requested_directory}"
+  fi
+}
+
 copy_to_directory() {
   local requested_directory="$1"
   local destination
   local destination_manifest
   local name
 
-  if [[ "${requested_directory}" = /* ]]; then
-    destination="${requested_directory}"
-  else
-    destination="${project_root}/${requested_directory}"
-  fi
+  destination="$(requested_path "${requested_directory}")"
 
   mkdir -p "${destination}"
   destination="$(cd "${destination}" && pwd -P)"
@@ -84,6 +101,10 @@ copy_to_directory() {
   mv "${destination}/.sync-jonbaldie-skills.manifest.tmp" "${destination_manifest}"
   printf 'Additional destination: %s\n' "${destination}"
 }
+
+for requested_directory in "$@"; do
+  validate_requested_directory "${requested_directory}"
+done
 
 for requested_directory in "$@"; do
   copy_to_directory "${requested_directory}"
