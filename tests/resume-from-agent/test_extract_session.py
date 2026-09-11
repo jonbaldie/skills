@@ -552,6 +552,84 @@ class ExtractSessionTests(unittest.TestCase):
             self.assertEqual(ranked[0].session_id, "new")
             self.assertEqual(ranked[1].session_id, "old")
 
+    def test_encode_claude_cwd_sanitizes_dots(self):
+        # Claude Code sanitizes [^A-Za-z0-9_-] to "-", including dots, and
+        # preserves repeated hyphens (e.g. ".fleet" -> "-fleet").
+        self.assertEqual(
+            self.mod.encode_claude_cwd(
+                "/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills"
+            ),
+            "-Users-jonathanbaldie-Code-2-github-com-jonbaldie-skills",
+        )
+        self.assertEqual(
+            self.mod.encode_claude_cwd("/Users/jonathanbaldie/.fleet/worktrees/x"),
+            "-Users-jonathanbaldie--fleet-worktrees-x",
+        )
+        self.assertEqual(
+            self.mod.encode_claude_cwd("/Users/foo/bar"), "-Users-foo-bar"
+        )
+
+    def test_encode_cursor_cwd_sanitizes_dots(self):
+        # Cursor strips the leading "/" then sanitizes [^A-Za-z0-9_-] to "-".
+        self.assertEqual(
+            self.mod.encode_cursor_cwd(
+                "/Users/jonathanbaldie/go/src/github.com/jonbaldie/gastown"
+            ),
+            "Users-jonathanbaldie-go-src-github-com-jonbaldie-gastown",
+        )
+        self.assertEqual(
+            self.mod.encode_cursor_cwd("/Users/jonathanbaldie/.fleet/x"),
+            "Users-jonathanbaldie--fleet-x",
+        )
+        self.assertEqual(
+            self.mod.encode_cursor_cwd("/Users/foo/bar"), "Users-foo-bar"
+        )
+
+    def test_discover_claude_dotted_cwd_fixture(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            root = tmp_path / ".claude" / "projects"
+            project = root / self.mod.encode_claude_cwd(
+                str(tmp_path / "github.com/x/y")
+            )
+            project.mkdir(parents=True)
+            session = project / "abc.jsonl"
+            session.write_text(
+                json.dumps({"cwd": str(tmp_path / "github.com/x/y")}) + "\n"
+            )
+            original = self.mod.home
+            self.mod.home = lambda: tmp_path  # type: ignore
+            try:
+                cands = self.mod.discover_claude(
+                    str(tmp_path / "github.com/x/y"), None
+                )
+            finally:
+                self.mod.home = original  # type: ignore
+            self.assertEqual(len(cands), 1)
+            self.assertEqual(cands[0].session_id, "abc")
+
+    def test_discover_cursor_dotted_cwd_fixture(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            root = tmp_path / ".cursor" / "projects"
+            project = root / self.mod.encode_cursor_cwd(
+                str(tmp_path / "github.com/x/y")
+            )
+            project.mkdir(parents=True)
+            (project / "agent-transcripts" / "claude").mkdir(parents=True)
+            session = project / "agent-transcripts" / "claude" / "def.jsonl"
+            session.write_text("{}\n")
+            original = self.mod.home
+            self.mod.home = lambda: tmp_path  # type: ignore
+            try:
+                cands = self.mod.discover_cursor(
+                    str(tmp_path / "github.com/x/y"), None
+                )
+            finally:
+                self.mod.home = original  # type: ignore
+            self.assertEqual(len(cands), 1)
+            self.assertEqual(cands[0].session_id, "def")
+
 
 if __name__ == "__main__":
     unittest.main()

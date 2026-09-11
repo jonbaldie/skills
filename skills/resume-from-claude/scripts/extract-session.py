@@ -13,7 +13,9 @@ from pathlib import Path
 
 
 def encode_cwd(cwd: str) -> str:
-    return cwd.replace("/", "-")
+    # Claude Code sanitizes [^A-Za-z0-9_-] (including "." and "/") to "-" in
+    # project directory names; repeated hyphens are preserved.
+    return re.sub(r"[^A-Za-z0-9_-]", "-", cwd)
 
 
 def resolve_session(cwd: str, session_id: str | None) -> Path:
