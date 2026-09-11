@@ -630,6 +630,98 @@ class ExtractSessionTests(unittest.TestCase):
             self.assertEqual(len(cands), 1)
             self.assertEqual(cands[0].session_id, "def")
 
+    def test_discover_opencode_by_slug_and_title(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "opencode.db"
+            cwd = str(tmp_path / "ws")
+            conn = sqlite3.connect(db_path)
+            conn.executescript(
+                """
+                CREATE TABLE session (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT,
+                    slug TEXT,
+                    directory TEXT,
+                    title TEXT,
+                    version TEXT,
+                    time_created INTEGER,
+                    time_updated INTEGER
+                );
+                INSERT INTO session VALUES (
+                    'ses_alpha', 'p1', 'clever-canyon', '/fake/project',
+                    'Refactor auth service', '1.0', 1000, 2000
+                );
+                INSERT INTO session VALUES (
+                    'ses_beta', 'p1', 'silent-stone', '/fake/project',
+                    'Add OAuth tests', '1.0', 1500, 2500
+                );
+                """
+            )
+            conn.close()
+
+            old_env = os.environ.get("OPENCODE_DB")
+            os.environ["OPENCODE_DB"] = str(db_path)
+            try:
+                # 1. By exact slug
+                by_slug = self.mod.discover_opencode(cwd, "clever-canyon")
+                self.assertEqual(len(by_slug), 1)
+                self.assertEqual(by_slug[0].session_id, "ses_alpha")
+
+                # 2. By exact title
+                by_title = self.mod.discover_opencode(cwd, "Refactor auth service")
+                self.assertEqual(len(by_title), 1)
+                self.assertEqual(by_title[0].session_id, "ses_alpha")
+
+                # 3. By case-insensitive substring title
+                by_partial_title = self.mod.discover_opencode(cwd, "refactor auth")
+                self.assertEqual(len(by_partial_title), 1)
+                self.assertEqual(by_partial_title[0].session_id, "ses_alpha")
+
+                # 4. By id
+                by_id = self.mod.discover_opencode(cwd, "ses_beta")
+                self.assertEqual(len(by_id), 1)
+                self.assertEqual(by_id[0].session_id, "ses_beta")
+            finally:
+                if old_env is None:
+                    os.environ.pop("OPENCODE_DB", None)
+                else:
+                    os.environ["OPENCODE_DB"] = old_env
+
+    def test_discover_opencode_legacy_schema_resilience(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "opencode.db"
+            cwd = str(tmp_path / "ws")
+            conn = sqlite3.connect(db_path)
+            conn.executescript(
+                """
+                CREATE TABLE session (
+                    id TEXT PRIMARY KEY,
+                    directory TEXT,
+                    time_created INTEGER
+                );
+                INSERT INTO session VALUES ('ses_legacy', '/fake/project', 1000);
+                """
+            )
+            conn.close()
+
+            old_env = os.environ.get("OPENCODE_DB")
+            os.environ["OPENCODE_DB"] = str(db_path)
+            try:
+                # Querying by id still works on legacy schemas lacking slug/title columns
+                res = self.mod.discover_opencode(cwd, "ses_legacy")
+                self.assertEqual(len(res), 1)
+                self.assertEqual(res[0].session_id, "ses_legacy")
+
+                # Querying by nonexistent slug/title returns empty instead of crashing
+                res_slug = self.mod.discover_opencode(cwd, "nonexistent-slug")
+                self.assertEqual(len(res_slug), 0)
+            finally:
+                if old_env is None:
+                    os.environ.pop("OPENCODE_DB", None)
+                else:
+                    os.environ["OPENCODE_DB"] = old_env
 
 if __name__ == "__main__":
     unittest.main()
