@@ -1033,7 +1033,9 @@ def cursor_projects_root() -> Path:
 
 def encode_cursor_cwd(cwd: str) -> str:
     # /Users/foo/bar -> Users-foo-bar
-    return cwd.strip("/").replace("/", "-")
+    # Cursor strips the leading "/" and sanitizes [^A-Za-z0-9_-] (including
+    # "." and "/") to "-" in project directory names.
+    return re.sub(r"[^A-Za-z0-9_-]", "-", cwd.strip("/"))
 
 
 def discover_cursor(cwd: str, session_id: str | None) -> list[Candidate]:
@@ -1693,7 +1695,9 @@ def discover_via_sibling_path_scan(
 
 
 def encode_claude_cwd(cwd: str) -> str:
-    return cwd.replace("/", "-")
+    # Claude Code sanitizes [^A-Za-z0-9_-] (including "." and "/") to "-" in
+    # project directory names; repeated hyphens are preserved.
+    return re.sub(r"[^A-Za-z0-9_-]", "-", cwd)
 
 
 def discover_claude(cwd: str, session_id: str | None) -> list[Candidate]:
