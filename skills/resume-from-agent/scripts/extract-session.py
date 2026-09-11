@@ -1890,13 +1890,46 @@ def discover_opencode(cwd: str, session_id: str | None) -> list[Candidate]:
         cwd_r = resolve_path(cwd)
         if session_id:
             sid = session_id.strip()
-            rows = conn.execute(
-                "SELECT * FROM session WHERE id = ? OR id LIKE ? LIMIT 10",
-                (sid, f"%{sid}%"),
-            ).fetchall()
+            clauses = ["id = ? OR id LIKE ?"]
+            params: list[str] = [sid, f"%{sid}%"]
+            order_cases = ["WHEN id = ? THEN 0", "WHEN id LIKE ? THEN 1"]
+            order_params: list[str] = [sid, f"{sid}%"]
+            if "slug" in cols:
+                clauses.append("slug = ? OR slug LIKE ?")
+                params.extend([sid, f"%{sid}%"])
+                order_cases.append("WHEN slug = ? THEN 2")
+                order_cases.append("WHEN slug LIKE ? THEN 3")
+                order_params.extend([sid, f"{sid}%"])
+            if "title" in cols:
+                clauses.append(
+                    "ifnull(title, '') = ? OR lower(ifnull(title, '')) LIKE lower(?)"
+                )
+                params.extend([sid, f"%{sid}%"])
+                order_cases.append("WHEN title = ? THEN 4")
+                order_cases.append("WHEN lower(ifnull(title, '')) LIKE lower(?) THEN 5")
+                order_params.extend([sid, f"{sid}%"])
+            time_parts = [c for c in ("time_updated", "time_created") if c in cols]
+            if len(time_parts) > 1:
+                time_expr = f"COALESCE({', '.join(time_parts)})"
+            elif time_parts:
+                time_expr = time_parts[0]
+            else:
+                time_expr = "rowid"
+            sql = f"""
+                SELECT * FROM session
+                WHERE {' OR '.join(clauses)}
+                ORDER BY
+                  CASE
+                    {' '.join(order_cases)}
+                    ELSE 6
+                  END,
+                  {time_expr} DESC
+                LIMIT 10
+            """
+            rows = conn.execute(sql, params + order_params).fetchall()
         else:
             clauses = []
-            params: list[str] = []
+            params = []
             for col in ("directory", "path"):
                 if col in cols:
                     clauses.append(f"{col} = ? OR {col} = ?")
@@ -1918,6 +1951,9 @@ def discover_opencode(cwd: str, session_id: str | None) -> list[Candidate]:
                     mtime = mtime / 1000.0
             except (TypeError, ValueError):
                 mtime = db.stat().st_mtime
+            extra = {}
+            if data.get("slug"):
+                extra["slug"] = str(data["slug"])
             out.append(
                 Candidate(
                     agent="opencode",
@@ -1926,6 +1962,7 @@ def discover_opencode(cwd: str, session_id: str | None) -> list[Candidate]:
                     mtime=mtime,
                     title=str(data["title"]) if data.get("title") else None,
                     path=str(db),
+                    extra=extra,
                 )
             )
         return out
