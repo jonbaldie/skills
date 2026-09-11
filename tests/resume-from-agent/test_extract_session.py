@@ -401,6 +401,36 @@ class ExtractSessionTests(unittest.TestCase):
         ]
         path.write_text("\n".join(lines) + "\n")
 
+    def test_discover_codex_by_thread_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            sessions_dir = (
+                tmp_path / ".codex" / "sessions" / "2026" / "01" / "01"
+            )
+            sessions_dir.mkdir(parents=True)
+            rollout = sessions_dir / (
+                "rollout-2026-01-01T00-00-00-rollout-xyz.jsonl"
+            )
+            self._write_codex_rollout(rollout)
+            index_file = tmp_path / ".codex" / "session_index.jsonl"
+            index_file.write_text(
+                json.dumps(
+                    {"id": "rollout-xyz", "thread_name": "Ship the PR"}
+                )
+                + "\n"
+            )
+
+            original_home = self.mod.home
+            self.mod.home = lambda: tmp_path  # type: ignore
+            try:
+                candidates = self.mod.discover_codex("/ws", "Ship the PR")
+            finally:
+                self.mod.home = original_home  # type: ignore
+
+            self.assertEqual(len(candidates), 1)
+            self.assertEqual(candidates[0].agent, "codex")
+            self.assertEqual(candidates[0].path, str(rollout))
+
     def _main_output(self, argv):
         from contextlib import redirect_stdout
         import io

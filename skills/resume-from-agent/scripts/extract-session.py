@@ -1814,6 +1814,33 @@ def extract_pi_or_sibling(cand: Candidate) -> Brief:
     return _generic_jsonl_brief(path, agent="pi", session_id=cand.session_id, cwd=cand.cwd)
 
 
+def load_codex_thread_names() -> dict[str, str]:
+    path = home() / ".codex" / "session_index.jsonl"
+    if not path.is_file():
+        return {}
+
+    names: dict[str, str] = {}
+    try:
+        with path.open() as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(obj, dict):
+                    continue
+                session_id = obj.get("id")
+                thread_name = obj.get("thread_name")
+                if session_id and thread_name:
+                    names[str(session_id)] = str(thread_name)
+    except OSError:
+        return {}
+    return names
+
+
 def discover_codex(cwd: str, session_id: str | None) -> list[Candidate]:
     root = home() / ".codex" / "sessions"
     if not root.is_dir():
@@ -1822,11 +1849,24 @@ def discover_codex(cwd: str, session_id: str | None) -> list[Candidate]:
     cwd_r = resolve_path(cwd)
     if session_id:
         sid = session_id.strip()
-        for path in root.rglob(f"*{sid}*.jsonl"):
+        hits = [(path, sid) for path in root.rglob(f"*{sid}*.jsonl")]
+        if not hits:
+            names = load_codex_thread_names()
+            matched_ids = [
+                candidate_id
+                for candidate_id, name in names.items()
+                if name == sid or sid.lower() in name.lower()
+            ]
+            for candidate_id in matched_ids:
+                hits.extend(
+                    (path, candidate_id)
+                    for path in root.rglob(f"*{candidate_id}*.jsonl")
+                )
+        for path, candidate_id in hits:
             out.append(
                 Candidate(
                     agent="codex",
-                    session_id=sid,
+                    session_id=candidate_id,
                     cwd=None,
                     mtime=path.stat().st_mtime,
                     path=str(path),
