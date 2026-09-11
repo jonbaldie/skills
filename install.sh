@@ -387,6 +387,12 @@ skill_selected() {
   return 1
 }
 
+prune_build_artifacts() {
+  local target="$1"
+  find "${target}" \( -name "__pycache__" -o -name ".pytest_cache" \) -prune -exec rm -rf {} +
+  find "${target}" -type f -name "*.pyc" -exec rm -f {} +
+}
+
 copy_tree() {
   local src="$1"
   local dest="$2"
@@ -396,15 +402,22 @@ copy_tree() {
 
   if command -v rsync >/dev/null 2>&1; then
     mkdir -p "${dest}"
-    rsync -a --delete "${src}/" "${dest}/"
+    rsync -a --delete \
+      --exclude='__pycache__' \
+      --exclude='*.pyc' \
+      --exclude='.pytest_cache' \
+      "${src}/" "${dest}/"
     return
   fi
 
   if cp -a "${src}" "${dest}" 2>/dev/null; then
+    prune_build_artifacts "${dest}"
     return
   fi
   cp -R "${src}" "${dest}"
+  prune_build_artifacts "${dest}"
 }
+
 
 physical_entry_path() {
   local path="$1"

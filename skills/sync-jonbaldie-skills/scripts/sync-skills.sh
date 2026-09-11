@@ -73,6 +73,8 @@ copy_skill() {
 
   rm -rf "${destination}"
   cp -a "${source_directory}" "${destination}"
+  find "${destination}" \( -name "__pycache__" -o -name ".pytest_cache" \) -prune -exec rm -rf {} +
+  find "${destination}" -type f -name "*.pyc" -exec rm -f {} +
   printf '%s\n' "${name}" >>"${names_file}"
   printf '  installed %s\n' "${name}"
 }
