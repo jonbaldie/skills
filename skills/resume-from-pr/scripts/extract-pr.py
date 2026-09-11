@@ -110,9 +110,9 @@ class Target:
 
 # Path-shape classifiers — host-agnostic so self-hosted forges work.
 _AZURE = re.compile(
-    r"^https?://(?:dev\.azure\.com/(?P<org>[^/]+)/(?P<project>[^/]+)/_git/"
-    r"(?P<repo>[^/]+)|(?P<org2>[^./]+)\.visualstudio\.com/(?:(?P<project2>[^/]+)/)?"
-    r"_git/(?P<repo2>[^/]+))/pullrequest/(?P<num>\d+)",
+    r"^https?://(?:dev\.azure\.com/(?P<org>[^/]+)/(?:(?P<project>[^/]+)/)?"
+    r"_git/(?P<repo>[^/]+)|(?P<org2>[^./]+)\.visualstudio\.com/"
+    r"(?:(?P<project2>[^/]+)/)?_git/(?P<repo2>[^/]+))/pullrequest/(?P<num>\d+)",
     re.I,
 )
 _BB_SERVER = re.compile(

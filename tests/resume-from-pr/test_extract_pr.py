@@ -101,6 +101,27 @@ class ParseUrlTests(unittest.TestCase):
         self.assertEqual(t.repo, "repo")
         self.assertEqual(t.number, "15")
 
+    def test_azure_devops_project_omitted(self):
+        t = self.parse(
+            "https://dev.azure.com/myorg/_git/myrepo/pullrequest/123"
+        )
+        self.assertEqual(t.provider, "azure")
+        self.assertEqual(t.host, "dev.azure.com")
+        self.assertEqual(t.org, "myorg")
+        self.assertEqual(t.project, "myorg")
+        self.assertEqual(t.repo, "myrepo")
+        self.assertEqual(t.number, "123")
+
+    def test_azure_visualstudio_project_omitted(self):
+        t = self.parse(
+            "https://myorg.visualstudio.com/_git/myrepo/pullrequest/124"
+        )
+        self.assertEqual(t.provider, "azure")
+        self.assertEqual(t.org, "myorg")
+        self.assertEqual(t.project, "myorg")
+        self.assertEqual(t.repo, "myrepo")
+        self.assertEqual(t.number, "124")
+
     def test_azure_visualstudio(self):
         t = self.parse(
             "https://contoso.visualstudio.com/proj/_git/repo/pullrequest/2"
