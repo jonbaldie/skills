@@ -97,6 +97,9 @@ assert_missing "${project}/.agents/skills/alpha/stale.txt"
 mkdir -p "${project}/.claude/skills/unrelated" "${project}/.claude/skills/retired"
 printf '%s\n' 'keep me too' >"${project}/.claude/skills/unrelated/content.txt"
 printf '%s\n' retired >"${project}/.claude/skills/.sync-jonbaldie-skills.manifest"
+mkdir -p "${project}/.agents/skills/alpha/scripts/__pycache__"
+touch "${project}/.agents/skills/alpha/scripts/__pycache__/tool.cpython-311.pyc"
+touch "${project}/.agents/skills/alpha/stray.pyc"
 
 "${copy_script}" "${project}" .claude/skills "${external_destination}"
 
@@ -104,7 +107,11 @@ assert_content 'matt alpha' "${project}/.claude/skills/alpha/content.txt"
 assert_content 'jon shared' "${project}/.claude/skills/shared/content.txt"
 assert_content 'keep me too' "${project}/.claude/skills/unrelated/content.txt"
 assert_missing "${project}/.claude/skills/retired"
+assert_missing "${project}/.claude/skills/alpha/scripts/__pycache__"
+assert_missing "${project}/.claude/skills/alpha/stray.pyc"
 assert_content 'jon beta' "${external_destination}/beta/content.txt"
+assert_missing "${external_destination}/alpha/scripts/__pycache__"
+assert_missing "${external_destination}/alpha/stray.pyc"
 assert_file "${external_destination}/.sync-jonbaldie-skills.manifest"
 
 printf 'PASS: deterministic sync and optional copies\n'
