@@ -36,7 +36,7 @@ def resolve_session(cwd: str, session_id: str | None) -> Path:
             exact = [
                 h
                 for h in hits
-                if h.stem.endswith(f"_{sid}") or h.stem == sid or sid in h.stem.split("_")[-1]
+                if h.stem.endswith(f"_{sid}") or h.stem == sid
             ]
             # If still multiple, take latest mtime among exact, else among all.
             pool = exact or hits
