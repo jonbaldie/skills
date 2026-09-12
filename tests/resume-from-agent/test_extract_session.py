@@ -753,5 +753,62 @@ class ExtractSessionTests(unittest.TestCase):
                 else:
                     os.environ["OPENCODE_DB"] = old_env
 
+    def test_pi_sibling_prefers_exact_id_over_newer_prefix_decoy(self):
+        sid = "aaaaaaaa-bbbb-cccc"
+        decoy = sid + "zz"
+        cwd = "/Users/x/proj"
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            sess = (
+                home
+                / ".pi"
+                / "agent"
+                / "sessions"
+                / self.mod.encode_pi_cwd(cwd)
+            )
+            sess.mkdir(parents=True)
+            exact = sess / f"20260101T120000_{sid}.jsonl"
+            decoy_path = sess / f"20260101T130000_{decoy}.jsonl"
+            for path, session_id, prompt in (
+                (exact, sid, "exact prompt"),
+                (decoy_path, decoy, "decoy prompt"),
+            ):
+                path.write_text(
+                    json.dumps(
+                        {"type": "session", "id": session_id, "cwd": cwd}
+                    )
+                    + "\n"
+                    + json.dumps(
+                        {
+                            "type": "message",
+                            "message": {
+                                "role": "user",
+                                "content": prompt,
+                            },
+                        }
+                    )
+                    + "\n"
+                )
+            os.utime(exact, (1_700_000_000, 1_700_000_000))
+            os.utime(decoy_path, (1_700_003_600, 1_700_003_600))
+
+            old_home = os.environ.get("HOME")
+            os.environ["HOME"] = str(home)
+            try:
+                code, out = self._main_output(
+                    ["--cwd", cwd, "--agent", "pi", sid]
+                )
+            finally:
+                if old_home is None:
+                    os.environ.pop("HOME", None)
+                else:
+                    os.environ["HOME"] = old_home
+
+            self.assertEqual(code, 0)
+            self.assertIn(f"session_id: {sid}", out)
+            self.assertNotIn(f"session_id: {decoy}", out)
+            self.assertIn("exact prompt", out)
+            self.assertNotIn("decoy prompt", out)
+
 if __name__ == "__main__":
     unittest.main()
