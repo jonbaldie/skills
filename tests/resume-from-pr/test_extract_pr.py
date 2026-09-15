@@ -91,6 +91,27 @@ class ParseUrlTests(unittest.TestCase):
         self.assertEqual(t.host, "codeberg.org")
         self.assertEqual(t.number, "9")
 
+    def test_gitea_path_shape_on_other_hosts(self):
+        t = self.parse("https://git.example.com/owner/repo/pulls/9")
+        self.assertEqual(t.provider, "gitea")
+        self.assertEqual(t.host, "git.example.com")
+        self.assertEqual(t.number, "9")
+
+    def test_github_pulls_path_shape(self):
+        t = self.parse("https://github.com/jonbaldie/skills/pulls/90")
+        self.assertEqual(t.provider, "github")
+        self.assertEqual(t.host, "github.com")
+        self.assertEqual(t.owner, "jonbaldie")
+        self.assertEqual(t.repo, "skills")
+        self.assertEqual(t.number, "90")
+        self.assertEqual(t.slug, "jonbaldie/skills")
+
+    def test_github_www_pulls_path_shape(self):
+        t = self.parse("https://www.github.com/jonbaldie/skills/pulls/90")
+        self.assertEqual(t.provider, "github")
+        self.assertEqual(t.host, "www.github.com")
+        self.assertEqual(t.number, "90")
+
     def test_azure_devops(self):
         t = self.parse(
             "https://dev.azure.com/org/project/_git/repo/pullrequest/15"

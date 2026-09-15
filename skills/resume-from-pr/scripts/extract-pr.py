@@ -144,6 +144,13 @@ _GITHUB = re.compile(
     r"^https?://(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/]+)/pull/(?P<num>\d+)",
     re.I,
 )
+# GitHub.com also serves /pulls/<n> (same resource as /pull/<n>); the
+# host-agnostic /pulls/ shape below is Gitea/Forgejo everywhere else.
+_GITHUB_PULLS = re.compile(
+    r"^https?://(?P<host>(?:www\.)?github\.com)/(?P<owner>[^/]+)/(?P<repo>[^/]+)"
+    r"/pulls/(?P<num>\d+)",
+    re.I,
+)
 _SHORTHAND_GH = re.compile(
     r"^(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+)[#/](?P<num>\d+)$"
 )
@@ -227,6 +234,17 @@ def parse_pr_url(url: str) -> Target:
     if m:
         return Target(
             provider="bitbucket",
+            host=m.group("host"),
+            number=m.group("num"),
+            url=raw,
+            owner=m.group("owner"),
+            repo=m.group("repo"),
+            original=url,
+        )
+    m = _GITHUB_PULLS.match(raw)
+    if m:
+        return Target(
+            provider="github",
             host=m.group("host"),
             number=m.group("num"),
             url=raw,
