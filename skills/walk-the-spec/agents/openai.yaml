@@ -1,0 +1,4 @@
+interface:
+  display_name: "Walk the Spec"
+  short_description: "Walk a spec step by step as its implementer to find unknown-unknowns"
+  default_prompt: "Use $walk-the-spec to walk this spec from now to closed and surface unknown-unknowns."

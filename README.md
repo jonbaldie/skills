@@ -349,3 +349,16 @@ help UI and API consumers dogfood the same underlying capabilities.
 /finding-seams
 ```
 
+### I need to find what a spec hasn't thought of yet
+
+**The problem.** Specs read as complete until someone starts building them. The
+gaps only show up mid-implementation, when they are expensive.
+
+**The fix.** [`walk-the-spec`](./skills/walk-the-spec/SKILL.md) walks the spec
+one tiny step at a time from now to closed, as the implementer, to surface
+unknown-unknowns before work starts.
+
+```text
+/walk-the-spec
+```
+
