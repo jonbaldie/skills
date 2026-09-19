@@ -8,53 +8,72 @@ disable-model-invocation: true
 
 Turn one source into a summary through successive reduction layers.
 
+Hold the source **by reference** the whole way down: a path and a line range,
+never its text. Subagents dereference; you read only the final pass.
+
 ## 1. Resolve the brief
 
-Require one readable source. Recommend a file or URL when asking for it; accept
-pasted text.
+Require one readable source and normalise it to a local file path:
+
+- a file: use its path;
+- a URL: `curl -sL <url> -o <path>`, converting HTML to text;
+- pasted text: write it to a file.
+
+Make a work directory alongside it for the layer files.
 
 Ask once:
 
-> Any particular focus, audience, format, or length? Say “no” for a general
+> Any particular focus, audience, format, or length? Say "no" for a general
 > summary.
 
 Use Summary instructions supplied with the invocation and proceed. Complete
-this step when the source and Summary instructions are both clear.
+this step when the source is one readable path on disk, the work directory
+exists, and the Summary instructions are clear.
 
-## 2. Choose the route
+## 2. Probe the size
 
-Extract the source's readable text and estimate its token count.
+Measure the file from the outside: `wc -lc <path>`. Read bytes ÷ 4 as tokens.
 
-When the source, instructions, and expected output total at most 150,000
-tokens, use the full source as the final-pass input.
+At most 50,000 tokens (200,000 bytes): go to step 5 and read the file there.
 
-Otherwise, begin a reduction layer. Complete this step when every part of the
-source belongs to one ordered chunk of roughly 100,000 tokens or fewer. Prefer
-heading and paragraph boundaries.
+Larger: locate the heading lines with `grep -n '^#\+ ' <path>`, then cut lines
+1..N into ordered chunks of roughly 25,000 tokens (100,000 bytes) or fewer,
+landing each boundary on a heading line where one is near. Cut on line count
+alone when the file has no headings.
+
+Complete this step when every line of the file falls in exactly one chunk
+range, each range computed from line numbers and byte counts alone.
 
 ## 3. Reduce
 
 Spawn one subagent per chunk, up to available concurrency. Give each subagent:
 
-- its chunk and position in the source;
+- the source path, its line range, and its position in the source;
+- an output path in the work directory, numbered by layer and position;
 - the complete Summary instructions;
 - a target of prose roughly 10% of its input or less.
 
-Collect every chunk summary in source order. Retry a missing or failed chunk.
-Complete the layer only when every chunk has exactly one summary.
+Each subagent dereferences its own range (`sed -n 'A,Bp' <path>`), writes its
+prose to the output path, and returns that path alone.
+
+Retry a missing or failed chunk. Complete the layer only when every chunk range
+has exactly one layer file, and you hold the ordered list of their paths.
 
 ## 4. Repeat
 
-When the ordered summaries, instructions, and expected output still exceed
-150,000 tokens, group the summaries into ordered batches of roughly 100,000
-tokens or fewer and run another reduction layer with the same Summary
+Probe the layer files together (`wc -c <workdir>/<layer>-*`). While they exceed
+50,000 tokens, group them in source order into batches of roughly 25,000
+tokens or fewer and run another reduction layer: each subagent `cat`s its batch
+in order and writes one file at the next layer, under the same Summary
 instructions and 10:1 target.
 
-Complete reduction when the final-pass input, instructions, and expected output
-total at most 150,000 tokens and every original chunk reaches that final input
-through every layer.
+Complete reduction when one layer's files total at most 50,000 tokens and
+every original chunk reaches that layer through an unbroken line of files.
 
 ## 5. Write the final summary
+
+Read the final-pass input: the source file, or the last layer's files in source
+order.
 
 Apply the Summary instructions. With none, write a broad-audience summary of at
 most 1,000 words in continuous prose paragraphs. Use uncited prose by default;
