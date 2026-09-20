@@ -333,6 +333,21 @@ changing the code unless you also ask for fixes.
 /seeking-performance
 ```
 
+### I want to find inputs that make my code slow
+
+**The problem.** Ordinary benchmarks can miss expensive input shapes. You need
+concrete inputs that expose hotspots and can be replayed to investigate them.
+
+**The fix.** [`perffuzz`](./skills/perffuzz/SKILL.md) mutates inputs using
+independent performance maxima, adapts instrumentation to the codebase, and
+validates and reduces expensive witnesses. It preserves the harness, corpus,
+measurements, and a report within a bounded search budget.
+
+```text
+/perffuzz
+/perffuzz parser — search for 20 minutes
+```
+
 ### I need to find clean modular boundaries in a tangled codebase
 
 **The problem.** Codebases grow tangled when domain capabilities couple directly
