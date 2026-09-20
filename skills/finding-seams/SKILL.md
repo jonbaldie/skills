@@ -1,40 +1,24 @@
 ---
 name: finding-seams
-description: Find architectural seams, backdoors, and un-dogfooded logic to move code toward deep, capability-oriented modules.
+description: Find architectural seams where application capabilities could move behind shared interfaces.
 ---
 
-# Capability-Oriented Architecture Review
+# Finding Seams
 
-Review the existing codebase for opportunities to move toward a capability-oriented modular architecture: deep modules, explicit stable service interfaces, and peer consumers dogfooding the same underlying application capabilities.
+Find application capabilities that belong behind clear, shared interfaces. Aim for **deep modules**: simple interfaces that hide substantial complexity. The UI, API, jobs, and scripts should **dogfood** those interfaces, using capabilities that could also serve external consumers.
 
-## Task
+## Review
 
-Inspect the codebase and identify architectural seams where:
-
-* domain capabilities are coupled to UI, transport, persistence, or orchestration details;
-* important logic is duplicated across UI, API, jobs, scripts, or services;
-* modules expose too much complexity or have shallow, leaky interfaces;
-* callers use backdoors (direct database reads, private imports, bypassed domain logic) rather than explicit service interfaces;
-* internal capabilities are not externalizable—the UI or internal tools use private capabilities unavailable through clean boundaries;
-* implicit seams could become explicit in-process module or service boundaries;
-* unstable, slow, unreliable, or awkward interfaces indicate poor underlying boundaries.
-
-Prefer architectural improvements that increase information hiding, capability reuse, interface stability, testability, and dogfooding.
-
-Prefer in-process modular boundaries over distributed microservices. Propose the smallest architectural change that creates a deep module with a stable interface.
+1. **Trace capabilities across callers.** Follow what the application does from its entry points to the business logic and storage. Identify which callers share each capability and how they reach it.
+2. **Find the friction.** Look for duplicated business logic, callers bypassing domain rules through database access or private imports, capabilities trapped in UI or transport code, and interfaces that force callers to understand implementation details. Ground each finding in exact code paths and its consequences.
+3. **Propose the smallest useful seam.** Describe a shared interface, the logic it would own, and how existing callers would use it. Prefer changes within the existing process. Each proposed step should leave the capability easier to use and its implementation better hidden.
 
 ## Output
 
-Produce a single ranked list of proposed enhancements.
+Return a single ranked list of proposals. Prioritise shared capabilities, bypassed domain rules, and interfaces causing active friction; weigh the benefit against implementation cost and risk.
 
 For each item include:
 
-1. **Change** — the concrete architectural change.
-2. **Evidence** — exact code paths, dependencies, duplication, backdoors, or failure modes that justify it.
-3. **Target boundary** — the capability and proposed interface.
-4. **Why it matters** — architectural and user/developer benefit.
-5. **Priority** — impact relative to implementation cost and risk.
-
-Rank highest the changes that eliminate the most architectural backdoors, extract the most important shared capabilities, or fix interfaces already causing active friction.
-
-Propose incremental partition changes that leave the codebase better factored after each step.
+- **Evidence:** the callers, code paths, and concrete problem.
+- **Change:** the capability, proposed interface, and how callers would adopt it.
+- **Payoff:** what becomes simpler or more reliable, with the cost and risk that justify its rank.
