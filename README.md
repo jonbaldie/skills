@@ -100,6 +100,18 @@ instead.
 
 </details>
 
+## Test
+
+Run every shell and Python test suite with one command:
+
+```bash
+tests/run-all.sh
+```
+
+The runner skips `install-ship-spec.sh` with a warning when Docker or
+`sandbox-exec` is unavailable. Set `RUN_ALL_SKIP` to a comma-separated list of
+suite names to skip a suite explicitly.
+
 ## Skills
 
 ### I ran out of Claude usage and need to continue!
