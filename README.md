@@ -102,6 +102,15 @@ instead.
 
 ## Skills
 
+### I want options and a recommendation
+
+[`options`](./skills/options/SKILL.md) gives 2–3 choices for the current decision,
+then recommends one. The whole response stays under 120 words.
+
+```text
+/options
+```
+
 ### I ran out of Claude usage and need to continue!
 
 **The problem.** Usage limits, crashes, and closed terminals interrupt agent work
@@ -376,4 +385,3 @@ unknown-unknowns before work starts.
 ```text
 /walk-the-spec
 ```
-
