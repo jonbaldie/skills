@@ -116,8 +116,8 @@ suite names to skip a suite explicitly.
 
 ### I want options and a recommendation
 
-[`options`](./skills/options/SKILL.md) gives 2–3 choices for the current decision,
-then recommends one. The whole response stays under 120 words.
+[`options`](./skills/options/SKILL.md) summarises the situation, gives 2–3 choices,
+then recommends one. The whole response stays under 240 words.
 
 ```text
 /options
