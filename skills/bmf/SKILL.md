@@ -191,3 +191,23 @@ obligation.
 Return the artifact in chat. When the user requested a file, show the complete
 artifact first and wait for confirmation, then write that approved artifact to
 the requested destination. Stop at the design.
+
+## Make the report understandable
+
+Write for a developer without a maths degree. Begin each report section with
+a short plain-English summary of what it shows and why it matters. Explain
+mathematical terms when first used.
+
+Include small, runnable code examples of the reference version and derived
+design, using the project's language or a familiar language when none is
+established. Use concrete inputs and show the expected outputs. Keep these
+examples in the report as illustrations of the design.
+
+For each major transformation, explain the before-and-after behavior beside
+the code: what changed, what stayed equivalent, and any conditions required.
+Explain cost with concrete work, such as passes over the input or intermediate
+collections, alongside complexity notation.
+
+End with a brief plain-English summary of the proposed design, its benefit,
+and any remaining proof obligations or trade-offs. A reader should understand
+the recommendation and its limits from the summaries and examples alone.
