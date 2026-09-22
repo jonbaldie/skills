@@ -114,6 +114,16 @@ suite names to skip a suite explicitly.
 
 ## Skills
 
+### I want to understand how something works and why it helps
+
+[`worked-example`](./skills/worked-example/SKILL.md) traces a concrete example
+step by step, showing what changes and what is retained. It compares the same
+example with a simple baseline to make the benefit visible.
+
+```text
+/worked-example Coverage-guided property-based testing
+```
+
 ### I want options and a recommendation
 
 [`options`](./skills/options/SKILL.md) summarises the situation, gives 2–3 choices,
