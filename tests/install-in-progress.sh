@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
-# Skills parked under skills/in-progress/ are unfinished and must not reach
-# users through either distribution path (install.sh or sync-skills.sh).
+# Skills parked under skills/in-progress/ are unfinished, and skills under
+# skills/deprecated/ are retired; neither may reach users through either
+# distribution path (install.sh or sync-skills.sh).
 
 set -euo pipefail
 
@@ -64,7 +65,7 @@ mkdir -p "${install_project}"
   fail "install.sh exited non-zero"
 }
 
-[[ -f "${install_project}/.agents/skills/ship-spec/SKILL.md" ]] ||
+[[ -f "${install_project}/.agents/skills/bmf/SKILL.md" ]] ||
   fail "install.sh did not install a shipped jonbaldie skill"
 [[ -f "${install_project}/.agents/skills/fixture-mp/SKILL.md" ]] ||
   fail "install.sh did not install the shipped prerequisite fixture skill"
@@ -74,6 +75,14 @@ if [[ -d "${in_progress_dir}" ]]; then
     [[ ! -e "${install_project}/.agents/skills/${name}" ]] ||
       fail "install.sh installed skills/in-progress skill: ${name}"
   done < <(find "${in_progress_dir}" -type f -name SKILL.md)
+fi
+readonly deprecated_dir="${repository_root}/skills/deprecated"
+if [[ -d "${deprecated_dir}" ]]; then
+  while IFS= read -r skill_md; do
+    name="$(basename "$(dirname "${skill_md}")")"
+    [[ ! -e "${install_project}/.agents/skills/${name}" ]] ||
+      fail "install.sh installed skills/deprecated skill: ${name}"
+  done < <(find "${deprecated_dir}" -type f -name SKILL.md)
 fi
 [[ ! -e "${install_project}/.agents/skills/matt-unfinished" ]] ||
   fail "install.sh installed a skills/in-progress skill from the prerequisite collection"
