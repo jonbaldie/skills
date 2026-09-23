@@ -19,13 +19,13 @@ CLAUDE_CONFIG_DIR="${test_home}/.claude" \
   "${repository_root}/install.sh" \
     --global \
     --agent claude-code \
-    --skill ship-spec \
+    --skill bmf \
     --without-prereqs \
     --yes \
     >"${test_root}/install.log"
 
-canonical_skill="${test_home}/.agents/skills/ship-spec"
-claude_skill="${test_home}/.claude/skills/ship-spec"
+canonical_skill="${test_home}/.agents/skills/bmf"
+claude_skill="${test_home}/.claude/skills/bmf"
 
 if [[ -L "${canonical_skill}" ]]; then
   printf 'Canonical skill became a symlink: %s -> %s\n' \
@@ -37,5 +37,5 @@ fi
 test -f "${canonical_skill}/SKILL.md"
 test -f "${claude_skill}/SKILL.md"
 cmp \
-  "${repository_root}/skills/ship-spec/SKILL.md" \
+  "${repository_root}/skills/bmf/SKILL.md" \
   "${canonical_skill}/SKILL.md"

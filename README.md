@@ -5,8 +5,8 @@ A small, curated subset of my coding agent skills.
 ## Prerequisite
 
 Some skills extend the engineering workflow from
-[`mattpocock/skills`](https://github.com/mattpocock/skills). `/ship-spec` and
-other dependent skills will not work without that collection.
+[`mattpocock/skills`](https://github.com/mattpocock/skills) and hand off to its
+skills, such as `/diagnosing-bugs`. Install that collection for the full flow.
 
 ## Install
 
@@ -32,6 +32,15 @@ The skill installs both collections into the requested project's
 curl -fsSL https://raw.githubusercontent.com/jonbaldie/skills/main/install.sh | bash -s -- --agent codex --with-prereqs
 ```
 
+### Cursor plugin
+
+This repository is also a Cursor plugin marketplace
+(`.cursor-plugin/marketplace.json`) with a single `jonbaldie-skills` plugin.
+Add `https://github.com/jonbaldie/skills` as a plugin marketplace in Cursor, then
+install `jonbaldie-skills`. The plugin ships every skill under `skills/<name>/`;
+skills under `skills/in-progress/` and `skills/deprecated/` are left out. It does
+not install `mattpocock/skills`.
+
 ### Just ask your agent
 
 These steps look like a lot? Paste this into your agent:
@@ -39,7 +48,7 @@ These steps look like a lot? Paste this into your agent:
 ```text
 Install jonbaldie/skills for me. It needs mattpocock/skills, so install that
 too. First ask: this project, or my user (global)? Use the same scope and agent
-for both, then check /ship-spec can find /implement.
+for both.
 ```
 
 <details>
@@ -92,8 +101,8 @@ agent=codex # Or claude-code, opencode, pi, or cursor
 curl -fsSL https://raw.githubusercontent.com/jonbaldie/skills/main/install.sh | bash -s -- --global --agent "${agent}" --with-prereqs
 ```
 
-`/ship-spec` will not work until the `mattpocock/skills` prerequisite workflow
-is installed for the same scope and harness.
+Skills that hand off to the `mattpocock/skills` workflow need it installed for
+the same scope and harness.
 
 Skill names below use the `/skill-name` form. In Codex, use `$skill-name`
 instead.
@@ -208,24 +217,6 @@ and continues the work — not report on it.
 Pass a URL from GitHub, GitLab, Bitbucket, Gitea/Forgejo, Azure DevOps, or
 another host. A number uses the current repository. No argument uses the open
 PR/MR for the current branch.
-
-### I have a whole parent spec and I just want it shipped
-
-**The problem.** A parent spec with a stack of child issues invites thrash:
-picking the wrong ticket next, mixing work on one branch, or calling something
-"done" before it's on the target branch. Agents drift; serial delivery stalls.
-
-**The fix.** [`ship-spec`](./skills/ship-spec/SKILL.md) walks ready child issues
-in dependency order, applies `/implement` to each on its own branch, and only
-moves on once that issue is integrated and reachable on the remote target
-branch.
-
-```text
-/ship-spec https://github.com/owner/repository/issues/123
-```
-
-Requires [`mattpocock/skills`](https://github.com/mattpocock/skills) (for
-`/implement`) installed for the same scope and harness.
 
 ### I finished the work — ship it through a PR
 

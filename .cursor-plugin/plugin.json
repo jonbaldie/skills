@@ -1,0 +1,21 @@
+{
+  "name": "jonbaldie-skills",
+  "displayName": "jonbaldie skills",
+  "version": "0.2.30",
+  "description": "A small, curated set of coding agent skills: resuming sessions and PRs, shipping PRs, finding bugs and seams, exploratory and performance testing, summaries, and spec work.",
+  "author": {
+    "name": "Jonathan Baldie",
+    "url": "https://github.com/jonbaldie"
+  },
+  "homepage": "https://github.com/jonbaldie/skills",
+  "repository": "https://github.com/jonbaldie/skills",
+  "keywords": [
+    "skills",
+    "agent-skills",
+    "workflow",
+    "testing",
+    "code-review"
+  ],
+  "category": "developer-tools",
+  "skills": "./skills/"
+}

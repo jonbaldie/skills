@@ -53,7 +53,7 @@ assert_installed() {
 # Filter matches only the jonbaldie collection; the prerequisite collection has
 # zero matches. The install must still succeed.
 jon_only_project="${test_root}/jon-only"
-run_install "${jon_only_project}" --skill ship-spec \
+run_install "${jon_only_project}" --skill bmf \
   >"${test_root}/jon-only.log" 2>"${test_root}/jon-only.err" ||
   {
     cat "${test_root}/jon-only.log" "${test_root}/jon-only.err" >&2
@@ -61,7 +61,7 @@ run_install "${jon_only_project}" --skill ship-spec \
     printf 'FAIL: %s\n' "${die_expected}" >&2
     exit 1
   }
-assert_installed "${jon_only_project}" ship-spec
+assert_installed "${jon_only_project}" bmf
 
 # Filter matches only the prerequisite collection; the jonbaldie collection has
 # zero matches. The install must still succeed (no partial-install abort).
@@ -82,11 +82,11 @@ if run_install "${no_match_project}" --skill definitely-not-a-skill \
   printf 'FAIL: filter matching nothing in either collection succeeded\n' >&2
   exit 1
 fi
-test ! -e "${no_match_project}/.agents/skills/ship-spec"
+test ! -e "${no_match_project}/.agents/skills/bmf"
 
 # No filter: full install of both collections still works.
 all_project="${test_root}/all"
 run_install "${all_project}" >"${test_root}/all.log"
-assert_installed "${all_project}" ship-spec fixture-mp
+assert_installed "${all_project}" bmf fixture-mp
 
 printf '%s\n' 'install-skill-filter: all scenarios passed'

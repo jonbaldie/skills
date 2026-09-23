@@ -5,7 +5,7 @@ set -euo pipefail
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 public_source="${1:-}"
 expected_revision="${2:-}"
-installation_root="$(mktemp -d "${TMPDIR:-/tmp}/ship-spec-install.XXXXXX")"
+installation_root="$(mktemp -d "${TMPDIR:-/tmp}/bmf-install.XXXXXX")"
 user_root="${HOME}"
 sandbox_policy="(version 1)
 (allow default)
@@ -106,7 +106,7 @@ run_documented_global_clone() {
     bash -euo pipefail -c '
       mkdir -p /root/.codex
       printf "y\n" | eval "$1"
-      test -f /root/.agents/skills/ship-spec/SKILL.md
+      test -f /root/.agents/skills/bmf/SKILL.md
       test -f /root/.agents/skills/implement/SKILL.md
       test ! -e /work/jonbaldie-skills/.agents
     ' bash "${readme_commands}"
@@ -123,7 +123,7 @@ run_public_global_clone() {
     "${DOCKER_IMAGE}" \
     bash -euo pipefail -c '
       printf "y\n" | eval "$1"
-      test -f /root/.agents/skills/ship-spec/SKILL.md
+      test -f /root/.agents/skills/bmf/SKILL.md
       test -f /root/.agents/skills/implement/SKILL.md
       test ! -e /work/jonbaldie-skills/.agents
     ' bash "${readme_commands}"
@@ -155,7 +155,7 @@ run_documented_project_clone() {
     sandbox-exec -p "${sandbox_policy}" \
       bash -euo pipefail -c "${project_commands}"
 
-  test -f "${project_with_spaces}/.agents/skills/ship-spec/SKILL.md"
+  test -f "${project_with_spaces}/.agents/skills/bmf/SKILL.md"
   test -f "${project_with_spaces}/.agents/skills/implement/SKILL.md"
   test ! -e "${installation_root}/jonbaldie-skills/.agents"
 }
@@ -183,7 +183,7 @@ printf 'y\n' | "${repo}/install.sh" --agent "${agent}" --yes
 EOS
   ) >"${installation_root}/manual-project.log"
 
-  test -f "${manual_project}/.agents/skills/ship-spec/SKILL.md"
+  test -f "${manual_project}/.agents/skills/bmf/SKILL.md"
   test -f "${manual_project}/.agents/skills/implement/SKILL.md"
 }
 
@@ -206,7 +206,7 @@ run_documented_global_manual() {
     bash -euo pipefail -c '
       eval "$1" >/tmp/first-install.log
       eval "$1" >/tmp/second-install.log
-      test -f /root/.agents/skills/ship-spec/SKILL.md
+      test -f /root/.agents/skills/bmf/SKILL.md
       test -f /root/.agents/skills/implement/SKILL.md
       test ! -e /work/.agents
     ' bash "${manual_commands}"
@@ -223,7 +223,7 @@ run_public_global_manual() {
     "${DOCKER_IMAGE}" \
     bash -euo pipefail -c '
       eval "$1" >/tmp/install.log
-      test -f /root/.agents/skills/ship-spec/SKILL.md
+      test -f /root/.agents/skills/bmf/SKILL.md
       test -f /root/.agents/skills/implement/SKILL.md
       test ! -e /work/.agents
     ' bash "${manual_commands}"
@@ -248,7 +248,7 @@ run_one_line_global() {
     "${DOCKER_IMAGE}" \
     bash -euo pipefail -c '
       eval "$1" >/tmp/oneline.log
-      test -f /root/.agents/skills/ship-spec/SKILL.md
+      test -f /root/.agents/skills/bmf/SKILL.md
       test -f /root/.agents/skills/implement/SKILL.md
       test ! -e /work/.agents
       grep -Eiq "Installing to:" /tmp/oneline.log
@@ -270,7 +270,7 @@ run_global_decline() {
           >/tmp/declined-install.log
       grep -Fq "Continuing without mattpocock/skills." \
         /tmp/declined-install.log
-      test -f /root/.agents/skills/ship-spec/SKILL.md
+      test -f /root/.agents/skills/bmf/SKILL.md
       test ! -e /root/.agents/skills/implement
       test ! -e /work/.agents
     '
@@ -291,7 +291,7 @@ run_automatic_codex_detection() {
           >/tmp/automatic-codex-install.log
       grep -Eiq "Installing to:.*Codex" \
         /tmp/automatic-codex-install.log
-      test -f /work/.agents/skills/ship-spec/SKILL.md
+      test -f /work/.agents/skills/bmf/SKILL.md
       test -f /work/.agents/skills/implement/SKILL.md
     '
 }
@@ -306,9 +306,9 @@ run_slash_command_harness() {
     claude-code \
     "${installation_root}/slash-command-install.log"
 
-  test -f "${slash_project}/.claude/skills/ship-spec/SKILL.md"
+  test -f "${slash_project}/.claude/skills/bmf/SKILL.md"
   test -f "${slash_project}/.claude/skills/implement/SKILL.md"
-  test ! -e "${slash_project}/.agents/skills/ship-spec"
+  test ! -e "${slash_project}/.agents/skills/bmf"
 }
 
 run_spaced_checkout() {
@@ -329,7 +329,7 @@ run_spaced_checkout() {
         --yes
   ) >"${installation_root}/spaced-checkout-install.log"
 
-  test -f "${spaced_project}/.agents/skills/ship-spec/SKILL.md"
+  test -f "${spaced_project}/.agents/skills/bmf/SKILL.md"
   test -f "${spaced_project}/.agents/skills/implement/SKILL.md"
 }
 
@@ -414,14 +414,14 @@ if [[ -n "${public_source}" ]]; then
 
   public_ship_only_project="${installation_root}/public-ship-only-project"
   run_scenario \
-    'anonymous public README ship-spec-only install' \
+    'anonymous public README jonbaldie-only install' \
     install_scenario \
     "${public_ship_only_project}" \
     run_public_ship_only \
     "${public_source}" \
     "${installation_root}/public-ship-only-install.log"
   test -f \
-    "${public_ship_only_project}/.agents/skills/ship-spec/SKILL.md"
+    "${public_ship_only_project}/.agents/skills/bmf/SKILL.md"
   test ! -e \
     "${public_ship_only_project}/.agents/skills/implement"
 
@@ -449,7 +449,7 @@ else
     codex \
     "${installation_root}/accepted-reinstall.log"
 
-  grep -Fq '$ship-spec and other skills in this collection will not work' \
+  grep -Fq 'Some skills in this collection need mattpocock/skills' \
     "${installation_root}/accepted-install.log"
   grep -Fq 'Install mattpocock/skills now? [y/N]' \
     "${installation_root}/accepted-install.log"
@@ -498,30 +498,30 @@ else
 fi
 
 installed_skills="${project_root}/.agents/skills"
-installed_ship_spec="${installed_skills}/ship-spec"
+installed_bmf="${installed_skills}/bmf"
 
-test -f "${installed_ship_spec}/SKILL.md"
-test -f "${installed_ship_spec}/agents/openai.yaml"
+test -f "${installed_bmf}/SKILL.md"
+test -f "${installed_bmf}/agents/openai.yaml"
 test -f "${installed_skills}/implement/SKILL.md"
 test -f "${installed_skills}/tdd/SKILL.md"
 test -f "${installed_skills}/code-review/SKILL.md"
 test -f "${installed_skills}/setup-matt-pocock-skills/SKILL.md"
-test -f "${installed_ship_spec}/../implement/SKILL.md"
+test -f "${installed_bmf}/../implement/SKILL.md"
 
-cmp "${repository_root}/skills/ship-spec/SKILL.md" \
-  "${installed_ship_spec}/SKILL.md"
-cmp "${repository_root}/skills/ship-spec/agents/openai.yaml" \
-  "${installed_ship_spec}/agents/openai.yaml"
+cmp "${repository_root}/skills/bmf/SKILL.md" \
+  "${installed_bmf}/SKILL.md"
+cmp "${repository_root}/skills/bmf/agents/openai.yaml" \
+  "${installed_bmf}/agents/openai.yaml"
 
-grep -q '^name: ship-spec$' "${installed_ship_spec}/SKILL.md"
-grep -Eq '^description: .+$' "${installed_ship_spec}/SKILL.md"
-grep -q 'display_name: "Ship Spec"' \
-  "${installed_ship_spec}/agents/openai.yaml"
+grep -q '^name: bmf$' "${installed_bmf}/SKILL.md"
+grep -Eq '^description: .+$' "${installed_bmf}/SKILL.md"
+grep -q 'display_name: "BMF"' \
+  "${installed_bmf}/agents/openai.yaml"
 grep -q 'allow_implicit_invocation: false' \
-  "${installed_ship_spec}/agents/openai.yaml"
+  "${installed_bmf}/agents/openai.yaml"
 
-ruby - "${installed_ship_spec}/SKILL.md" \
-  "${installed_ship_spec}/agents/openai.yaml" <<'RUBY'
+ruby - "${installed_bmf}/SKILL.md" \
+  "${installed_bmf}/agents/openai.yaml" <<'RUBY'
 require "yaml"
 
 skill_contents = File.read(ARGV.fetch(0))
@@ -529,11 +529,11 @@ frontmatter = skill_contents.match(/\A---\n(.*?)\n---\n/m)
 abort "invalid SKILL.md frontmatter" unless frontmatter
 
 skill_metadata = YAML.safe_load(frontmatter[1])
-abort "invalid skill name" unless skill_metadata["name"] == "ship-spec"
+abort "invalid skill name" unless skill_metadata["name"] == "bmf"
 abort "missing skill description" unless skill_metadata["description"].is_a?(String)
 
 agent_metadata = YAML.safe_load(File.read(ARGV.fetch(1)))
-abort "invalid agent interface" unless agent_metadata.dig("interface", "display_name") == "Ship Spec"
+abort "invalid agent interface" unless agent_metadata.dig("interface", "display_name") == "BMF"
 abort "invalid invocation policy" unless agent_metadata.dig("policy", "allow_implicit_invocation") == false
 RUBY
 
@@ -550,8 +550,8 @@ if [[ -z "${public_source}" ]]; then
 
   grep -Fq 'Continuing without mattpocock/skills.' \
     "${installation_root}/declined-install.log"
-  grep -Fq '$ship-spec and other dependent skills will not work' \
+  grep -Fq 'Skills that depend on it will not work' \
     "${installation_root}/declined-install.log"
-  test -f "${declined_project}/.agents/skills/ship-spec/SKILL.md"
+  test -f "${declined_project}/.agents/skills/bmf/SKILL.md"
   test ! -e "${declined_project}/.agents/skills/implement"
 fi

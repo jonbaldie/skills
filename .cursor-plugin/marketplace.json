@@ -1,0 +1,17 @@
+{
+  "name": "jonbaldie-skills",
+  "owner": {
+    "name": "Jonathan Baldie",
+    "url": "https://github.com/jonbaldie"
+  },
+  "metadata": {
+    "description": "Jonathan Baldie's curated coding agent skills."
+  },
+  "plugins": [
+    {
+      "name": "jonbaldie-skills",
+      "source": "./",
+      "description": "A small, curated set of coding agent skills: resuming sessions and PRs, shipping PRs, finding bugs and seams, exploratory and performance testing, summaries, and spec work."
+    }
+  ]
+}

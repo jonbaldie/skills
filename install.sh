@@ -502,7 +502,7 @@ ask_prereqs() {
     return 1
   fi
 
-  log '$ship-spec and other skills in this collection will not work without mattpocock/skills.'
+  log 'Some skills in this collection need mattpocock/skills.'
   printf 'Install mattpocock/skills now? [y/N] '
 
   local answer=""
@@ -522,7 +522,7 @@ ask_prereqs() {
   fi
 
   log 'Continuing without mattpocock/skills.'
-  log '$ship-spec and other dependent skills will not work until it is installed.'
+  log 'Skills that depend on it will not work until it is installed.'
   return 1
 }
 
