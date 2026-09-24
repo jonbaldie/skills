@@ -355,6 +355,18 @@ changing the code unless you also ask for fixes.
 /seeking-performance
 ```
 
+### I want to make a slow user journey faster
+
+[`hill-climbing`](./skills/hill-climbing/SKILL.md) turns one journey into a
+measured optimization loop: establish a baseline, prove benchmark feedback
+tracks latency, improve the code, verify the result, and protect the gain with
+a regression ceiling. It keeps work within a budget and distinguishes local
+benchmark wins from improvements verified with real users.
+
+```text
+/hill-climbing Feedback export — 25 minutes
+```
+
 ### I want to find inputs that make my code slow
 
 **The problem.** Ordinary benchmarks can miss expensive input shapes. You need
