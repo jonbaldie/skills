@@ -133,6 +133,8 @@ example with a simple baseline to make the benefit visible.
 /worked-example Coverage-guided property-based testing
 ```
 
+---
+
 ### I want options and a recommendation
 
 [`options`](./skills/options/SKILL.md) summarises the situation, gives 2–3 choices,
@@ -141,6 +143,8 @@ then recommends one. The whole response stays under 240 words.
 ```text
 /options
 ```
+
+---
 
 ### I ran out of Claude usage and need to continue!
 
@@ -195,6 +199,8 @@ Pass an id (or agent name for the generic skill) when you need a specific one:
 /resume-from-opencode "Resume Claude session skill"
 ```
 
+---
+
 ### I have a pull request I need to pick up
 
 **The problem.** The work already lives on a pull or merge request — review
@@ -218,6 +224,8 @@ Pass a URL from GitHub, GitLab, Bitbucket, Gitea/Forgejo, Azure DevOps, or
 another host. A number uses the current repository. No argument uses the open
 PR/MR for the current branch.
 
+---
+
 ### I finished the work — ship it through a PR
 
 **The problem.** Finished work may still be only a local branch. The last mile
@@ -234,6 +242,8 @@ the target branch, closes linked issues, and verifies the remote result.
 /ship-pr https://github.com/owner/repository/pull/42
 ```
 
+---
+
 ### I have changes on a fork that belong upstream
 
 **The problem.** A fork branch can carry extra merges, setup commits, or other
@@ -248,6 +258,8 @@ one clean upstream PR.
 ```text
 /promote-fork-pr-upstream https://github.com/fork-owner/repository/pull/42
 ```
+
+---
 
 ### I need an accurate summary of a massive amount of text
 
@@ -265,6 +277,8 @@ then writes the summary you asked for.
 ```
 
 Accepts a file, URL, or pasted text. Optional focus, audience, format, or length.
+
+---
 
 ### I need an LLM to improve an important spec without changing what it means
 
@@ -289,6 +303,8 @@ obligation—written for developers, not mathematicians.
 Pass an idea or specification, or invoke it without an argument to use the
 accepted conversation so far. In Codex, use `$bmf`.
 
+---
+
 ### I need to know whether my tests observe production behavior
 
 **The problem.** A passing test can assert values made entirely by fixtures,
@@ -300,6 +316,8 @@ every assertion back to its source, classifies its evidence, and highlights
 tests whose results never reach the system under test.
 
 Credit: [`unclebob/deintroverter4clj`](https://github.com/unclebob/deintroverter4clj?utm_source=chatgpt.com).
+
+---
 
 ### I want to find real bugs before my users do
 
@@ -322,6 +340,8 @@ what coverage-guided testing found.
 /finding-bugs
 ```
 
+---
+
 ### I want an agent to actually use my software
 
 **The problem.** Individual operations can work while a complete user journey
@@ -337,6 +357,8 @@ unexplored, leaving product fixes for a subsequent task.
 /exploratory-testing
 /exploratory-testing Try implementing a small feature through the TUI
 ```
+
+---
 
 ### I need to make slow code faster
 
@@ -355,6 +377,8 @@ changing the code unless you also ask for fixes.
 /seeking-performance
 ```
 
+---
+
 ### I want to make a slow user journey faster
 
 [`hill-climbing`](./skills/hill-climbing/SKILL.md) turns one journey into a
@@ -366,6 +390,8 @@ benchmark wins from improvements verified with real users.
 ```text
 /hill-climbing Feedback export — 25 minutes
 ```
+
+---
 
 ### I want to find inputs that make my code slow
 
@@ -382,6 +408,8 @@ measurements, and a report within a bounded search budget.
 /perffuzz parser — search for 20 minutes
 ```
 
+---
+
 ### I need to find clean modular boundaries in a tangled codebase
 
 **The problem.** Codebases grow tangled when domain capabilities couple directly
@@ -397,6 +425,8 @@ help UI and API consumers dogfood the same underlying capabilities.
 ```text
 /finding-seams
 ```
+
+---
 
 ### I need to find what a spec hasn't thought of yet
 
