@@ -1,19 +1,33 @@
 ---
 name: seeking-performance
-description: Audit a codebase for performance bottlenecks and produce a severity-ranked Big O report.
+description: Audit performance and rank bottlenecks by Big O complexity.
 ---
 
-Grill the relevant production code thoroughly. Inventory its entry points and performance-sensitive paths, then trace loops, recursion, collection pipelines, queries, I/O, allocation, and repeated work through their callers. Account for every subsystem in scope rather than stopping at the first plausible bottleneck.
+Audit every subsystem in scope. Change code only if the user requests fixes.
 
-For each candidate, name the input variables, derive its worst-case time and space complexity from the reachable code, and establish that realistic inputs can reach it. Use profiles or repeatable benchmarks where practical to distinguish an algorithmic concern from an active bottleneck. State uncertainty when workload or runtime evidence is unavailable.
+1. Map entry points and trace costly paths: loops, recursion, collection
+   pipelines, queries, I/O, allocations, and repeated work.
 
-Produce a report; leave the code unchanged unless the user also asks for fixes. Rank findings primarily by asymptotic time complexity, from fastest-growing to slowest-growing (`O(n!)`, `O(c^n)`, higher-degree polynomial, `O(n^2)`, `O(n log n)`, `O(n)`, `O(log n)`, `O(1)`). For a finding with multiple input variables, state how those variables scale when comparing it with other findings; if their growth cannot be compared, say so and use the tie-breakers instead. Use space complexity, call frequency, realistic input size, and measured impact as tie-breakers. For each finding include:
+2. For each suspected bottleneck, define input variables, derive worst-case
+   time and space complexity, and verify reachability with realistic inputs.
+   Profile or benchmark where practical; distinguish potential costs from
+   measured bottlenecks.
 
-- rank and severity expressed as an asymptotic class;
-- location and caller-visible path;
-- input variables and current time and space complexity;
-- the code-level cause and supporting evidence; for runtime evidence, include the command or workload, runtime or compiler version, and relevant machine and operating-system details needed to reproduce it;
-- a remediation direction and its expected complexity;
-- confidence and any missing evidence.
+3. Report findings in descending order of time-complexity growth. State
+   scaling assumptions when comparing multiple input variables. Break ties
+   using space, call frequency, input size, and measured impact. Use those
+   tie-breakers when growth rates cannot be compared, and say why.
 
-Finish only when every subsystem in scope is represented in the coverage summary and every reported finding is supported by source analysis rather than a generic optimization suggestion. If no meaningful bottleneck is found, say so and report what was inspected and ruled out.
+Each finding must include:
+
+- Rank, asymptotic severity, source location, and caller path.
+- Input variables and current time and space complexity.
+- Cause and source evidence.
+- For measurements: workload, command, runtime/compiler version, and
+  relevant machine/OS details needed to reproduce them.
+- Proposed fix and expected complexity.
+- Confidence and missing evidence.
+
+Finish with a coverage summary accounting for every subsystem in scope.
+Support every finding with source analysis. If none qualify, report what
+you inspected and ruled out.
