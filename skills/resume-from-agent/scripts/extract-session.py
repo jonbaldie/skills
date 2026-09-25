@@ -32,6 +32,32 @@ def home() -> Path:
     return Path.home()
 
 
+def codex_home() -> Path:
+    env = os.environ.get("CODEX_HOME")
+    if env:
+        return Path(env)
+    return home() / ".codex"
+
+
+def claude_config_dir() -> Path:
+    env = os.environ.get("CLAUDE_CONFIG_DIR")
+    if env:
+        return Path(env)
+    return home() / ".claude"
+
+
+def claude_roots() -> tuple[str, ...]:
+    if os.environ.get("CLAUDE_CONFIG_DIR"):
+        return (f"{claude_config_dir()}/projects",)
+    return ("~/.claude/projects",)
+
+
+def codex_roots() -> tuple[str, ...]:
+    if os.environ.get("CODEX_HOME"):
+        return (f"{codex_home()}/sessions",)
+    return ("~/.codex/sessions",)
+
+
 def resolve_path(path: str | Path) -> str:
     try:
         return str(Path(path).expanduser().resolve())
@@ -426,7 +452,27 @@ class Adapter:
     aliases: tuple[str, ...]
     discover: DiscoverFn
     extract: ExtractFn
-    roots: tuple[str, ...]  # human-readable probe paths for errors
+    _roots: tuple[str, ...] | Callable[[], tuple[str, ...]] = ()
+
+    def __init__(
+        self,
+        name: str,
+        aliases: tuple[str, ...],
+        discover: DiscoverFn,
+        extract: ExtractFn,
+        roots: tuple[str, ...] | Callable[[], tuple[str, ...]],
+    ) -> None:
+        self.name = name
+        self.aliases = aliases
+        self.discover = discover
+        self.extract = extract
+        self._roots = roots
+
+    @property
+    def roots(self) -> tuple[str, ...]:
+        if callable(self._roots):
+            return self._roots()
+        return self._roots
 
 
 ADAPTERS: dict[str, Adapter] = {}
@@ -1567,7 +1613,9 @@ def _skill_search_roots() -> list[Path]:
         here.parents[2],  # skills collection (repo or install tree)
         home() / ".agents" / "skills",
         home() / ".pi" / "agent" / "skills",
+        codex_home() / "skills",
         home() / ".codex" / "skills",
+        claude_config_dir() / "skills",
         home() / ".claude" / "skills",
         home() / ".cursor" / "skills",
     ]
@@ -1701,13 +1749,18 @@ def encode_claude_cwd(cwd: str) -> str:
 
 
 def discover_claude(cwd: str, session_id: str | None) -> list[Candidate]:
-    root = home() / ".claude" / "projects"
+    root = claude_config_dir() / "projects"
     if not root.is_dir():
         return []
     out: list[Candidate] = []
     if session_id:
         sid = session_id.strip()
-        hits = list(root.glob(f"*/{sid}.jsonl")) + list(root.rglob(f"{sid}.jsonl"))
+        hits = list(
+            dict.fromkeys(
+                list(root.glob(f"*/{sid}.jsonl"))
+                + list(root.rglob(f"{sid}.jsonl"))
+            )
+        )
         for path in hits:
             out.append(
                 Candidate(
@@ -1815,7 +1868,7 @@ def extract_pi_or_sibling(cand: Candidate) -> Brief:
 
 
 def load_codex_thread_names() -> dict[str, str]:
-    path = home() / ".codex" / "session_index.jsonl"
+    path = codex_home() / "session_index.jsonl"
     if not path.is_file():
         return {}
 
@@ -1842,7 +1895,7 @@ def load_codex_thread_names() -> dict[str, str]:
 
 
 def discover_codex(cwd: str, session_id: str | None) -> list[Candidate]:
-    root = home() / ".codex" / "sessions"
+    root = codex_home() / "sessions"
     if not root.is_dir():
         return []
     out: list[Candidate] = []
@@ -2234,7 +2287,7 @@ register(
         aliases=("claude-code", "anthropic"),
         discover=discover_claude,
         extract=extract_claude_or_sibling,
-        roots=("~/.claude/projects",),
+        roots=claude_roots,
     )
 )
 register(
@@ -2252,7 +2305,7 @@ register(
         aliases=("codex-cli",),
         discover=discover_codex,
         extract=extract_codex_or_sibling,
-        roots=("~/.codex/sessions",),
+        roots=codex_roots,
     )
 )
 register(

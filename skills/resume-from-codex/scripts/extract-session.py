@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from collections import Counter, deque
@@ -12,12 +13,19 @@ from datetime import datetime
 from pathlib import Path
 
 
+def codex_home() -> Path:
+    env = os.environ.get("CODEX_HOME")
+    if env:
+        return Path(env)
+    return Path.home() / ".codex"
+
+
 def sessions_root() -> Path:
-    return Path.home() / ".codex" / "sessions"
+    return codex_home() / "sessions"
 
 
 def session_index_path() -> Path:
-    return Path.home() / ".codex" / "session_index.jsonl"
+    return codex_home() / "session_index.jsonl"
 
 
 def read_session_meta(path: Path) -> dict:
