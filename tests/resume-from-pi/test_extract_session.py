@@ -68,6 +68,134 @@ class ResolveSessionTests(unittest.TestCase):
         path.mkdir(parents=True)
         return path
 
+    def _cwd_pair(self, home: Path) -> tuple[Path, Path]:
+        physical_cwd = home / "workspace" / "project"
+        physical_cwd.mkdir(parents=True)
+        symlink_cwd = home / "workspace" / "project-link"
+        symlink_cwd.symlink_to(physical_cwd, target_is_directory=True)
+        return physical_cwd, symlink_cwd
+
+    def _project_session_dir(self, home: Path, cwd: Path) -> Path:
+        return home / ".pi" / "agent" / "sessions" / self.mod.encode_cwd(str(cwd))
+
+    def _write_project_session(
+        self, session_dir: Path, session_id: str, prompt: str, cwd: Path
+    ) -> Path:
+        session_dir.mkdir(parents=True, exist_ok=True)
+        session = session_dir / f"20260101T120000_{session_id}.jsonl"
+        session.write_text(
+            json.dumps({"type": "session", "id": session_id, "cwd": str(cwd)})
+            + "\n"
+            + json.dumps(
+                {
+                    "type": "message",
+                    "message": {"role": "user", "content": prompt},
+                }
+            )
+            + "\n"
+        )
+        return session
+
+    def test_symlinked_cwd_finds_session_under_physical_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = self._home(tmp)
+            physical_cwd, symlink_cwd = self._cwd_pair(home)
+            self._write_project_session(
+                self._project_session_dir(home, physical_cwd.resolve()),
+                "pi-physical-session",
+                "pi physical prompt",
+                physical_cwd.resolve(),
+            )
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                self.mod.main(["--cwd", str(symlink_cwd)])
+
+            self.assertIn("session_id: pi-physical-session", output.getvalue())
+            self.assertIn("pi physical prompt", output.getvalue())
+
+    def test_physical_cwd_still_finds_its_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = self._home(tmp)
+            physical_cwd, _ = self._cwd_pair(home)
+            self._write_project_session(
+                self._project_session_dir(home, physical_cwd),
+                "pi-direct-session",
+                "pi direct prompt",
+                physical_cwd,
+            )
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                code = self.mod.main(["--cwd", str(physical_cwd)])
+
+            self.assertEqual(code, 0)
+            self.assertIn("session_id: pi-direct-session", output.getvalue())
+            self.assertIn("pi direct prompt", output.getvalue())
+
+    def test_both_cwd_keys_choose_the_newest_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = self._home(tmp)
+            physical_cwd, symlink_cwd = self._cwd_pair(home)
+            logical_session = self._write_project_session(
+                self._project_session_dir(home, symlink_cwd),
+                "pi-logical-session",
+                "older logical prompt",
+                symlink_cwd,
+            )
+            physical_session = self._write_project_session(
+                self._project_session_dir(home, physical_cwd.resolve()),
+                "pi-physical-session",
+                "newer physical prompt",
+                physical_cwd.resolve(),
+            )
+            os.utime(logical_session, (1_700_000_000, 1_700_000_000))
+            os.utime(physical_session, (1_700_003_600, 1_700_003_600))
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                self.mod.main(["--cwd", str(symlink_cwd)])
+
+            self.assertIn("session_id: pi-physical-session", output.getvalue())
+            self.assertIn("newer physical prompt", output.getvalue())
+            self.assertNotIn("pi-logical-session", output.getvalue())
+
+    def test_explicit_jsonl_lookup_remains_available(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = self._home(tmp)
+            physical_cwd, symlink_cwd = self._cwd_pair(home)
+            manual_session = home / "manual-session.jsonl"
+            manual_session.write_text(
+                json.dumps(
+                    {
+                        "type": "session",
+                        "id": "pi-jsonl-session",
+                        "cwd": str(physical_cwd),
+                    }
+                )
+                + "\n"
+                + json.dumps(
+                    {
+                        "type": "message",
+                        "message": {
+                            "role": "user",
+                            "content": "pi explicit jsonl prompt",
+                        },
+                    }
+                )
+                + "\n"
+            )
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                code = self.mod.main(
+                    ["--cwd", str(symlink_cwd), "--jsonl", str(manual_session)]
+                )
+
+            self.assertEqual(code, 0)
+            self.assertIn("pi explicit jsonl prompt", output.getvalue())
+            self.assertIn(str(manual_session), output.getvalue())
+
     def test_exact_suffix_beats_newer_prefix_decoy(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = self._home(tmp)

@@ -43,14 +43,25 @@ def resolve_session(cwd: str, session_id: str | None) -> Path:
             return max(pool, key=lambda p: p.stat().st_mtime)
         return hits[0]
 
-    project = root / encode_cwd(cwd)
-    if not project.is_dir():
-        raise SystemExit(
-            f"No Pi session directory for cwd {cwd!r} (looked for {project})"
+    projects = list(
+        dict.fromkeys(
+            root / encode_cwd(path)
+            for path in (cwd, str(Path(cwd).resolve()))
         )
-    files = list(project.glob("*.jsonl"))
+    )
+    existing_projects = [project for project in projects if project.is_dir()]
+    if not existing_projects:
+        raise SystemExit(
+            f"No Pi session directory for cwd {cwd!r} (looked for {projects[0]})"
+        )
+    files = [
+        session
+        for project in existing_projects
+        for session in project.glob("*.jsonl")
+    ]
     if not files:
-        raise SystemExit(f"No Pi session JSONL files in {project}")
+        project_list = ", ".join(str(project) for project in existing_projects)
+        raise SystemExit(f"No Pi session JSONL files in {project_list}")
     return max(files, key=lambda p: p.stat().st_mtime)
 
 
