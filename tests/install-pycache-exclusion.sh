@@ -10,6 +10,7 @@ repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 readonly repository_root
 readonly sync_script="${repository_root}/skills/sync-jonbaldie-skills/scripts/sync-skills.sh"
 readonly copy_script="${repository_root}/skills/sync-jonbaldie-skills/scripts/copy-to-skill-dirs.sh"
+readonly skill_tree_module="${repository_root}/skills/sync-jonbaldie-skills/scripts/lib/skill-tree.sh"
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/skills-pycache-test.XXXXXX")"
 readonly test_root
 
@@ -23,11 +24,17 @@ fail() {
   exit 1
 }
 
+# shellcheck source=/dev/null
+source "${skill_tree_module}"
+
 # Construct fixture repository mimicking a source checkout with python caches
 readonly fixture_repo="${test_root}/fixture-repo"
 mkdir -p "${fixture_repo}/skills/fixture-pycache/scripts/__pycache__"
 mkdir -p "${fixture_repo}/skills/fixture-pycache/scripts/.pytest_cache"
 ln -s "${repository_root}/install.sh" "${fixture_repo}/install.sh"
+# install.sh sources the skill-tree module from the collection it installs.
+mkdir -p "${fixture_repo}/skills/sync-jonbaldie-skills/scripts/lib"
+ln -s "${skill_tree_module}" "${fixture_repo}/skills/sync-jonbaldie-skills/scripts/lib/skill-tree.sh"
 
 cat >"${fixture_repo}/skills/fixture-pycache/SKILL.md" <<'EOF'
 ---
@@ -89,26 +96,14 @@ assert_clean_installation() {
   cmp -s "${fixture_repo}/skills/fixture-pycache/notes.txt" "${skill_installed}/notes.txt" ||
     fail "notes.txt content mismatch (${mode_desc})"
 
-  # Assert no __pycache__ directory exists
-  local pycache_dirs
-  pycache_dirs="$(find "${target_dir}" -type d -name "__pycache__")"
-  if [[ -n "${pycache_dirs}" ]]; then
-    fail "Found __pycache__ directory in ${target_dir} (${mode_desc}): ${pycache_dirs}"
-  fi
-
-  # Assert no .pytest_cache directory exists
-  local pytest_dirs
-  pytest_dirs="$(find "${target_dir}" -type d -name ".pytest_cache")"
-  if [[ -n "${pytest_dirs}" ]]; then
-    fail "Found .pytest_cache directory in ${target_dir} (${mode_desc}): ${pytest_dirs}"
-  fi
-
-  # Assert no *.pyc file exists
-  local pyc_files
-  pyc_files="$(find "${target_dir}" -type f -name "*.pyc")"
-  if [[ -n "${pyc_files}" ]]; then
-    fail "Found *.pyc file in ${target_dir} (${mode_desc}): ${pyc_files}"
-  fi
+  # Assert nothing the skill-tree module declares excluded was installed
+  local pattern matches
+  for pattern in "${SKILL_TREE_EXCLUDES[@]}"; do
+    matches="$(find "${target_dir}" -name "${pattern}")"
+    if [[ -n "${matches}" ]]; then
+      fail "Found excluded ${pattern} in ${target_dir} (${mode_desc}): ${matches}"
+    fi
+  done
 }
 
 # Test 1: Symlink mode (materializes at .agents/skills)

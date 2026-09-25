@@ -10,6 +10,7 @@ set -euo pipefail
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 readonly repository_root
 readonly sync_script="${repository_root}/skills/sync-jonbaldie-skills/scripts/sync-skills.sh"
+readonly skill_tree_module="${repository_root}/skills/sync-jonbaldie-skills/scripts/lib/skill-tree.sh"
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/skills-collision-test.XXXXXX")"
 readonly test_root
 
@@ -34,6 +35,16 @@ make_skill() {
   printf -- '---\nname: %s\ndescription: %s\n---\n%s\n' "${name}" "${rel_dir}" "${body}" >"${skill_dir}/SKILL.md"
 }
 
+# install.sh sources the skill-tree module from the collection it installs.
+add_installer() {
+  local repo_dir="$1"
+  local module_dir="${repo_dir}/skills/sync-jonbaldie-skills/scripts/lib"
+
+  cp "${repository_root}/install.sh" "${repo_dir}/install.sh"
+  mkdir -p "${module_dir}"
+  cp "${skill_tree_module}" "${module_dir}/skill-tree.sh"
+}
+
 commit_repo() {
   local repo_dir="$1"
   git -C "${repo_dir}" add .
@@ -48,7 +59,7 @@ make_skill "${repo1}" alpha "My Skill" "alpha body"
 make_skill "${repo1}" beta "my-skill" "beta body"
 make_skill "${repo1}" fine "fine-skill" "fine body"
 commit_repo "${repo1}"
-cp "${repository_root}/install.sh" "${repo1}/install.sh"
+add_installer "${repo1}"
 
 project1="${test_root}/project1"
 mkdir -p "${project1}"
@@ -82,7 +93,7 @@ make_skill "${mp_repo}" mp-colliding "Cross Skill" "mp body"
 commit_repo "${mp_repo}"
 make_skill "${jb_repo}" jb-colliding "cross-skill" "jb body"
 commit_repo "${jb_repo}"
-cp "${repository_root}/install.sh" "${jb_repo}/install.sh"
+add_installer "${jb_repo}"
 
 project2="${test_root}/project2"
 mkdir -p "${project2}"
