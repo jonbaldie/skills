@@ -19,7 +19,7 @@ die() {
   exit 2
 }
 
-for command_name in git find awk dirname basename mkdir rm cp sort grep mktemp mv; do
+for command_name in git find awk dirname basename mkdir rm cp sort grep mktemp mv sed tr; do
   command -v "${command_name}" >/dev/null 2>&1 || die "missing required command: ${command_name}"
 done
 
@@ -33,6 +33,8 @@ temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/sync-jonbaldie-skills.XXXXXX")"
 readonly temporary_root
 readonly names_file="${temporary_root}/managed-names"
 readonly sorted_names_file="${temporary_root}/managed-names.sorted"
+readonly preflight_manifest="${temporary_root}/skills-preflight.tsv"
+readonly copied_sources_file="${temporary_root}/copied-sources.tsv"
 
 cleanup() {
   rm -rf "${temporary_root}"
@@ -61,15 +63,74 @@ skill_name() {
   )"
 
   [[ -n "${name}" ]] || name="$(basename "${skill_directory}")"
+  name="$(printf '%s' "${name}" | tr '[:upper:]' '[:lower:]')"
+  name="$(printf '%s' "${name}" | sed -E 's/[^a-z0-9._]+/-/g; s/^[.-]+//; s/[.-]+$//; s/^$/unnamed-skill/')"
   [[ "${name}" =~ ^[a-z0-9][a-z0-9._-]*$ ]] ||
     die "unsafe skill name '${name}' in ${skill_directory}/SKILL.md"
   printf '%s\n' "${name}"
+}
+
+validate_skill_collisions() {
+  local manifest_file="$1"
+  local collision_err
+
+  collision_err="$(sort -u "${manifest_file}" | awk -F'\t' '
+    {
+      name = $1
+      dir = $2
+      if (!(name in count)) {
+        names[++num_names] = name
+      }
+      dirs[name] = dirs[name] ? dirs[name] "\n  " dir : dir
+      count[name]++
+    }
+    END {
+      has_collision = 0
+      for (i = 1; i <= num_names; i++) {
+        n = names[i]
+        if (count[n] > 1) {
+          has_collision = 1
+          printf "normalized skill name '\''%s'\'' collides across multiple source directories:\n  %s\n", n, dirs[n]
+        }
+      }
+      if (has_collision) exit 1
+    }
+  ')" || {
+    die "${collision_err}"
+  }
+}
+
+collect_collection_skills() {
+  local repository_root="$1"
+  local skill_file skill_directory name real_dir
+
+  while IFS= read -r -d '' skill_file; do
+    skill_directory="$(dirname "${skill_file}")"
+    name="$(skill_name "${skill_directory}")"
+    real_dir="$(cd -P "${skill_directory}" 2>/dev/null && pwd -P || printf '%s' "${skill_directory}")"
+    printf '%s\t%s\n' "${name}" "${real_dir}" >>"${preflight_manifest}"
+  done < <(
+    find "${repository_root}/skills" \
+      \( -name node_modules -o -name .git -o -name in-progress -o -name deprecated \
+         -o -name .agents -o -name .claude -o -name .gemini \) -prune -o \
+      -type f -name SKILL.md -print0
+  )
 }
 
 copy_skill() {
   local source_directory="$1"
   local name="$2"
   local destination="${skills_dir}/${name}"
+  local real_dir existing_source
+
+  real_dir="$(cd -P "${source_directory}" 2>/dev/null && pwd -P || printf '%s' "${source_directory}")"
+  if [[ -f "${copied_sources_file}" ]]; then
+    existing_source="$(awk -F'\t' -v n="${name}" '$1 == n { print $2; exit }' "${copied_sources_file}")"
+    if [[ -n "${existing_source}" && "${existing_source}" != "${real_dir}" ]]; then
+      die "refusing to overwrite destination for colliding skill '${name}' from ${source_directory}"
+    fi
+  fi
+  printf '%s\t%s\n' "${name}" "${real_dir}" >>"${copied_sources_file}"
 
   rm -rf "${destination}"
   cp -a "${source_directory}" "${destination}"
@@ -110,6 +171,10 @@ mattpocock_commit="$(git -C "${temporary_root}/mattpocock" rev-parse HEAD)"
 readonly mattpocock_commit
 jonbaldie_commit="$(git -C "${temporary_root}/jonbaldie" rev-parse HEAD)"
 readonly jonbaldie_commit
+
+collect_collection_skills "${temporary_root}/mattpocock"
+collect_collection_skills "${temporary_root}/jonbaldie"
+validate_skill_collisions "${preflight_manifest}"
 
 mkdir -p "${skills_dir}"
 : >"${names_file}"

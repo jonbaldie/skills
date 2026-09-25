@@ -61,7 +61,7 @@ readonly external_destination="${temporary_root}/external skills"
 
 git init --quiet "${matt_repository}"
 make_skill "${matt_repository}" engineering/alpha alpha 'matt alpha'
-make_skill "${matt_repository}" productivity/shared shared 'matt shared'
+make_skill "${matt_repository}" productivity/helper helper 'matt helper'
 mkdir -p "${matt_repository}/skills/deprecated/ignored"
 printf '%s\n' '---' 'name: ignored' 'description: Ignored fixture.' '---' >"${matt_repository}/skills/deprecated/ignored/SKILL.md"
 commit_repository "${matt_repository}"
@@ -113,5 +113,14 @@ assert_content 'jon beta' "${external_destination}/beta/content.txt"
 assert_missing "${external_destination}/alpha/scripts/__pycache__"
 assert_missing "${external_destination}/alpha/stray.pyc"
 assert_file "${external_destination}/.sync-jonbaldie-skills.manifest"
+
+make_skill "${matt_repository}" productivity/shared shared 'matt shared'
+commit_repository "${matt_repository}"
+if MATTPOCOCK_SKILLS_REPO="${matt_repository}" \
+   JONBALDIE_SKILLS_REPO="${jon_repository}" \
+   "${sync_script}" "${project}" >"${temporary_root}/collision.log" 2>&1; then
+  fail "expected sync-skills.sh to fail on collision"
+fi
+grep -q "shared" "${temporary_root}/collision.log" || fail "expected collision error to mention 'shared'"
 
 printf 'PASS: deterministic sync and optional copies\n'

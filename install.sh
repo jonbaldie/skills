@@ -15,6 +15,7 @@ with_prereqs="" # yes | no | empty (ask)
 declare -a selected_agents=()
 declare -a selected_skills=()
 declare -a cleanup_paths=()
+installed_skills_registry=""
 
 script_from_stdin=false
 repository_root=""
@@ -433,9 +434,21 @@ install_skill_dir() {
   local skill_dir="$1"
   local name canonical agent_name agent_dir
   local installed_any=false
+  local real_dir existing_source
 
   name="$(skill_name_from_dir "${skill_dir}")"
   skill_selected "${name}" || return 0
+
+  real_dir="$(cd -P "${skill_dir}" 2>/dev/null && pwd -P || printf '%s' "${skill_dir}")"
+  if [[ -n "${installed_skills_registry}" && -f "${installed_skills_registry}" ]]; then
+    existing_source="$(awk -F'\t' -v n="${name}" '$1 == n { print $2; exit }' "${installed_skills_registry}")"
+    if [[ -n "${existing_source}" && "${existing_source}" != "${real_dir}" ]]; then
+      die "error: refusing to overwrite destination for colliding skill '${name}' from ${skill_dir}"
+    fi
+  fi
+  if [[ -n "${installed_skills_registry}" ]]; then
+    printf '%s\t%s\n' "${name}" "${real_dir}" >>"${installed_skills_registry}"
+  fi
 
   canonical="$(canonical_skills_dir)/${name}"
 
@@ -547,6 +560,59 @@ print_install_targets() {
   log "Installing to: ${joined}"
 }
 
+check_collisions_manifest() {
+  local manifest="$1"
+  sort -u "${manifest}" | awk -F'\t' '
+    {
+      name = $1
+      dir = $2
+      if (!(name in count)) {
+        names[++num_names] = name
+      }
+      dirs[name] = dirs[name] ? dirs[name] "\n  " dir : dir
+      count[name]++
+    }
+    END {
+      has_collision = 0
+      for (i = 1; i <= num_names; i++) {
+        n = names[i]
+        if (count[n] > 1) {
+          has_collision = 1
+          printf "normalized skill name '\''%s'\'' collides across multiple source directories:\n  %s\n", n, dirs[n]
+        }
+      }
+      if (has_collision) exit 1
+    }
+  '
+}
+
+validate_skill_collisions() {
+  local root skill_dir name real_dir
+  local manifest
+  manifest="$(mktemp "${TMPDIR:-/tmp}/skills-collision-manifest.XXXXXX")"
+  cleanup_paths+=("${manifest}")
+
+  for root in "$@"; do
+    [[ -n "${root}" ]] || continue
+    while IFS= read -r skill_dir; do
+      [[ -n "${skill_dir}" ]] || continue
+      name="$(skill_name_from_dir "${skill_dir}")"
+      skill_selected "${name}" || continue
+      real_dir="$(cd -P "${skill_dir}" 2>/dev/null && pwd -P || printf '%s' "${skill_dir}")"
+      printf '%s\t%s\n' "${name}" "${real_dir}" >>"${manifest}"
+    done < <(discover_skill_dirs "${root}" | sort -u)
+  done
+
+  if [[ ! -s "${manifest}" ]]; then
+    return 0
+  fi
+
+  local collision_err
+  if ! collision_err="$(check_collisions_manifest "${manifest}")"; then
+    die "error: ${collision_err}"
+  fi
+}
+
 main() {
   detect_script_origin
   parse_args "$@"
@@ -565,6 +631,9 @@ main() {
   require_command sed
   require_command tr
 
+  installed_skills_registry="$(mktemp "${TMPDIR:-/tmp}/skills-installed-reg.XXXXXX")"
+  cleanup_paths+=("${installed_skills_registry}")
+
   # curl|bash one-liner defaults to a global install unless --project was set.
   if [[ "${script_from_stdin}" == true && -z "${explicit_scope}" ]]; then
     global_install=true
@@ -580,9 +649,20 @@ main() {
   local total_matches=0
   jon_root="$(resolve_jonbaldie_root)"
 
+  local mp_root=""
   if ask_prereqs; then
-    local mp_root
     mp_root="$(resolve_mattpocock_root)"
+  fi
+
+  local -a roots_to_install=()
+  if [[ -n "${mp_root}" ]]; then
+    roots_to_install+=("${mp_root}")
+  fi
+  roots_to_install+=("${jon_root}")
+
+  validate_skill_collisions "${roots_to_install[@]}"
+
+  if [[ -n "${mp_root}" ]]; then
     log "Installing mattpocock/skills..."
     install_from_root "${mp_root}"
     total_matches=$((total_matches + root_skill_matches))
