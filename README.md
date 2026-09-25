@@ -155,6 +155,17 @@ then recommends one. The whole response stays under 240 words.
 
 ---
 
+### I want one small coding-standards fix
+
+[`fix-one-thing`](./skills/fix-one-thing/SKILL.md) reads `CODING_STANDARDS.md`,
+finds one violation with the smallest blast radius, and fixes it in one PR.
+
+```text
+/fix-one-thing
+```
+
+---
+
 ### I ran out of Claude usage and need to continue!
 
 **The problem.** Usage limits, crashes, and closed terminals interrupt agent work
