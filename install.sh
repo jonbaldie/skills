@@ -313,9 +313,9 @@ resolve_mattpocock_root() {
   printf '%s\n' "${tmp}/repo"
 }
 
-# The skill-tree module defines discover_skill_dirs, skill_name_from_dir and
-# copy_skill_tree. A curl|bash run has no checkout until the collection is
-# cloned, so it is sourced from the resolved collection root.
+# The skill-tree module defines how skills are discovered, named and copied.
+# A curl|bash run has no checkout until the collection is cloned, so it is
+# sourced from the resolved collection root.
 load_skill_tree_module() {
   local module="$1/skills/sync-jonbaldie-skills/scripts/lib/skill-tree.sh"
   [[ -f "${module}" ]] || die "Missing skill-tree module: ${module}"
