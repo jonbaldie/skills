@@ -190,6 +190,72 @@ class ResolveSessionTests(unittest.TestCase):
             self.assertIn("explicit jsonl prompt", jsonl_output)
             self.assertIn(str(by_jsonl), jsonl_output)
 
+    def test_resolve_session_honors_claude_config_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = self._home(tmp)
+            physical_cwd, _ = self._cwd_pair(home)
+            custom_claude = Path(tmp) / "custom_claude"
+            custom_project = (
+                custom_claude
+                / "projects"
+                / self.mod.encode_cwd(str(physical_cwd))
+            )
+            custom_session = self._write_session(
+                custom_project,
+                "custom-claude-session",
+                "custom config dir prompt",
+                physical_cwd,
+            )
+
+            # Stale session in default ~/.claude with newer mtime
+            stale_project = self._project(home, physical_cwd)
+            stale_session = self._write_session(
+                stale_project,
+                "stale-claude-session",
+                "stale default prompt",
+                physical_cwd,
+            )
+            os.utime(stale_session, (1_800_000_000, 1_800_000_000))
+
+            old_config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
+            try:
+                os.environ["CLAUDE_CONFIG_DIR"] = str(custom_claude)
+                output = self._render(["--cwd", str(physical_cwd)])
+                self.assertIn("session_id: custom-claude-session", output)
+                self.assertIn("custom config dir prompt", output)
+                self.assertNotIn("stale default prompt", output)
+            finally:
+                if old_config_dir is None:
+                    os.environ.pop("CLAUDE_CONFIG_DIR", None)
+                else:
+                    os.environ["CLAUDE_CONFIG_DIR"] = old_config_dir
+
+    def test_claude_config_dir_empty_or_unset_falls_back_to_home(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = self._home(tmp)
+            physical_cwd, _ = self._cwd_pair(home)
+            self._write_session(
+                self._project(home, physical_cwd),
+                "default-claude-session",
+                "default prompt",
+                physical_cwd,
+            )
+
+            old_config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
+            try:
+                os.environ.pop("CLAUDE_CONFIG_DIR", None)
+                output = self._render(["--cwd", str(physical_cwd)])
+                self.assertIn("default-claude-session", output)
+
+                os.environ["CLAUDE_CONFIG_DIR"] = ""
+                output2 = self._render(["--cwd", str(physical_cwd)])
+                self.assertIn("default-claude-session", output2)
+            finally:
+                if old_config_dir is None:
+                    os.environ.pop("CLAUDE_CONFIG_DIR", None)
+                else:
+                    os.environ["CLAUDE_CONFIG_DIR"] = old_config_dir
+
     def _restore_home(self, old_home: str | None) -> None:
         if old_home is None:
             os.environ.pop("HOME", None)

@@ -810,5 +810,110 @@ class ExtractSessionTests(unittest.TestCase):
             self.assertIn("exact prompt", out)
             self.assertNotIn("decoy prompt", out)
 
+    def test_discover_codex_honors_codex_home(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            custom_codex = tmp_path / "custom_codex"
+            sessions_dir = (
+                custom_codex / "sessions" / "2026" / "01" / "01"
+            )
+            sessions_dir.mkdir(parents=True)
+            rollout = sessions_dir / (
+                "rollout-2026-01-01T00-00-00-custom.jsonl"
+            )
+            self._write_codex_rollout(rollout)
+            index_file = custom_codex / "session_index.jsonl"
+            index_file.write_text(
+                json.dumps(
+                    {"id": "custom", "thread_name": "Custom Thread"}
+                )
+                + "\n"
+            )
+
+            old_codex = os.environ.get("CODEX_HOME")
+            try:
+                os.environ["CODEX_HOME"] = str(custom_codex)
+                candidates = self.mod.discover_codex("/ws", "Custom Thread")
+                self.assertEqual(len(candidates), 1)
+                self.assertEqual(candidates[0].agent, "codex")
+                self.assertEqual(candidates[0].path, str(rollout))
+
+                candidates_all = self.mod.discover_codex("/ws", None)
+                self.assertEqual(len(candidates_all), 1)
+                self.assertEqual(candidates_all[0].path, str(rollout))
+            finally:
+                if old_codex is None:
+                    os.environ.pop("CODEX_HOME", None)
+                else:
+                    os.environ["CODEX_HOME"] = old_codex
+
+    def test_discover_claude_honors_claude_config_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            custom_claude = tmp_path / "custom_claude"
+            project_dir = custom_claude / "projects" / "-ws"
+            project_dir.mkdir(parents=True)
+            session_file = project_dir / "custom-session.jsonl"
+            session_file.write_text(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "cwd": "/ws",
+                        "sessionId": "custom-session",
+                        "message": {"content": [{"type": "text", "text": "custom prompt"}]},
+                    }
+                )
+                + "\n"
+            )
+
+            old_claude = os.environ.get("CLAUDE_CONFIG_DIR")
+            try:
+                os.environ["CLAUDE_CONFIG_DIR"] = str(custom_claude)
+                candidates = self.mod.discover_claude("/ws", None)
+                self.assertEqual(len(candidates), 1)
+                self.assertEqual(candidates[0].agent, "claude")
+                self.assertEqual(candidates[0].path, str(session_file))
+
+                candidates_by_id = self.mod.discover_claude("/ws", "custom-session")
+                self.assertEqual(len(candidates_by_id), 1)
+                self.assertEqual(candidates_by_id[0].path, str(session_file))
+            finally:
+                if old_claude is None:
+                    os.environ.pop("CLAUDE_CONFIG_DIR", None)
+                else:
+                    os.environ["CLAUDE_CONFIG_DIR"] = old_claude
+
+    def test_probed_roots_honors_custom_locations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            custom_codex = tmp_path / "custom_codex"
+            custom_claude = tmp_path / "custom_claude"
+
+            old_codex = os.environ.get("CODEX_HOME")
+            old_claude = os.environ.get("CLAUDE_CONFIG_DIR")
+            try:
+                os.environ["CODEX_HOME"] = str(custom_codex)
+                os.environ["CLAUDE_CONFIG_DIR"] = str(custom_claude)
+
+                code, out = self._main_output(
+                    ["--cwd", "/nonexistent", "--agent", "codex", "--list"]
+                )
+                self.assertIn(f"Probed: {custom_codex}/sessions", out)
+
+                code, out = self._main_output(
+                    ["--cwd", "/nonexistent", "--agent", "claude", "--list"]
+                )
+                self.assertIn(f"Probed: {custom_claude}/projects", out)
+            finally:
+                if old_codex is None:
+                    os.environ.pop("CODEX_HOME", None)
+                else:
+                    os.environ["CODEX_HOME"] = old_codex
+                if old_claude is None:
+                    os.environ.pop("CLAUDE_CONFIG_DIR", None)
+                else:
+                    os.environ["CLAUDE_CONFIG_DIR"] = old_claude
+
+
 if __name__ == "__main__":
     unittest.main()

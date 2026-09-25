@@ -5,11 +5,23 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
+
+
+def claude_config_dir() -> Path:
+    env = os.environ.get("CLAUDE_CONFIG_DIR")
+    if env:
+        return Path(env)
+    return Path.home() / ".claude"
+
+
+def projects_root() -> Path:
+    return claude_config_dir() / "projects"
 
 
 def encode_cwd(cwd: str) -> str:
@@ -19,7 +31,7 @@ def encode_cwd(cwd: str) -> str:
 
 
 def resolve_session(cwd: str, session_id: str | None) -> Path:
-    root = Path.home() / ".claude" / "projects"
+    root = projects_root()
     if session_id:
         sid = session_id.strip()
         hits = sorted(root.glob(f"*/{sid}.jsonl"))
