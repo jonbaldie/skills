@@ -41,6 +41,15 @@ install `jonbaldie-skills`. The plugin ships every skill under `skills/<name>/`;
 skills under `skills/in-progress/` and `skills/deprecated/` are left out. It does
 not install `mattpocock/skills`.
 
+### Cursor skill sync
+
+`install.sh --global --agent cursor` installs into `~/.agents/skills`, not
+`~/.cursor/skills`. Cursor's **Sync Skills for Cloud Agents** setting syncs only
+`~/.cursor/skills`, and once enabled it effectively removes those skills from
+this disk. Copy each skill into `~/.cursor/skills` as a real directory; never
+symlink `~/.cursor/skills` or its entries to `~/.agents/skills`. Cursor does not
+surface this.
+
 ### Just ask your agent
 
 These steps look like a lot? Paste this into your agent:
