@@ -134,11 +134,21 @@ def truncate(text: str, limit: int) -> str:
 
 
 def clean_user_text(text: str) -> str:
-    skills = re.findall(r"\[\$([^\]]+)\]", text)
+    skills = re.findall(r'<skill\s+name="([^"]+)"', text, flags=re.I)
+    skills += re.findall(r"\[\$([^\]]+)\]", text)
     skills += re.findall(r"<name>\s*([^<]+?)\s*</name>", text)
-    text = re.sub(r"<skill>.*?</skill>", "", text, flags=re.S | re.I)
+    text = re.sub(r"<skill\b[^>]*>.*?</skill>", "", text, flags=re.S | re.I)
     text = re.sub(
         r"<environment_context>.*?</environment_context>", "", text, flags=re.S | re.I
+    )
+    text = re.sub(
+        r"^# AGENTS\.md instructions for [^\n]*\n.*?</INSTRUCTIONS>",
+        "",
+        text,
+        flags=re.S | re.M,
+    )
+    text = re.sub(
+        r"<user_instructions>.*?</user_instructions>", "", text, flags=re.S | re.I
     )
     text = re.sub(
         r"<recommended_plugins>.*?</recommended_plugins>", "", text, flags=re.S | re.I
@@ -155,9 +165,30 @@ def clean_user_text(text: str) -> str:
         if not text:
             return label
         # Drop bare [$skill](path) prefix once skill is labeled
-        text = re.sub(r"\[\$[^\]]+\]\([^)]+\)\s*", "", text).strip()
+        text = re.sub(r"\[\$[^\]]+\](?:\([^)]+\))?\s*", "", text).strip()
         return f"{label}\n{text}".strip() if text else label
     return text
+
+
+def response_item_text(payload: dict, block_types: set[str]) -> str:
+    content = payload.get("content")
+    if content is None:
+        content = payload.get("message") or payload.get("text") or []
+    texts = []
+    if isinstance(content, str):
+        if content.strip():
+            texts.append(content)
+    elif isinstance(content, list):
+        for block in content:
+            if isinstance(block, str):
+                if block.strip():
+                    texts.append(block)
+            elif isinstance(block, dict):
+                if block.get("type") in block_types or "text" in block:
+                    t = block.get("text") or ""
+                    if t.strip():
+                        texts.append(t)
+    return "\n".join(texts)
 
 
 def parse_tool_blob(raw) -> str:
@@ -200,8 +231,10 @@ def parse_session(path: Path) -> dict:
     names = load_thread_names()
     thread_name = names.get(meta.get("session_id") or "")
 
-    user_turns: list[str] = []
-    recent_users: deque[str] = deque(maxlen=4)
+    event_user_turns: list[str] = []
+    # Codex mirrors each event_msg user_message as a response_item user
+    # message; the latter is only used when a rollout records no events.
+    item_user_turns: list[str] = []
     recent_agents: deque[dict] = deque(maxlen=8)
     files: Counter[str] = Counter()
     skills: list[str] = []
@@ -232,17 +265,9 @@ def parse_session(path: Path) -> dict:
             if kind == "event_msg":
                 et = payload.get("type")
                 if et == "user_message":
-                    raw = payload.get("message") or ""
-                    text = clean_user_text(raw)
-                    if not text:
-                        continue
-                    user_turns.append(text)
-                    recent_users.append(text)
-                    for match in re.finditer(r"\[skill\]\s*([^\n]+)", text):
-                        for part in match.group(1).split(","):
-                            skill = part.strip()
-                            if skill:
-                                skills.append(skill)
+                    text = clean_user_text(payload.get("message") or "")
+                    if text:
+                        event_user_turns.append(text)
                 elif et == "agent_message":
                     text = (payload.get("message") or "").strip()
                     if text:
@@ -285,29 +310,41 @@ def parse_session(path: Path) -> dict:
                     else payload.get("input")
                 )
                 extract_paths_from_tool_blob(blob, files)
+            elif pt == "message" and payload.get("role") == "user":
+                text = clean_user_text(
+                    response_item_text(payload, {"input_text", "text"})
+                )
+                if text:
+                    item_user_turns.append(text)
             elif pt == "message" and payload.get("role") == "assistant":
                 # Fallback when event_msg agent_message is sparse
-                content = payload.get("content") or []
-                texts = []
-                if isinstance(content, list):
-                    for block in content:
-                        if not isinstance(block, dict):
-                            continue
-                        if block.get("type") in {"output_text", "text"}:
-                            t = block.get("text") or ""
-                            if t.strip():
-                                texts.append(t)
-                if texts and not recent_agents:
+                text = response_item_text(payload, {"output_text", "text"})
+                if text and not recent_agents:
                     recent_agents.append(
-                        {"phase": payload.get("phase"), "text": "\n".join(texts)}
+                        {"phase": payload.get("phase"), "text": text}
                     )
+
+    if event_user_turns:
+        user_turns = event_user_turns
+    else:
+        # Codex injects each invoked skill's SKILL.md as its own user
+        # message; it names a skill but is not a prompt.
+        user_turns = [
+            t for t in item_user_turns if not re.fullmatch(r"\[skill\][^\n]*", t)
+        ]
+    for text in event_user_turns or item_user_turns:
+        for match in re.finditer(r"\[skill\]\s*([^\n]+)", text):
+            for part in match.group(1).split(","):
+                skill = part.strip()
+                if skill:
+                    skills.append(skill)
 
     return {
         "meta": meta,
         "thread_name": thread_name,
         "model": model,
         "user_turns": user_turns,
-        "recent_users": list(recent_users),
+        "recent_users": user_turns[-4:],
         "recent_agents": list(recent_agents),
         "files": files,
         "skills": skills,
