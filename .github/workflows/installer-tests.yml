@@ -23,10 +23,12 @@ jobs:
         run: >-
           bash -n install.sh tests/*.sh
           skills/sync-jonbaldie-skills/scripts/*.sh
+          skills/sync-jonbaldie-skills/scripts/lib/*.sh
       - name: Lint installer scripts
         run: >-
           shellcheck -e SC2016 install.sh
           $(find tests -type f -name '*.sh' ! -name 'install-ship-spec.sh' -print)
           skills/sync-jonbaldie-skills/scripts/*.sh
+          skills/sync-jonbaldie-skills/scripts/lib/*.sh
       - name: Run all test suites
         run: tests/run-all.sh

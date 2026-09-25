@@ -313,63 +313,14 @@ resolve_mattpocock_root() {
   printf '%s\n' "${tmp}/repo"
 }
 
-discover_skill_dirs() {
-  local root="$1"
-  local max_depth=6
-  local search_root="${root}"
-
-  # Prefer the conventional skills/ package directory so a checkout that has
-  # already been used as an install target does not re-discover destination copies.
-  if [[ -d "${root}/skills" ]]; then
-    search_root="${root}/skills"
-  fi
-
-  find "${search_root}" \
-    \( -name node_modules -o -name .git -o -name dist -o -name build -o -name __pycache__ \
-       -o -name in-progress -o -name deprecated \
-       -o -name .agents -o -name .claude -o -name .codex -o -name .pi -o -name .cursor \) -prune -o \
-    -type f -name SKILL.md -print 2>/dev/null |
-    while IFS= read -r skill_md; do
-      local rel="${skill_md#"${search_root}"/}"
-      local depth
-      depth="$(printf '%s' "${rel}" | awk -F/ '{print NF-1}')"
-      if [[ "${depth}" -le "${max_depth}" ]]; then
-        dirname "${skill_md}"
-      fi
-    done
-}
-
-skill_name_from_dir() {
-  local skill_dir="$1"
-  local skill_md="${skill_dir}/SKILL.md"
-  local name=""
-
-  if [[ -f "${skill_md}" ]]; then
-    name="$(
-      awk '
-        BEGIN { in_fm = 0 }
-        /^---[[:space:]]*$/ {
-          if (in_fm == 0) { in_fm = 1; next }
-          else { exit }
-        }
-        in_fm && /^name:[[:space:]]*/ {
-          sub(/^name:[[:space:]]*/, "")
-          gsub(/^[[:space:]]+|[[:space:]]+$/, "")
-          gsub(/^["'\'']|["'\'']$/, "")
-          print
-          exit
-        }
-      ' "${skill_md}"
-    )"
-  fi
-
-  if [[ -z "${name}" ]]; then
-    name="$(basename "${skill_dir}")"
-  fi
-
-  name="$(printf '%s' "${name}" | tr '[:upper:]' '[:lower:]')"
-  name="$(printf '%s' "${name}" | sed -E 's/[^a-z0-9._]+/-/g; s/^[.-]+//; s/[.-]+$//; s/^$/unnamed-skill/')"
-  printf '%s\n' "${name}"
+# The skill-tree module defines discover_skill_dirs, skill_name_from_dir and
+# copy_skill_tree. A curl|bash run has no checkout until the collection is
+# cloned, so it is sourced from the resolved collection root.
+load_skill_tree_module() {
+  local module="$1/skills/sync-jonbaldie-skills/scripts/lib/skill-tree.sh"
+  [[ -f "${module}" ]] || die "Missing skill-tree module: ${module}"
+  # shellcheck source=/dev/null
+  source "${module}"
 }
 
 skill_selected() {
@@ -388,38 +339,6 @@ skill_selected() {
   return 1
 }
 
-prune_build_artifacts() {
-  local target="$1"
-  find "${target}" \( -name "__pycache__" -o -name ".pytest_cache" \) -prune -exec rm -rf {} +
-  find "${target}" -type f -name "*.pyc" -exec rm -f {} +
-}
-
-copy_tree() {
-  local src="$1"
-  local dest="$2"
-
-  rm -rf "${dest}"
-  mkdir -p "$(dirname "${dest}")"
-
-  if command -v rsync >/dev/null 2>&1; then
-    mkdir -p "${dest}"
-    rsync -a --delete \
-      --exclude='__pycache__' \
-      --exclude='*.pyc' \
-      --exclude='.pytest_cache' \
-      "${src}/" "${dest}/"
-    return
-  fi
-
-  if cp -a "${src}" "${dest}" 2>/dev/null; then
-    prune_build_artifacts "${dest}"
-    return
-  fi
-  cp -R "${src}" "${dest}"
-  prune_build_artifacts "${dest}"
-}
-
-
 physical_entry_path() {
   local path="$1"
   local parent name
@@ -436,7 +355,7 @@ install_skill_dir() {
   local installed_any=false
   local real_dir existing_source
 
-  name="$(skill_name_from_dir "${skill_dir}")"
+  name="$(skill_name_from_dir "${skill_dir}" --slugify)"
   skill_selected "${name}" || return 0
 
   real_dir="$(cd -P "${skill_dir}" 2>/dev/null && pwd -P || printf '%s' "${skill_dir}")"
@@ -455,12 +374,12 @@ install_skill_dir() {
   if [[ "${copy_mode}" == true ]]; then
     for agent_name in "${selected_agents[@]}"; do
       agent_dir="$(agent_skills_dir "${agent_name}")/${name}"
-      copy_tree "${skill_dir}" "${agent_dir}"
+      copy_skill_tree "${skill_dir}" "${agent_dir}"
       installed_any=true
     done
   else
     # Symlink mode: materialize once at the canonical path, then link agents in.
-    copy_tree "${skill_dir}" "${canonical}"
+    copy_skill_tree "${skill_dir}" "${canonical}"
     installed_any=true
     for agent_name in "${selected_agents[@]}"; do
       agent_dir="$(agent_skills_dir "${agent_name}")/${name}"
@@ -474,7 +393,7 @@ install_skill_dir() {
       fi
       rm -rf "${agent_dir}"
       if ! ln -s "${canonical}" "${agent_dir}" 2>/dev/null; then
-        copy_tree "${canonical}" "${agent_dir}"
+        copy_skill_tree "${canonical}" "${agent_dir}"
       fi
     done
   fi
@@ -498,7 +417,7 @@ install_from_root() {
   while IFS= read -r skill_dir; do
     [[ -n "${skill_dir}" ]] || continue
     local name
-    name="$(skill_name_from_dir "${skill_dir}")"
+    name="$(skill_name_from_dir "${skill_dir}" --slugify)"
     skill_selected "${name}" || continue
     install_skill_dir "${skill_dir}"
     count=$((count + 1))
@@ -596,7 +515,7 @@ validate_skill_collisions() {
     [[ -n "${root}" ]] || continue
     while IFS= read -r skill_dir; do
       [[ -n "${skill_dir}" ]] || continue
-      name="$(skill_name_from_dir "${skill_dir}")"
+      name="$(skill_name_from_dir "${skill_dir}" --slugify)"
       skill_selected "${name}" || continue
       real_dir="$(cd -P "${skill_dir}" 2>/dev/null && pwd -P || printf '%s' "${skill_dir}")"
       printf '%s\t%s\n' "${name}" "${real_dir}" >>"${manifest}"
@@ -648,6 +567,7 @@ main() {
   local jon_root
   local total_matches=0
   jon_root="$(resolve_jonbaldie_root)"
+  load_skill_tree_module "${jon_root}"
 
   local mp_root=""
   if ask_prereqs; then

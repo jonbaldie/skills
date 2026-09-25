@@ -41,34 +41,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-skill_name() {
-  local skill_directory="$1"
-  local name
-
-  name="$(
-    awk '
-      BEGIN { in_frontmatter = 0 }
-      /^---[[:space:]]*$/ {
-        if (in_frontmatter == 0) { in_frontmatter = 1; next }
-        exit
-      }
-      in_frontmatter && /^name:[[:space:]]*/ {
-        sub(/^name:[[:space:]]*/, "")
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "")
-        gsub(/^['\''"]|['\''"]$/, "")
-        print
-        exit
-      }
-    ' "${skill_directory}/SKILL.md"
-  )"
-
-  [[ -n "${name}" ]] || name="$(basename "${skill_directory}")"
-  name="$(printf '%s' "${name}" | tr '[:upper:]' '[:lower:]')"
-  name="$(printf '%s' "${name}" | sed -E 's/[^a-z0-9._]+/-/g; s/^[.-]+//; s/[.-]+$//; s/^$/unnamed-skill/')"
-  [[ "${name}" =~ ^[a-z0-9][a-z0-9._-]*$ ]] ||
-    die "unsafe skill name '${name}' in ${skill_directory}/SKILL.md"
-  printf '%s\n' "${name}"
-}
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/lib/skill-tree.sh"
 
 validate_skill_collisions() {
   local manifest_file="$1"
@@ -102,19 +76,13 @@ validate_skill_collisions() {
 
 collect_collection_skills() {
   local repository_root="$1"
-  local skill_file skill_directory name real_dir
+  local skill_directory name real_dir
 
-  while IFS= read -r -d '' skill_file; do
-    skill_directory="$(dirname "${skill_file}")"
-    name="$(skill_name "${skill_directory}")"
+  while IFS= read -r skill_directory; do
+    name="$(skill_name_from_dir "${skill_directory}" --strict)" || exit 1
     real_dir="$(cd -P "${skill_directory}" 2>/dev/null && pwd -P || printf '%s' "${skill_directory}")"
     printf '%s\t%s\n' "${name}" "${real_dir}" >>"${preflight_manifest}"
-  done < <(
-    find "${repository_root}/skills" \
-      \( -name node_modules -o -name .git -o -name in-progress -o -name deprecated \
-         -o -name .agents -o -name .claude -o -name .gemini \) -prune -o \
-      -type f -name SKILL.md -print0
-  )
+  done < <(discover_skill_dirs "${repository_root}")
 }
 
 copy_skill() {
@@ -132,32 +100,22 @@ copy_skill() {
   fi
   printf '%s\t%s\n' "${name}" "${real_dir}" >>"${copied_sources_file}"
 
-  rm -rf "${destination}"
-  cp -a "${source_directory}" "${destination}"
-  find "${destination}" \( -name "__pycache__" -o -name ".pytest_cache" \) -prune -exec rm -rf {} +
-  find "${destination}" -type f -name "*.pyc" -exec rm -f {} +
+  copy_skill_tree "${source_directory}" "${destination}"
   printf '%s\n' "${name}" >>"${names_file}"
   printf '  installed %s\n' "${name}"
 }
 
 install_collection() {
   local repository_root="$1"
-  local skill_file
   local skill_directory
   local name
   local count=0
 
-  while IFS= read -r -d '' skill_file; do
-    skill_directory="$(dirname "${skill_file}")"
-    name="$(skill_name "${skill_directory}")"
+  while IFS= read -r skill_directory; do
+    name="$(skill_name_from_dir "${skill_directory}" --strict)" || exit 1
     copy_skill "${skill_directory}" "${name}"
     count=$((count + 1))
-  done < <(
-    find "${repository_root}/skills" \
-      \( -name node_modules -o -name .git -o -name in-progress -o -name deprecated \
-         -o -name .agents -o -name .claude -o -name .gemini \) -prune -o \
-      -type f -name SKILL.md -print0
-  )
+  done < <(discover_skill_dirs "${repository_root}")
 
   [[ ${count} -gt 0 ]] || die "no skills found in ${repository_root}"
 }
@@ -189,7 +147,7 @@ sort -u "${names_file}" >"${sorted_names_file}"
 if [[ -f "${manifest}" ]]; then
   while IFS= read -r old_name; do
     [[ -n "${old_name}" && "${old_name}" != \#* ]] || continue
-    [[ "${old_name}" =~ ^[a-z0-9][a-z0-9._-]*$ ]] || continue
+    skill_name_is_valid "${old_name}" || continue
     if ! grep -Fqx "${old_name}" "${sorted_names_file}"; then
       rm -rf "${skills_dir:?}/${old_name}"
       printf '  removed retired skill %s\n' "${old_name}"
