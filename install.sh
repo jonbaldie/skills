@@ -441,9 +441,9 @@ ask_prereqs() {
   if [[ "${script_from_stdin}" == true ]]; then
     # /dev/tty may exist but be unusable inside CI/docker; fall back cleanly.
     if ! { IFS= read -r answer </dev/tty; } 2>/dev/null; then
-      # Non-interactive one-liner with no usable tty: install prerequisites.
-      answer="y"
-      printf 'y\n'
+      # Non-interactive one-liner with no usable tty: take the [y/N] default.
+      answer=""
+      printf '\n'
     fi
   else
     IFS= read -r answer || answer=""
