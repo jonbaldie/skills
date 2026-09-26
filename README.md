@@ -367,6 +367,8 @@ unexplored, leaving product fixes for a subsequent task.
 /exploratory-testing Try implementing a small feature through the TUI
 ```
 
+Pass notes: [2026-09-26 skills](docs/exploratory-testing/2026-09-26-skills.md).
+
 ---
 
 ### I need to make slow code faster
