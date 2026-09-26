@@ -122,7 +122,10 @@ def load_json(raw) -> dict:
 
 
 def resolve_session(
-    conn: sqlite3.Connection, cwd: str, session_id: str | None
+    conn: sqlite3.Connection,
+    cwd: str,
+    session_id: str | None,
+    db_path: Path,
 ) -> sqlite3.Row:
     if session_id:
         sid = session_id.strip()
@@ -200,7 +203,7 @@ def resolve_session(
     if row:
         return row
     raise SystemExit(
-        f"No OpenCode sessions found for cwd {cwd!r} in {default_db_path()}"
+        f"No OpenCode sessions found for cwd {cwd!r} in {db_path}"
     )
 
 
@@ -526,7 +529,7 @@ def main(argv: list[str] | None = None) -> int:
     db_path = Path(args.db).expanduser() if args.db else default_db_path()
     conn = connect(db_path)
     try:
-        session = resolve_session(conn, args.cwd, args.session_id)
+        session = resolve_session(conn, args.cwd, args.session_id, db_path)
         brief = parse_session(conn, session)
         sys.stdout.write(render(brief, db_path))
     finally:
