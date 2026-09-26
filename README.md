@@ -20,7 +20,8 @@ curl -fsSL https://raw.githubusercontent.com/jonbaldie/skills/main/install.sh | 
 ```
 
 Installs this collection into your user skill directories and asks before also
-installing the `mattpocock/skills` prerequisite set. Pass flags after
+installing the `mattpocock/skills` prerequisite set. With no terminal to ask,
+it skips the prerequisite; pass `--with-prereqs` to install it. Pass flags after
 `bash -s --`:
 
 Once installed successfully, use `/sync-jonbaldie-skills` to update them.

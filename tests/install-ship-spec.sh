@@ -249,7 +249,9 @@ run_one_line_global() {
     bash -euo pipefail -c '
       eval "$1" >/tmp/oneline.log
       test -f /root/.agents/skills/bmf/SKILL.md
-      test -f /root/.agents/skills/implement/SKILL.md
+      # No terminal to answer the [y/N] prompt, so the prerequisite is skipped.
+      test ! -e /root/.agents/skills/implement
+      grep -Fq "Continuing without mattpocock/skills." /tmp/oneline.log
       test ! -e /work/.agents
       grep -Eiq "Installing to:" /tmp/oneline.log
     ' bash "${oneline}"
