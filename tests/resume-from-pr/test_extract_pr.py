@@ -352,6 +352,8 @@ class ProviderTableTests(unittest.TestCase):
             for shape in provider.url_shapes
         ]
         self.assertEqual(len(precedences), len(set(precedences)))
+        host_precedences = [p.host_precedence for p in self.mod.PROVIDERS]
+        self.assertEqual(len(host_precedences), len(set(host_precedences)))
 
     def test_new_table_entry_wires_host_and_url_matching(self):
         mod = self.mod

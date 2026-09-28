@@ -198,7 +198,7 @@ class Provider:
     token_hint: str
     from_remote: Callable[[str, str, str], Target | None]
     host_pattern: str | None = None  # full-matched case-insensitively
-    host_precedence: int = 0  # lower is tried first
+    host_precedence: int = 0  # lower is tried first, for hosts and remote paths
     remote_path: str | None = None  # identifies remotes on unrecognised hosts
     url_shapes: tuple[UrlShape, ...] = ()
 
@@ -357,6 +357,7 @@ PROVIDERS: tuple[Provider, ...] = (
         label="Bitbucket Server",
         token_hint="for private servers set BITBUCKET_TOKEN or BITBUCKET_ACCESS_TOKEN",
         from_remote=_bitbucket_server_remote,
+        host_precedence=60,
         remote_path=_BITBUCKET_SERVER_REMOTE.pattern,
         url_shapes=(
             UrlShape(
@@ -493,7 +494,7 @@ def target_from_remote(number: str, remote_url: str) -> Target | None:
         return None
     path = path.rstrip("/")
     name = identify(host)
-    for provider in PROVIDERS:
+    for provider in sorted(PROVIDERS, key=lambda p: p.host_precedence):
         if provider.name == name or (
             name == "unknown"
             and provider.remote_path
