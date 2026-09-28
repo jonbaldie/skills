@@ -111,46 +111,6 @@ class Target:
         return self.owner
 
 
-# Path-shape classifiers — host-agnostic so self-hosted forges work.
-_AZURE = re.compile(
-    r"^https?://(?:dev\.azure\.com/(?P<org>[^/]+)/(?:(?P<project>[^/]+)/)?"
-    r"_git/(?P<repo>[^/]+)|(?P<org2>[^./]+)\.visualstudio\.com/"
-    r"(?:(?P<project2>[^/]+)/)?_git/(?P<repo2>[^/]+))/pullrequest/(?P<num>\d+)",
-    re.I,
-)
-_BB_SERVER = re.compile(
-    r"^https?://(?P<host>[^/]+)/projects/(?P<key>[^/]+)/repos/(?P<slug>[^/]+)"
-    r"/pull-requests/(?P<num>\d+)",
-    re.I,
-)
-_GITLAB = re.compile(
-    r"^https?://(?P<host>[^/]+)/(?P<path>.+?)/-/merge_requests/(?P<num>\d+)",
-    re.I,
-)
-_GITLAB_LEGACY = re.compile(
-    r"^https?://(?P<host>[^/]+)/(?P<path>.+)/merge_requests/(?P<num>\d+)",
-    re.I,
-)
-_BITBUCKET = re.compile(
-    r"^https?://(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/]+)"
-    r"/pull-requests/(?P<num>\d+)",
-    re.I,
-)
-_GITEA = re.compile(
-    r"^https?://(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/]+)/pulls/(?P<num>\d+)",
-    re.I,
-)
-_GITHUB = re.compile(
-    r"^https?://(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/]+)/pull/(?P<num>\d+)",
-    re.I,
-)
-# GitHub.com also serves /pulls/<n> (same resource as /pull/<n>); the
-# host-agnostic /pulls/ shape below is Gitea/Forgejo everywhere else.
-_GITHUB_PULLS = re.compile(
-    r"^https?://(?P<host>(?:www\.)?github\.com)/(?P<owner>[^/]+)/(?P<repo>[^/]+)"
-    r"/pulls/(?P<num>\d+)",
-    re.I,
-)
 _SHORTHAND_GH = re.compile(
     r"^(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+)[#/](?P<num>\d+)$"
 )
@@ -159,124 +119,6 @@ _SHORTHAND_GL = re.compile(
 )
 _NUMBER = re.compile(r"^#?(?P<num>\d+)$")
 _GITLAB_BANG = re.compile(r"^!(?P<num>\d+)$")
-# Remote path shapes for providers without a hostname giveaway.
-_AZURE_REMOTE_HTTPS = re.compile(
-    r"^(?P<org>[^/]+)/(?P<project>[^/]+)/_git/(?P<repo>.+)$"
-)
-_AZURE_REMOTE_SHORT = re.compile(r"^(?P<org>[^/]+)/_git/(?P<repo>.+)$")
-_AZURE_REMOTE_VS = re.compile(r"^(?:(?P<project>[^/]+)/)?_git/(?P<repo>.+)$")
-_AZURE_REMOTE_SSH = re.compile(r"^v3/(?P<org>[^/]+)/(?P<project>[^/]+)/(?P<repo>.+)$")
-_BITBUCKET_SERVER_REMOTE = re.compile(
-    r"^(?:projects/(?P<key>[^/]+)/repos/(?P<slug>[^/]+)"
-    r"|scm/(?P<key2>[^/]+)/(?P<slug2>[^/]+))$"
-)
-
-
-def parse_pr_url(url: str) -> Target:
-    raw = normalize_web_url(ensure_scheme(strip_wrap(url)))
-    m = _AZURE.match(raw)
-    if m:
-        org = m.group("org") or m.group("org2")
-        project = m.group("project") or m.group("project2") or org
-        repo = m.group("repo") or m.group("repo2")
-        host = "dev.azure.com" if m.group("org") else f"{m.group('org2')}.visualstudio.com"
-        return Target(
-            provider="azure",
-            host=host,
-            number=m.group("num"),
-            url=raw,
-            owner=org,
-            repo=repo,
-            project=urllib.parse.unquote(project),
-            org=urllib.parse.unquote(org),
-            original=url,
-        )
-    m = _BB_SERVER.match(raw)
-    if m:
-        return Target(
-            provider="bitbucket-server",
-            host=m.group("host"),
-            number=m.group("num"),
-            url=raw,
-            owner=m.group("key"),
-            repo=m.group("slug"),
-            original=url,
-        )
-    m = _GITLAB.match(raw)
-    if m:
-        path = urllib.parse.unquote(m.group("path"))
-        owner, repo = split_path(path)
-        return Target(
-            provider="gitlab",
-            host=m.group("host"),
-            number=m.group("num"),
-            url=raw,
-            owner=owner,
-            repo=repo,
-            project=path,
-            original=url,
-        )
-    m = _GITLAB_LEGACY.match(raw)
-    if m and "/-/" not in raw:
-        path = urllib.parse.unquote(m.group("path"))
-        owner, repo = split_path(path)
-        return Target(
-            provider="gitlab",
-            host=m.group("host"),
-            number=m.group("num"),
-            url=raw,
-            owner=owner,
-            repo=repo,
-            project=path,
-            original=url,
-        )
-    m = _BITBUCKET.match(raw)
-    if m:
-        return Target(
-            provider="bitbucket",
-            host=m.group("host"),
-            number=m.group("num"),
-            url=raw,
-            owner=m.group("owner"),
-            repo=m.group("repo"),
-            original=url,
-        )
-    m = _GITHUB_PULLS.match(raw)
-    if m:
-        return Target(
-            provider="github",
-            host=m.group("host"),
-            number=m.group("num"),
-            url=raw,
-            owner=m.group("owner"),
-            repo=m.group("repo"),
-            original=url,
-        )
-    m = _GITEA.match(raw)
-    if m:
-        return Target(
-            provider="gitea",
-            host=m.group("host"),
-            number=m.group("num"),
-            url=raw,
-            owner=m.group("owner"),
-            repo=m.group("repo"),
-            original=url,
-        )
-    m = _GITHUB.match(raw)
-    if m:
-        host = m.group("host")
-        provider = "github" if host.lower() in {"github.com", "www.github.com"} else "github"
-        return Target(
-            provider=provider,
-            host=host,
-            number=m.group("num"),
-            url=raw,
-            owner=m.group("owner"),
-            repo=m.group("repo"),
-            original=url,
-        )
-    raise FetchError(f"Could not parse as a pull/merge request URL: {url}")
 
 
 def split_path(path: str) -> tuple[str, str]:
@@ -304,6 +146,369 @@ def parse_git_remote(url: str) -> tuple[str, str]:
     if scp:
         return scp.group(1), scp.group(2).lstrip("/")
     raise FetchError(f"Could not parse git remote: {url}")
+
+
+# ---------------------------------------------------------------------------
+# Host classification
+# ---------------------------------------------------------------------------
+
+
+def _owner_repo_fields(m: re.Match[str]) -> dict[str, str | None]:
+    return {"host": m.group("host"), "owner": m.group("owner"), "repo": m.group("repo")}
+
+
+def _azure_url_fields(m: re.Match[str]) -> dict[str, str | None]:
+    org = m.group("org") or m.group("org2")
+    project = m.group("project") or m.group("project2") or org
+    host = "dev.azure.com" if m.group("org") else f"{m.group('org2')}.visualstudio.com"
+    return {
+        "host": host,
+        "owner": org,
+        "repo": m.group("repo") or m.group("repo2"),
+        "project": urllib.parse.unquote(project),
+        "org": urllib.parse.unquote(org),
+    }
+
+
+def _bitbucket_server_url_fields(m: re.Match[str]) -> dict[str, str | None]:
+    return {"host": m.group("host"), "owner": m.group("key"), "repo": m.group("slug")}
+
+
+def _gitlab_url_fields(m: re.Match[str]) -> dict[str, str | None]:
+    path = urllib.parse.unquote(m.group("path"))
+    owner, repo = split_path(path)
+    return {"host": m.group("host"), "owner": owner, "repo": repo, "project": path}
+
+
+@dataclass(frozen=True)
+class UrlShape:
+    """A PR/MR URL path shape. Lower precedence is tried first."""
+
+    precedence: int
+    pattern: str  # matched case-insensitively; must capture "num"
+    fields: Callable[[re.Match[str]], dict[str, str | None]] = _owner_repo_fields
+
+
+@dataclass(frozen=True)
+class Provider:
+    """One forge: how to recognise its hosts, remotes, and PR/MR URLs."""
+
+    name: str
+    label: str
+    token_hint: str
+    from_remote: Callable[[str, str, str], Target | None]
+    host_pattern: str | None = None  # full-matched case-insensitively
+    host_precedence: int = 0  # lower is tried first, for hosts and remote paths
+    remote_path: str | None = None  # identifies remotes on unrecognised hosts
+    url_shapes: tuple[UrlShape, ...] = ()
+
+
+def _github_remote(host: str, path: str, number: str) -> Target:
+    owner, repo = split_path(path)
+    return Target(
+        provider="github",
+        host="github.com",
+        number=number,
+        owner=owner,
+        repo=repo,
+        url=f"https://github.com/{owner}/{repo}/pull/{number}",
+    )
+
+
+def _gitlab_remote(host: str, path: str, number: str) -> Target:
+    owner, repo = split_path(path)
+    return Target(
+        provider="gitlab",
+        host=host,
+        number=number,
+        owner=owner,
+        repo=repo,
+        project=path,
+        url=f"https://{host}/{path}/-/merge_requests/{number}",
+    )
+
+
+def _bitbucket_remote(host: str, path: str, number: str) -> Target:
+    owner, repo = split_path(path)
+    return Target(
+        provider="bitbucket",
+        host="bitbucket.org",
+        number=number,
+        owner=owner,
+        repo=repo,
+        url=f"https://bitbucket.org/{owner}/{repo}/pull-requests/{number}",
+    )
+
+
+_BITBUCKET_SERVER_REMOTE = re.compile(
+    r"^(?:projects/(?P<key>[^/]+)/repos/(?P<slug>[^/]+)"
+    r"|scm/(?P<key2>[^/]+)/(?P<slug2>[^/]+))$"
+)
+
+
+def _bitbucket_server_remote(host: str, path: str, number: str) -> Target | None:
+    m = _BITBUCKET_SERVER_REMOTE.match(path)
+    if not m:
+        return None
+    key = m.group("key") or m.group("key2")
+    slug = m.group("slug") or m.group("slug2")
+    return Target(
+        provider="bitbucket-server",
+        host=host,
+        number=number,
+        owner=key,
+        repo=slug,
+        url=f"https://{host}/projects/{key}/repos/{slug}/pull-requests/{number}",
+    )
+
+
+def _gitea_remote(host: str, path: str, number: str) -> Target:
+    owner, repo = split_path(path)
+    return Target(
+        provider="gitea",
+        host=host,
+        number=number,
+        owner=owner,
+        repo=repo,
+        url=f"https://{host}/{owner}/{repo}/pulls/{number}",
+    )
+
+
+_AZURE_REMOTE_HTTPS = re.compile(
+    r"^(?P<org>[^/]+)/(?P<project>[^/]+)/_git/(?P<repo>.+)$"
+)
+_AZURE_REMOTE_SHORT = re.compile(r"^(?P<org>[^/]+)/_git/(?P<repo>.+)$")
+_AZURE_REMOTE_VS = re.compile(r"^(?:(?P<project>[^/]+)/)?_git/(?P<repo>.+)$")
+_AZURE_REMOTE_SSH = re.compile(r"^v3/(?P<org>[^/]+)/(?P<project>[^/]+)/(?P<repo>.+)$")
+
+
+def _azure_remote_target(host: str, path: str, number: str) -> Target | None:
+    """Build an Azure DevOps target from a git remote host and path."""
+    host_l = host.lower()
+    if host_l == "ssh.dev.azure.com":
+        m = _AZURE_REMOTE_SSH.match(path)
+        if not m:
+            return None
+        org = m.group("org")
+        project = m.group("project")
+        repo = m.group("repo")
+    elif host_l.endswith(".visualstudio.com"):
+        org = host.split(".", 1)[0]
+        path = urllib.parse.unquote(re.sub(r"^DefaultCollection/", "", path, flags=re.I))
+        m = _AZURE_REMOTE_VS.match(path)
+        if not m:
+            return None
+        project = m.group("project") or org
+        repo = m.group("repo")
+    else:
+        path = urllib.parse.unquote(path)
+        m = _AZURE_REMOTE_HTTPS.match(path)
+        if m:
+            org = m.group("org")
+            project = m.group("project")
+            repo = m.group("repo")
+        else:
+            m = _AZURE_REMOTE_SHORT.match(path)
+            if not m:
+                return None
+            org = m.group("org")
+            project = org  # project defaults to the organisation name
+            repo = m.group("repo")
+    return Target(
+        provider="azure",
+        host=host,
+        number=number,
+        owner=org,
+        repo=repo,
+        project=project,
+        org=org,
+        url=(
+            f"https://dev.azure.com/{urllib.parse.quote(org)}/"
+            f"{urllib.parse.quote(project)}/_git/{urllib.parse.quote(repo)}"
+            f"/pullrequest/{number}"
+        ),
+    )
+
+
+# URL shapes are host-agnostic so self-hosted forges work; precedence settles
+# overlaps (e.g. github.com /pulls/<n> is GitHub, not the Gitea /pulls/ shape).
+# Remote hosts are recognised by name, or by path shape for Bitbucket Server.
+PROVIDERS: tuple[Provider, ...] = (
+    Provider(
+        name="azure",
+        label="Azure DevOps",
+        token_hint="for private projects set AZURE_DEVOPS_TOKEN, SYSTEM_ACCESSTOKEN, "
+        "or AZURE_TOKEN",
+        from_remote=_azure_remote_target,
+        host_pattern=r"(?:ssh\.)?dev\.azure\.com|.*\.visualstudio\.com",
+        host_precedence=40,
+        url_shapes=(
+            UrlShape(
+                precedence=10,
+                pattern=r"^https?://(?:dev\.azure\.com/(?P<org>[^/]+)/(?:(?P<project>[^/]+)/)?"
+                r"_git/(?P<repo>[^/]+)|(?P<org2>[^./]+)\.visualstudio\.com/"
+                r"(?:(?P<project2>[^/]+)/)?_git/(?P<repo2>[^/]+))/pullrequest/(?P<num>\d+)",
+                fields=_azure_url_fields,
+            ),
+        ),
+    ),
+    Provider(
+        name="bitbucket-server",
+        label="Bitbucket Server",
+        token_hint="for private servers set BITBUCKET_TOKEN or BITBUCKET_ACCESS_TOKEN",
+        from_remote=_bitbucket_server_remote,
+        host_precedence=60,
+        remote_path=_BITBUCKET_SERVER_REMOTE.pattern,
+        url_shapes=(
+            UrlShape(
+                precedence=20,
+                pattern=r"^https?://(?P<host>[^/]+)/projects/(?P<key>[^/]+)"
+                r"/repos/(?P<slug>[^/]+)/pull-requests/(?P<num>\d+)",
+                fields=_bitbucket_server_url_fields,
+            ),
+        ),
+    ),
+    Provider(
+        name="gitlab",
+        label="GitLab",
+        token_hint="for private projects set GITLAB_TOKEN, GL_TOKEN, or PRIVATE_TOKEN",
+        from_remote=_gitlab_remote,
+        host_pattern=r".*gitlab.*",
+        host_precedence=20,
+        url_shapes=(
+            UrlShape(
+                precedence=30,
+                pattern=r"^https?://(?P<host>[^/]+)/(?P<path>.+?)"
+                r"/-/merge_requests/(?P<num>\d+)",
+                fields=_gitlab_url_fields,
+            ),
+            # Pre-"/-/" GitLab URLs.
+            UrlShape(
+                precedence=40,
+                pattern=r"^(?!.*/-/)https?://(?P<host>[^/]+)/(?P<path>.+)"
+                r"/merge_requests/(?P<num>\d+)",
+                fields=_gitlab_url_fields,
+            ),
+        ),
+    ),
+    Provider(
+        name="bitbucket",
+        label="Bitbucket",
+        token_hint="for private repositories set BITBUCKET_TOKEN, "
+        "BITBUCKET_ACCESS_TOKEN, or BITBUCKET_USERNAME with BITBUCKET_APP_PASSWORD",
+        from_remote=_bitbucket_remote,
+        host_pattern=r"(?:www\.)?bitbucket\.org",
+        host_precedence=30,
+        url_shapes=(
+            UrlShape(
+                precedence=50,
+                pattern=r"^https?://(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/]+)"
+                r"/pull-requests/(?P<num>\d+)",
+            ),
+        ),
+    ),
+    Provider(
+        name="github",
+        label="GitHub",
+        token_hint="for private repositories set GH_TOKEN or GITHUB_TOKEN",
+        from_remote=_github_remote,
+        host_pattern=r"(?:www\.)?github\.com",
+        host_precedence=10,
+        url_shapes=(
+            # GitHub.com also serves /pulls/<n> (same resource as /pull/<n>).
+            UrlShape(
+                precedence=60,
+                pattern=r"^https?://(?P<host>(?:www\.)?github\.com)/(?P<owner>[^/]+)"
+                r"/(?P<repo>[^/]+)/pulls/(?P<num>\d+)",
+            ),
+            UrlShape(
+                precedence=80,
+                pattern=r"^https?://(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/]+)"
+                r"/pull/(?P<num>\d+)",
+            ),
+        ),
+    ),
+    Provider(
+        name="gitea",
+        label="Gitea/Forgejo",
+        token_hint="for private instances set GITEA_TOKEN, FORGEJO_TOKEN, or "
+        "CODEBERG_TOKEN",
+        from_remote=_gitea_remote,
+        host_pattern=r"codeberg\.org|gitea\.com|.*(?:gitea|forgejo).*",
+        host_precedence=50,
+        url_shapes=(
+            UrlShape(
+                precedence=70,
+                pattern=r"^https?://(?P<host>[^/]+)/(?P<owner>[^/]+)/(?P<repo>[^/]+)"
+                r"/pulls/(?P<num>\d+)",
+            ),
+        ),
+    ),
+)
+
+PROVIDER_LABELS = {provider.name: provider.label for provider in PROVIDERS}
+PROVIDER_TOKEN_HINTS = {provider.name: provider.token_hint for provider in PROVIDERS}
+
+
+def identify(host: str) -> str:
+    """Return the provider name for a host, or "unknown"."""
+    for provider in sorted(PROVIDERS, key=lambda p: p.host_precedence):
+        if provider.host_pattern and re.fullmatch(
+            provider.host_pattern, host, flags=re.I
+        ):
+            return provider.name
+    return "unknown"
+
+
+def parse_target(text: str) -> Target | None:
+    """Parse a PR/MR URL into a Target, or None when no URL shape matches."""
+    raw = normalize_web_url(ensure_scheme(strip_wrap(text)))
+    shapes = sorted(
+        ((shape, provider) for provider in PROVIDERS for shape in provider.url_shapes),
+        key=lambda pair: pair[0].precedence,
+    )
+    for shape, provider in shapes:
+        m = re.match(shape.pattern, raw, flags=re.I)
+        if m:
+            return Target(
+                provider=provider.name,
+                number=m.group("num"),
+                url=raw,
+                original=text,
+                **shape.fields(m),
+            )
+    return None
+
+
+def parse_pr_url(url: str) -> Target:
+    target = parse_target(url)
+    if target is None:
+        raise FetchError(f"Could not parse as a pull/merge request URL: {url}")
+    return target
+
+
+def target_from_remote(number: str, remote_url: str) -> Target | None:
+    try:
+        host, path = parse_git_remote(remote_url)
+    except FetchError:
+        return None
+    path = path.rstrip("/")
+    name = identify(host)
+    for provider in sorted(PROVIDERS, key=lambda p: p.host_precedence):
+        if provider.name == name or (
+            name == "unknown"
+            and provider.remote_path
+            and re.match(provider.remote_path, path)
+        ):
+            return provider.from_remote(host, path, number)
+    owner, repo = split_path(path)
+    return Target(
+        provider="unknown",
+        host=host,
+        number=number,
+        owner=owner,
+        repo=repo,
+    )
 
 
 def parse_argument(arg: str) -> Target | str:
@@ -1489,124 +1694,6 @@ def git_remotes(cwd: str) -> list[tuple[str, str]]:
     return ordered
 
 
-def target_from_remote(number: str, remote_url: str) -> Target | None:
-    try:
-        host, path = parse_git_remote(remote_url)
-    except FetchError:
-        return None
-    path = path.rstrip("/")
-    owner, repo = split_path(path)
-    host_l = host.lower()
-    if host_l in {"github.com", "www.github.com"}:
-        return Target(
-            provider="github",
-            host="github.com",
-            number=number,
-            owner=owner,
-            repo=repo,
-            url=f"https://github.com/{owner}/{repo}/pull/{number}",
-        )
-    if host_l in {"gitlab.com", "www.gitlab.com"} or "gitlab" in host_l:
-        return Target(
-            provider="gitlab",
-            host=host,
-            number=number,
-            owner=owner,
-            repo=repo,
-            project=path,
-            url=f"https://{host}/{path}/-/merge_requests/{number}",
-        )
-    if host_l in {"bitbucket.org", "www.bitbucket.org"}:
-        return Target(
-            provider="bitbucket",
-            host="bitbucket.org",
-            number=number,
-            owner=owner,
-            repo=repo,
-            url=f"https://bitbucket.org/{owner}/{repo}/pull-requests/{number}",
-        )
-    if host_l in {"dev.azure.com", "ssh.dev.azure.com"} or host_l.endswith(
-        ".visualstudio.com"
-    ):
-        return _azure_remote_target(host, path, number)
-    if host_l in {"codeberg.org", "gitea.com"} or "gitea" in host_l or "forgejo" in host_l:
-        return Target(
-            provider="gitea",
-            host=host,
-            number=number,
-            owner=owner,
-            repo=repo,
-            url=f"https://{host}/{owner}/{repo}/pulls/{number}",
-        )
-    m = _BITBUCKET_SERVER_REMOTE.match(path)
-    if m:
-        key = m.group("key") or m.group("key2")
-        slug = m.group("slug") or m.group("slug2")
-        return Target(
-            provider="bitbucket-server",
-            host=host,
-            number=number,
-            owner=key,
-            repo=slug,
-            url=f"https://{host}/projects/{key}/repos/{slug}/pull-requests/{number}",
-        )
-    return Target(
-        provider="unknown",
-        host=host,
-        number=number,
-        owner=owner,
-        repo=repo,
-    )
-
-
-def _azure_remote_target(host: str, path: str, number: str) -> Target | None:
-    """Build an Azure DevOps target from a git remote host and path."""
-    host_l = host.lower()
-    if host_l == "ssh.dev.azure.com":
-        m = _AZURE_REMOTE_SSH.match(path)
-        if not m:
-            return None
-        org = m.group("org")
-        project = m.group("project")
-        repo = m.group("repo")
-    elif host_l.endswith(".visualstudio.com"):
-        org = host.split(".", 1)[0]
-        path = urllib.parse.unquote(re.sub(r"^DefaultCollection/", "", path, flags=re.I))
-        m = _AZURE_REMOTE_VS.match(path)
-        if not m:
-            return None
-        project = m.group("project") or org
-        repo = m.group("repo")
-    else:
-        path = urllib.parse.unquote(path)
-        m = _AZURE_REMOTE_HTTPS.match(path)
-        if m:
-            org = m.group("org")
-            project = m.group("project")
-            repo = m.group("repo")
-        else:
-            m = _AZURE_REMOTE_SHORT.match(path)
-            if not m:
-                return None
-            org = m.group("org")
-            project = org  # project defaults to the organisation name
-            repo = m.group("repo")
-    return Target(
-        provider="azure",
-        host=host,
-        number=number,
-        owner=org,
-        repo=repo,
-        project=project,
-        org=org,
-        url=(
-            f"https://dev.azure.com/{urllib.parse.quote(org)}/"
-            f"{urllib.parse.quote(project)}/_git/{urllib.parse.quote(repo)}"
-            f"/pullrequest/{number}"
-        ),
-    )
-
-
 def fetch_git(target: Target, cwd: str | None) -> Brief:
     if not cwd:
         raise Skip("no cwd for git fallback")
@@ -1964,28 +2051,6 @@ def azure_branch_target(remote: Target, branch: str) -> Target:
             f"/_git/{urllib.parse.quote(repo_name)}/pullrequest/{number}"
         ),
     )
-
-
-PROVIDER_LABELS = {
-    "github": "GitHub",
-    "gitlab": "GitLab",
-    "bitbucket": "Bitbucket",
-    "bitbucket-server": "Bitbucket Server",
-    "gitea": "Gitea/Forgejo",
-    "azure": "Azure DevOps",
-}
-
-PROVIDER_TOKEN_HINTS = {
-    "github": "for private repositories set GH_TOKEN or GITHUB_TOKEN",
-    "gitlab": "for private projects set GITLAB_TOKEN, GL_TOKEN, or PRIVATE_TOKEN",
-    "bitbucket": "for private repositories set BITBUCKET_TOKEN, "
-    "BITBUCKET_ACCESS_TOKEN, or BITBUCKET_USERNAME with BITBUCKET_APP_PASSWORD",
-    "bitbucket-server": "for private servers set BITBUCKET_TOKEN or "
-    "BITBUCKET_ACCESS_TOKEN",
-    "gitea": "for private instances set GITEA_TOKEN, FORGEJO_TOKEN, or CODEBERG_TOKEN",
-    "azure": "for private projects set AZURE_DEVOPS_TOKEN, SYSTEM_ACCESSTOKEN, "
-    "or AZURE_TOKEN",
-}
 
 
 def _branch_lookup_failure(
