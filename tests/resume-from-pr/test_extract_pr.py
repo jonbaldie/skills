@@ -301,6 +301,91 @@ class RemoteAndApiRootTests(unittest.TestCase):
         self.assertEqual(self.mod.gitlab_project_id(target), "group%2Fsub%2Fapp")
 
 
+class ProviderTableTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_mod()
+
+    def test_identify_known_hosts(self):
+        cases = {
+            "github.com": "github",
+            "WWW.GitHub.com": "github",
+            "gitlab.com": "gitlab",
+            "gitlab.example.com": "gitlab",
+            "bitbucket.org": "bitbucket",
+            "dev.azure.com": "azure",
+            "ssh.dev.azure.com": "azure",
+            "acme.visualstudio.com": "azure",
+            "codeberg.org": "gitea",
+            "git.forgejo.dev": "gitea",
+            "example.com": "unknown",
+            "ghe.example.com": "unknown",
+        }
+        for host, provider in cases.items():
+            with self.subTest(host=host):
+                self.assertEqual(self.mod.identify(host), provider)
+
+    def test_parse_target_returns_none_for_non_pr_text(self):
+        self.assertIsNone(self.mod.parse_target("https://example.com/not-a-pr"))
+        self.assertIsNone(self.mod.parse_target("not a pr"))
+
+    def test_parse_target_parses_pr_url(self):
+        t = self.mod.parse_target("https://codeberg.org/owner/repo/pulls/3")
+        self.assertEqual(t.provider, "gitea")
+        self.assertEqual(t.number, "3")
+        self.assertEqual(t.slug, "owner/repo")
+
+    def test_every_provider_is_fully_wired(self):
+        for provider in self.mod.PROVIDERS:
+            with self.subTest(provider=provider.name):
+                self.assertTrue(self.mod.PROVIDER_LABELS.get(provider.name))
+                self.assertTrue(self.mod.PROVIDER_TOKEN_HINTS.get(provider.name))
+                self.assertTrue(self.mod.FETCHERS.get(provider.name))
+                self.assertIn(provider.name, self.mod.BRANCH_LOOKUPS)
+        wired = {provider.name for provider in self.mod.PROVIDERS}
+        self.assertEqual(set(self.mod.FETCHERS) - {"unknown"}, wired)
+
+    def test_url_precedence_is_declared_and_unambiguous(self):
+        precedences = [
+            shape.precedence
+            for provider in self.mod.PROVIDERS
+            for shape in provider.url_shapes
+        ]
+        self.assertEqual(len(precedences), len(set(precedences)))
+
+    def test_new_table_entry_wires_host_and_url_matching(self):
+        mod = self.mod
+        forge = mod.Provider(
+            name="example-forge",
+            label="Example Forge",
+            token_hint="set EXAMPLE_TOKEN",
+            host_pattern=r"forge\.example",
+            host_precedence=5,
+            url_shapes=(
+                mod.UrlShape(
+                    precedence=1,
+                    pattern=r"^https?://(?P<host>forge\.example)/(?P<owner>[^/]+)"
+                    r"/(?P<repo>[^/]+)/change/(?P<num>\d+)",
+                ),
+            ),
+            from_remote=lambda host, path, number: mod.Target(
+                provider="example-forge", host=host, number=number
+            ),
+        )
+        original = mod.PROVIDERS
+        mod.PROVIDERS = original + (forge,)
+        try:
+            self.assertEqual(mod.identify("forge.example"), "example-forge")
+            t = mod.parse_pr_url("https://forge.example/acme/app/change/4")
+            self.assertEqual(t.provider, "example-forge")
+            self.assertEqual(t.slug, "acme/app")
+            self.assertEqual(t.number, "4")
+            t = mod.target_from_remote("4", "git@forge.example:acme/app.git")
+            self.assertEqual(t.provider, "example-forge")
+        finally:
+            mod.PROVIDERS = original
+
+
 class BriefRenderTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
