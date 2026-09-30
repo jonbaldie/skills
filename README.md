@@ -391,6 +391,21 @@ changing the code unless you also ask for fixes.
 
 ---
 
+### Agent-generated changes are overwhelming my CI
+
+[`scale-test-impact-analysis`](./skills/scale-test-impact-analysis/SKILL.md)
+measures listener backlog and selection freshness, prices temporary fixes
+against growth, and designs a scalable result pipeline. It includes correctness,
+load, canary, and rollback checks so increased throughput preserves safe test
+selection.
+
+```text
+/scale-test-impact-analysis Assess our test-selection service
+/scale-test-impact-analysis Implement the agreed redesign
+```
+
+---
+
 ### I want to make a slow user journey faster
 
 [`hill-climbing`](./skills/hill-climbing/SKILL.md) turns one journey into a
