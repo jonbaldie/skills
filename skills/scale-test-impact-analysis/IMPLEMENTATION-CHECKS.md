@@ -28,7 +28,7 @@ Use known result sequences and policy expectations. Assert observable history, c
 | Duplicate delivery and genuine rerun | Duplicate has one effect; a genuine rerun remains a distinct result. |
 | Listener crash around append/acknowledgement | Recovery loses no accepted result and replay adds no duplicate history effect. |
 | Materializer crash around update/checkpoint | Restart neither skips nor double-applies a result. |
-| Multiple workers and rebalance | Concurrent processing preserves per-key order and complete history. |
+| Interchangeable listeners and rebalance | Different listeners process results for the same test/package without owning persistent history; concurrent processing and worker replacement preserve per-key order and complete history. |
 | New or repaired test | Becomes eligible according to policy within the freshness budget; unknown history takes the safe fallback. |
 | Flaky or widespread-failing test | History transitions produce the approved selection behavior without silently removing mandatory gates. |
 | Missing history or source-retention gap | Gap is visible, reconciliation identifies it, and selection falls back safely. |
@@ -38,7 +38,9 @@ Use known result sequences and policy expectations. Assert observable history, c
 
 Generate load through the supported ingestion path with realistic job-to-test fan-out, event sizes, package skew, and selection-query traffic. Run long enough to expose memory growth and repeated rollups; record duration and limitations.
 
-Exercise current, 10–20×, and 25× load, plus bursts, a hot package, and an outage followed by catch-up. Measure end-to-end freshness, backlog growth, memory, selector latency, reconciliation, and cost. A short peak-throughput test does not establish sustained capacity.
+Replay the workload that exposed the original bottleneck, then exercise the agreed release-load target, bursts, a hot package, and an outage followed by catch-up. Compare one listener with multiple listeners at the same offered load to establish scaling behavior and identify the next limiting stage. Measure end-to-end freshness, backlog growth, memory, selector latency, reconciliation, and cost. A short peak-throughput test does not establish sustained capacity.
+
+Test the 10–25× growth scenarios where practical within the approved budget. For scenarios beyond measured capacity, record the supporting throughput evidence, projected resource needs, next bottleneck, and unverified assumptions. Keep these projections separate from passed release gates.
 
 Replay equivalent input into old and new pipelines. Compare history and selection at equivalent input watermarks, so listener lag does not masquerade as an algorithm difference. Explain every mismatch.
 

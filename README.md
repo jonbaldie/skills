@@ -394,10 +394,11 @@ changing the code unless you also ask for fixes.
 ### Agent-generated changes are overwhelming my CI
 
 [`scale-test-impact-analysis`](./skills/scale-test-impact-analysis/SKILL.md)
-measures listener backlog and selection freshness, prices temporary fixes
-against growth, and designs a scalable result pipeline. It includes correctness,
-load, canary, and rollback checks so increased throughput preserves safe test
-selection.
+instruments listener backlog and selection freshness, reproduces the bottleneck,
+and implements a scalable result pipeline. It proves listener interchangeability
+and horizontal scaling, then canaries and tunes within an approved budget.
+Correctness and rollback checks preserve safe test selection; release-load gates
+stay separate from longer-term growth planning.
 
 ```text
 /scale-test-impact-analysis Assess our test-selection service
