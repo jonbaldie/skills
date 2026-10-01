@@ -1187,7 +1187,14 @@ def brief_from_github_rest(
             }
             for c in commits or []
         ],
-        "comments": issue_comments or [],
+        "comments": [
+            {
+                "body": c.get("body"),
+                "author": c.get("user") or c.get("author"),
+                "createdAt": c.get("created_at"),
+            }
+            for c in issue_comments or []
+        ],
         "reviews": [
             {
                 "body": r.get("body"),
