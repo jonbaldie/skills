@@ -352,6 +352,21 @@ what coverage-guided testing found.
 
 ---
 
+### I want to know which user journeys account for most activity
+
+[`user-journeys`](./skills/user-journeys/SKILL.md) identifies the ranked,
+end-to-end journeys accounting for 95% of an app or system's activity. It uses
+usage evidence when available; otherwise it returns an explicit coverage
+hypothesis rather than invented percentages. Each journey includes its actor,
+starting state, actions, and observable outcome, with the long tail left visible.
+
+```text
+/user-journeys
+/user-journeys path/to/app
+```
+
+---
+
 ### I want an agent to actually use my software
 
 **The problem.** Individual operations can work while a complete user journey
