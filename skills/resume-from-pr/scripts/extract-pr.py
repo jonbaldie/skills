@@ -611,6 +611,8 @@ class Brief:
     labels: list[str] = field(default_factory=list)
     linked_issues: list[str] = field(default_factory=list)
     fork: bool = False
+    # Collections that came back incomplete (failed request or page cap).
+    notes: list[str] = field(default_factory=list)
 
 
 def login_of(obj: Any, *keys: str) -> str:
@@ -685,6 +687,16 @@ def render(brief: Brief) -> str:
         lines.append(f"review_decision: {brief.review_decision}")
     if brief.labels:
         lines.append("labels: " + ", ".join(brief.labels))
+
+    if brief.notes:
+        lines.append("")
+        lines.append("## Missing data")
+        lines.append(
+            "This brief is partial. These collections are incomplete, "
+            "so absence below is not evidence:"
+        )
+        for note in brief.notes:
+            lines.append(f"- {note}")
 
     if brief.body.strip():
         lines.append("")
@@ -811,11 +823,12 @@ def env_token(*names: str) -> str | None:
     return None
 
 
-def http_json(
+def http_request(
     url: str,
     headers: dict[str, str] | None = None,
     timeout: int = 30,
-) -> Any:
+) -> tuple[Any, dict[str, str]]:
+    """Return the decoded JSON body and the lower-cased response headers."""
     req_headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
     if headers:
         req_headers.update(headers)
@@ -823,17 +836,149 @@ def http_json(
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             raw = response.read().decode("utf-8")
+            response_headers = {k.lower(): v for k, v in response.headers.items()}
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
         raise FetchError(f"HTTP {exc.code} for {url}: {truncate(body, 240)}") from exc
     except urllib.error.URLError as exc:
         raise Skip(f"network error for {url}: {exc.reason}") from exc
     if not raw.strip():
-        return None
+        return None, response_headers
     try:
-        return json.loads(raw)
+        return json.loads(raw), response_headers
     except json.JSONDecodeError as exc:
         raise FetchError(f"Non-JSON response from {url}") from exc
+
+
+def http_json(
+    url: str,
+    headers: dict[str, str] | None = None,
+    timeout: int = 30,
+) -> Any:
+    return http_request(url, headers=headers, timeout=timeout)[0]
+
+
+# A total cap per collection so a huge PR cannot cause runaway requests.
+MAX_COLLECTION_PAGES = 10
+
+
+def with_query(url: str, **params: str) -> str:
+    parts = urllib.parse.urlsplit(url)
+    query = dict(urllib.parse.parse_qsl(parts.query, keep_blank_values=True))
+    query.update(params)
+    return urllib.parse.urlunsplit(
+        parts._replace(query=urllib.parse.urlencode(query, safe="$"))
+    )
+
+
+def next_from_link(url: str, data: Any, headers: dict[str, str]) -> str | None:
+    """GitHub, GitLab, Gitea: RFC 8288 `Link: <…>; rel="next"`."""
+    for part in (headers.get("link") or "").split(","):
+        match = re.search(r'<([^>]+)>\s*;\s*rel="?next"?', part)
+        if match:
+            return match.group(1)
+    return None
+
+
+def next_from_field(url: str, data: Any, headers: dict[str, str]) -> str | None:
+    """Bitbucket Cloud: a `next` URL in the response body."""
+    if isinstance(data, dict) and isinstance(data.get("next"), str):
+        return data["next"]
+    return None
+
+
+def next_from_start(url: str, data: Any, headers: dict[str, str]) -> str | None:
+    """Bitbucket Server: `isLastPage` / `nextPageStart` in the response body."""
+    if not isinstance(data, dict) or data.get("isLastPage", True):
+        return None
+    start = data.get("nextPageStart")
+    return with_query(url, start=str(start)) if start is not None else None
+
+
+def next_from_continuation(url: str, data: Any, headers: dict[str, str]) -> str | None:
+    """Azure DevOps: an `x-ms-continuationtoken` response header."""
+    token = headers.get("x-ms-continuationtoken")
+    return with_query(url, continuationToken=token) if token else None
+
+
+def no_next_page(url: str, data: Any, headers: dict[str, str]) -> None:
+    return None
+
+
+@dataclass(frozen=True)
+class Paging:
+    """How one provider pages a collection."""
+
+    next_page: Callable[[str, Any, dict[str, str]], str | None]
+    size_param: str | None = None
+    size: int = 100
+    items_key: str | None = None  # None: the response is a top-level list
+
+    def items(self, data: Any) -> list[Any]:
+        if self.items_key is None:
+            return data if isinstance(data, list) else []
+        if isinstance(data, dict):
+            return data.get(self.items_key) or []
+        return []
+
+
+GITHUB_PAGING = Paging(next_from_link, "per_page", 100)
+GITLAB_PAGING = Paging(next_from_link, "per_page", 100)
+BITBUCKET_PAGING = Paging(next_from_field, "pagelen", 50, items_key="values")
+BITBUCKET_SERVER_PAGING = Paging(next_from_start, "limit", 100, items_key="values")
+GITEA_PAGING = Paging(next_from_link, "limit", 50)
+# Azure's PR threads and statuses take no page-size parameter; follow a
+# continuation token only if the service sends one.
+AZURE_PAGING = Paging(next_from_continuation, items_key="value")
+
+
+@dataclass
+class Collection:
+    items: list[Any] = field(default_factory=list)
+    note: str | None = None  # set when the list is incomplete
+
+
+def gap_notes(*collections: Collection) -> list[str]:
+    return [c.note for c in collections if c.note]
+
+
+def http_collection(
+    url: str,
+    headers: dict[str, str],
+    paging: Paging,
+    name: str,
+    max_pages: int | None = None,
+) -> Collection:
+    """Fetch every page of a PR collection; never raises.
+
+    A failed request or the page cap ends the walk with the items so far and
+    a note naming `name`, so the brief can say it is partial.
+    """
+    collection = Collection()
+    next_url: str | None = (
+        with_query(url, **{paging.size_param: str(paging.size)})
+        if paging.size_param
+        else url
+    )
+    max_pages = max_pages or MAX_COLLECTION_PAGES
+    pages = 0
+    while next_url:
+        if pages >= max_pages:
+            collection.note = (
+                f"{name}: truncated after {pages} pages "
+                f"({len(collection.items)} items); later items are missing"
+            )
+            break
+        try:
+            data, response_headers = http_request(next_url, headers=headers)
+        except (FetchError, Skip) as exc:
+            got = f" after {len(collection.items)} items" if pages else ""
+            collection.note = f"{name}: request failed{got} ({exc})"
+            break
+        pages += 1
+        collection.items.extend(paging.items(data))
+        next_url = paging.next_page(next_url, data, response_headers)
+    return collection
 
 
 def run_cmd(
@@ -1120,44 +1265,42 @@ def fetch_github_api(target: Target, cwd: str | None = None) -> Brief:
     if not isinstance(pr, dict):
         raise FetchError(f"No GitHub pull request {target.slug}#{target.number}")
 
-    def get_list(url: str) -> list[dict[str, Any]]:
-        try:
-            data = http_json(url, headers=headers)
-        except (FetchError, Skip):
-            return []
-        return data if isinstance(data, list) else []
-
-    files = get_list(f"{base}/files")
-    review_comments = get_list(f"{base}/comments")
-    reviews = get_list(f"{base}/reviews")
-    commits = get_list(f"{base}/commits")
-    issue_comments = get_list(
-        f"{root}/repos/{target.slug}/issues/{target.number}/comments"
+    files = http_collection(f"{base}/files", headers, GITHUB_PAGING, "files")
+    review_comments = http_collection(
+        f"{base}/comments", headers, GITHUB_PAGING, "review comments"
     )
-    statuses: list[dict[str, Any]] = []
+    reviews = http_collection(f"{base}/reviews", headers, GITHUB_PAGING, "reviews")
+    commits = http_collection(f"{base}/commits", headers, GITHUB_PAGING, "commits")
+    issue_comments = http_collection(
+        f"{root}/repos/{target.slug}/issues/{target.number}/comments",
+        headers,
+        GITHUB_PAGING,
+        "discussion comments",
+    )
+    statuses = Collection()
     sha = (pr.get("head") or {}).get("sha")
     if sha:
-        status_json = None
-        try:
-            status_json = http_json(
-                f"{root}/repos/{target.slug}/commits/{sha}/status",
-                headers=headers,
-            )
-        except (FetchError, Skip):
-            status_json = None
-        if isinstance(status_json, dict):
-            statuses = status_json.get("statuses") or []
-    return brief_from_github_rest(
+        statuses = http_collection(
+            f"{root}/repos/{target.slug}/commits/{sha}/status",
+            headers,
+            Paging(next_from_link, "per_page", 100, items_key="statuses"),
+            "commit statuses",
+        )
+    brief = brief_from_github_rest(
         pr,
-        files=files,
-        issue_comments=issue_comments,
-        review_comments=review_comments,
-        reviews=reviews,
-        commits=commits,
-        statuses=statuses,
+        files=files.items,
+        issue_comments=issue_comments.items,
+        review_comments=review_comments.items,
+        reviews=reviews.items,
+        commits=commits.items,
+        statuses=statuses.items,
         source="api",
         host=target.host,
     )
+    brief.notes = gap_notes(
+        files, review_comments, reviews, commits, issue_comments, statuses
+    )
+    return brief
 
 
 # ---------------------------------------------------------------------------
@@ -1280,33 +1423,24 @@ def fetch_gitlab_api(target: Target, cwd: str | None = None) -> Brief:
     if not isinstance(mr, dict):
         raise FetchError(f"No GitLab merge request {target.slug}!{target.number}")
 
-    def get_list(url: str) -> list[dict[str, Any]]:
-        try:
-            data = http_json(url, headers=headers)
-        except (FetchError, Skip):
-            return []
-        return data if isinstance(data, list) else []
-
-    changes_json: Any = None
-    try:
-        changes_json = http_json(f"{root}/changes", headers=headers)
-    except (FetchError, Skip):
-        changes_json = None
-    changes = []
-    if isinstance(changes_json, dict):
-        changes = changes_json.get("changes") or []
-    elif isinstance(changes_json, list):
-        changes = changes_json
-    discussions = get_list(f"{root}/discussions")
-    commits = get_list(f"{root}/commits")
-    return brief_from_gitlab(
+    # `/changes` is one unpaged object holding the whole diff list.
+    changes = http_collection(
+        f"{root}/changes", headers, Paging(no_next_page, items_key="changes"), "changes"
+    )
+    discussions = http_collection(
+        f"{root}/discussions", headers, GITLAB_PAGING, "discussions"
+    )
+    commits = http_collection(f"{root}/commits", headers, GITLAB_PAGING, "commits")
+    brief = brief_from_gitlab(
         mr,
-        changes=changes,
-        discussions=discussions,
-        commits=commits,
+        changes=changes.items,
+        discussions=discussions.items,
+        commits=commits.items,
         source="api",
         host=host,
     )
+    brief.notes = gap_notes(changes, discussions, commits)
+    return brief
 
 
 # ---------------------------------------------------------------------------
@@ -1413,26 +1547,19 @@ def fetch_bitbucket_api(target: Target, cwd: str | None = None) -> Brief:
     if not isinstance(pr, dict):
         raise FetchError(f"No Bitbucket pull request {target.slug}#{target.number}")
 
-    def values(url: str) -> list[dict[str, Any]]:
-        try:
-            data = http_json(url, headers=headers)
-        except (FetchError, Skip):
-            return []
-        if isinstance(data, dict):
-            return data.get("values") or []
-        return data if isinstance(data, list) else []
-
-    comments = values(f"{root}/comments")
-    diffstat = values(f"{root}/diffstat")
-    statuses = values(f"{root}/statuses")
-    return brief_from_bitbucket(
+    comments = http_collection(f"{root}/comments", headers, BITBUCKET_PAGING, "comments")
+    diffstat = http_collection(f"{root}/diffstat", headers, BITBUCKET_PAGING, "diffstat")
+    statuses = http_collection(f"{root}/statuses", headers, BITBUCKET_PAGING, "statuses")
+    brief = brief_from_bitbucket(
         pr,
-        comments=comments,
-        diffstat=diffstat,
-        statuses=statuses,
+        comments=comments.items,
+        diffstat=diffstat.items,
+        statuses=statuses.items,
         source="api",
         host=target.host,
     )
+    brief.notes = gap_notes(comments, diffstat, statuses)
+    return brief
 
 
 def fetch_bitbucket_server_api(target: Target, cwd: str | None = None) -> Brief:
@@ -1448,33 +1575,31 @@ def fetch_bitbucket_server_api(target: Target, cwd: str | None = None) -> Brief:
         raise FetchError(f"No Bitbucket Server pull request {target.number}")
     from_ref = pr.get("fromRef") or {}
     to_ref = pr.get("toRef") or {}
+    changes = http_collection(
+        f"{root}/changes", headers, BITBUCKET_SERVER_PAGING, "changes"
+    )
     files: list[FileChange] = []
-    try:
-        changes = http_json(f"{root}/changes?limit=50", headers=headers)
-        for item in (changes or {}).get("values") or []:
-            path = ((item.get("path") or {}).get("toString")) or ""
-            if path:
-                files.append(FileChange(path=path, change_type=item.get("type")))
-    except (FetchError, Skip):
-        pass
+    for item in changes.items:
+        path = ((item.get("path") or {}).get("toString")) or ""
+        if path:
+            files.append(FileChange(path=path, change_type=item.get("type")))
+    activities = http_collection(
+        f"{root}/activities", headers, BITBUCKET_SERVER_PAGING, "activities"
+    )
     comments: list[Comment] = []
-    try:
-        activities = http_json(f"{root}/activities?limit=50", headers=headers)
-        for item in (activities or {}).get("values") or []:
-            comment = item.get("comment") or {}
-            body = (comment.get("text") or "").strip()
-            if not body:
-                continue
-            comments.append(
-                Comment(
-                    author=login_of(comment.get("author"), "name", "displayName"),
-                    body=body,
-                    created=str(comment.get("createdDate") or ""),
-                    kind="discussion",
-                )
+    for item in activities.items:
+        comment = item.get("comment") or {}
+        body = (comment.get("text") or "").strip()
+        if not body:
+            continue
+        comments.append(
+            Comment(
+                author=login_of(comment.get("author"), "name", "displayName"),
+                body=body,
+                created=str(comment.get("createdDate") or ""),
+                kind="discussion",
             )
-    except (FetchError, Skip):
-        pass
+        )
     return Brief(
         provider="bitbucket-server",
         url=target.url or "",
@@ -1492,6 +1617,7 @@ def fetch_bitbucket_server_api(target: Target, cwd: str | None = None) -> Brief:
         source="api",
         files=files,
         comments=comments,
+        notes=gap_notes(changes, activities),
     )
 
 
@@ -1517,26 +1643,24 @@ def fetch_gitea_api(target: Target, cwd: str | None = None) -> Brief:
     if not isinstance(pr, dict):
         raise FetchError(f"No Gitea pull request {target.slug}#{target.number}")
 
-    def get_list(url: str) -> list[dict[str, Any]]:
-        try:
-            data = http_json(url, headers=headers)
-        except (FetchError, Skip):
-            return []
-        return data if isinstance(data, list) else []
-
-    files = get_list(f"{root}/files")
-    reviews = get_list(f"{root}/reviews")
-    issue_comments = get_list(
-        f"https://{host}/api/v1/repos/{target.slug}/issues/{target.number}/comments"
+    files = http_collection(f"{root}/files", headers, GITEA_PAGING, "files")
+    reviews = http_collection(f"{root}/reviews", headers, GITEA_PAGING, "reviews")
+    issue_comments = http_collection(
+        f"https://{host}/api/v1/repos/{target.slug}/issues/{target.number}/comments",
+        headers,
+        GITEA_PAGING,
+        "discussion comments",
     )
-    return brief_from_github_rest(
+    brief = brief_from_github_rest(
         pr,
-        files=files,
-        issue_comments=issue_comments,
-        reviews=reviews,
+        files=files.items,
+        issue_comments=issue_comments.items,
+        reviews=reviews.items,
         source="api",
         host=host,
     )
+    brief.notes = gap_notes(files, reviews, issue_comments)
+    return brief
 
 
 # ---------------------------------------------------------------------------
@@ -1639,23 +1763,17 @@ def fetch_azure_api(target: Target, cwd: str | None = None) -> Brief:
     pr = http_json(f"{root}?api-version=7.1", headers=headers)
     if not isinstance(pr, dict):
         raise FetchError(f"No Azure DevOps pull request {target.number}")
-    threads: list[dict[str, Any]] = []
-    statuses: list[dict[str, Any]] = []
-    try:
-        thread_json = http_json(f"{root}/threads?api-version=7.1", headers=headers)
-        if isinstance(thread_json, dict):
-            threads = thread_json.get("value") or []
-    except (FetchError, Skip):
-        pass
-    try:
-        status_json = http_json(f"{root}/statuses?api-version=7.1", headers=headers)
-        if isinstance(status_json, dict):
-            statuses = status_json.get("value") or []
-    except (FetchError, Skip):
-        pass
-    return brief_from_azure(
-        pr, threads=threads, statuses=statuses, source="api", target=target
+    threads = http_collection(
+        f"{root}/threads?api-version=7.1", headers, AZURE_PAGING, "threads"
     )
+    statuses = http_collection(
+        f"{root}/statuses?api-version=7.1", headers, AZURE_PAGING, "statuses"
+    )
+    brief = brief_from_azure(
+        pr, threads=threads.items, statuses=statuses.items, source="api", target=target
+    )
+    brief.notes = gap_notes(threads, statuses)
+    return brief
 
 
 # ---------------------------------------------------------------------------
