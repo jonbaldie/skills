@@ -51,6 +51,9 @@ Treat the brief as a claim about the world, not ground truth. Before acting:
   `head_sha` and claimed progress.
 - Open any artifact the brief depends on (review thread, failing check log,
   linked issue, spec) rather than trusting the PR's memory of it.
+- If the brief has a `## Gaps` section, its listed collections are incomplete.
+  Read the missing comments, reviews, or checks on the host before trusting
+  `## Discussion` or `## Ending`.
 
 **Done when:** you can state in one short block — goal, what's already done,
 what's wrong or unfinished, and the immediate next action — and each claim is

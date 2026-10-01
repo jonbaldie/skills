@@ -4,8 +4,12 @@
 from __future__ import annotations
 
 import importlib.util
+import io
+import json
 import sys
 import unittest
+import urllib.error
+import urllib.parse
 from pathlib import Path
 
 
@@ -816,6 +820,352 @@ class BareNumberResolutionTests(unittest.TestCase):
         message = str(ctx.exception)
         self.assertIn("Azure DevOps", message)
         self.assertIn("current branch", message)
+
+
+
+class FakeForge:
+    """Serve canned JSON through urlopen, paging the way the real host does."""
+
+    def __init__(self, testcase, mod):
+        self.mod = mod
+        self.routes = {}
+        self.requests = []
+        original = mod.urllib.request.urlopen
+        mod.urllib.request.urlopen = self.urlopen
+        testcase.addCleanup(setattr, mod.urllib.request, "urlopen", original)
+
+    def route(self, url, handler):
+        self.routes[url] = handler
+
+    def requested(self, url):
+        """Query dicts of every request made for one route."""
+        return [
+            dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(r).query))
+            for r in self.requests
+            if r.split("?", 1)[0] == url
+        ]
+
+    def urlopen(self, request, timeout=30):
+        url = request.full_url
+        self.requests.append(url)
+        parts = urllib.parse.urlsplit(url)
+        key = f"{parts.scheme}://{parts.netloc}{parts.path}"
+        handler = self.routes.get(key)
+        if handler is None:
+            raise urllib.error.HTTPError(url, 404, "Not Found", {}, io.BytesIO(b"{}"))
+        query = dict(urllib.parse.parse_qsl(parts.query))
+        result = handler(key, query)
+        if isinstance(result, int):
+            raise urllib.error.HTTPError(
+                url, result, "error", {}, io.BytesIO(b'{"message": "denied"}')
+            )
+        body, headers = result
+        return _FakeResponse(json.dumps(body), headers)
+
+
+class _FakeResponse:
+    def __init__(self, text, headers):
+        self._text = text
+        self.headers = headers
+
+    def read(self):
+        return self._text.encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def single(body):
+    return lambda key, query: (body, {})
+
+
+def status(code):
+    return lambda key, query: code
+
+
+def link_pager(items, size_param, default, maximum, wrap=None):
+    """GitHub/GitLab/Gitea: page + size params, next page in a Link header."""
+
+    def handler(key, query):
+        size = min(int(query.get(size_param, default)), maximum)
+        page = int(query.get("page", 1))
+        chunk = items[(page - 1) * size : page * size]
+        headers = {}
+        if page * size < len(items):
+            nxt = dict(query, page=str(page + 1))
+            headers["Link"] = (
+                f'<{key}?{urllib.parse.urlencode(nxt)}>; rel="next", '
+                f'<{key}?page=1>; rel="first"'
+            )
+        return ({wrap: chunk} if wrap else chunk), headers
+
+    return handler
+
+
+def bitbucket_pager(items, maximum):
+    """Bitbucket Cloud: pagelen + page params, next page URL in "next"."""
+
+    def handler(key, query):
+        size = min(int(query.get("pagelen", 10)), maximum)
+        page = int(query.get("page", 1))
+        body = {"values": items[(page - 1) * size : page * size], "pagelen": size}
+        if page * size < len(items):
+            nxt = dict(query, page=str(page + 1))
+            body["next"] = f"{key}?{urllib.parse.urlencode(nxt)}"
+        return body, {}
+
+    return handler
+
+
+def bitbucket_server_pager(items, maximum):
+    """Bitbucket Server: limit + start params, isLastPage/nextPageStart."""
+
+    def handler(key, query):
+        size = min(int(query.get("limit", 25)), maximum)
+        start = int(query.get("start", 0))
+        chunk = items[start : start + size]
+        last = start + size >= len(items)
+        body = {"values": chunk, "isLastPage": last, "start": start}
+        if not last:
+            body["nextPageStart"] = start + size
+        return body, {}
+
+    return handler
+
+
+def azure_pager(items, size):
+    """Azure DevOps: continuationToken param, token in a response header."""
+
+    def handler(key, query):
+        start = int(query.get("continuationToken", 0))
+        chunk = items[start : start + size]
+        headers = {}
+        if start + size < len(items):
+            headers["x-ms-continuationtoken"] = str(start + size)
+        return {"value": chunk, "count": len(chunk)}, headers
+
+    return handler
+
+
+def stamp(n):
+    return f"2026-01-01T{n // 60:02d}:{n % 60:02d}:00Z"
+
+
+class CollectionPagingTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_mod()
+
+    def setUp(self):
+        self.forge = FakeForge(self, self.mod)
+
+    def github_forge(self, *, comments, maximum=30, reviews=None):
+        api = "https://api.github.com/repos/acme/app"
+        base = f"{api}/pulls/9"
+        self.forge.route(
+            base,
+            single(
+                {
+                    "number": 9,
+                    "title": "Long PR",
+                    "state": "open",
+                    "user": {"login": "ada"},
+                    "html_url": "https://github.com/acme/app/pull/9",
+                    "head": {"ref": "feat", "sha": "abc1234"},
+                    "base": {"ref": "main"},
+                }
+            ),
+        )
+        for path in ("files", "comments", "commits"):
+            self.forge.route(f"{base}/{path}", link_pager([], "per_page", 30, maximum))
+        self.forge.route(
+            f"{base}/reviews",
+            reviews or link_pager([], "per_page", 30, maximum),
+        )
+        self.forge.route(
+            f"{api}/issues/9/comments",
+            link_pager(comments, "per_page", 30, maximum),
+        )
+        self.forge.route(
+            f"{api}/commits/abc1234/status",
+            link_pager([], "per_page", 30, maximum, wrap="statuses"),
+        )
+        return self.mod.parse_pr_url("https://github.com/acme/app/pull/9")
+
+    def numbered_comments(self, count):
+        return [
+            {
+                "body": f"comment {n}",
+                "user": {"login": "ada"},
+                "created_at": stamp(n),
+            }
+            for n in range(1, count + 1)
+        ]
+
+    def test_github_ending_reports_the_last_of_45_comments(self):
+        target = self.github_forge(comments=self.numbered_comments(45))
+        brief = self.mod.fetch_github_api(target)
+        self.assertRegex(self.mod.ending_text(brief), r": comment 45$")
+        pages = self.forge.requested("https://api.github.com/repos/acme/app/issues/9/comments")
+        self.assertEqual(len(pages), 2)
+
+    def test_github_collects_every_page_with_page_params(self):
+        target = self.github_forge(comments=self.numbered_comments(5), maximum=2)
+        brief = self.mod.fetch_github_api(target)
+        bodies = [c.body for c in brief.comments]
+        self.assertEqual(bodies, [f"comment {n}" for n in range(1, 6)])
+        pages = self.forge.requested("https://api.github.com/repos/acme/app/issues/9/comments")
+        self.assertEqual([p.get("per_page") for p in pages], ["100"] * 3)
+        self.assertEqual([p.get("page") for p in pages], [None, "2", "3"])
+        self.assertEqual(brief.notes, [])
+
+    def test_page_cap_notes_truncation_in_rendered_brief(self):
+        cap = self.mod.MAX_COLLECTION_PAGES
+        target = self.github_forge(comments=self.numbered_comments(cap + 3), maximum=1)
+        brief = self.mod.fetch_github_api(target)
+        self.assertEqual(len(brief.comments), cap)
+        text = self.mod.render(brief)
+        self.assertIn("## Gaps", text)
+        self.assertRegex(text, r"issue comments: truncated")
+
+    def test_failed_collection_is_named_and_brief_still_renders(self):
+        target = self.github_forge(
+            comments=self.numbered_comments(2), reviews=status(403)
+        )
+        brief = self.mod.fetch_github_api(target)
+        text = self.mod.render(brief)
+        self.assertRegex(text, r"## Ending\n.*: comment 2\n")
+        self.assertIn("## Gaps", text)
+        self.assertRegex(text, r"reviews: .*HTTP 403")
+
+    def test_gitlab_collects_every_page(self):
+        root = "https://gitlab.com/api/v4/projects/team%2Fapp/merge_requests/3"
+        self.forge.route(
+            root,
+            single({"iid": 3, "title": "MR", "state": "opened", "author": {"username": "ada"}}),
+        )
+        diffs = [{"new_path": f"f{n}.py"} for n in range(5)]
+        discussions = [
+            {"notes": [{"body": f"note {n}", "author": {"username": "ada"}, "created_at": stamp(n)}]}
+            for n in range(5)
+        ]
+        commits = [{"id": f"{n:07d}", "title": f"commit {n}"} for n in range(5)]
+        self.forge.route(f"{root}/diffs", link_pager(diffs, "per_page", 20, 2))
+        self.forge.route(f"{root}/discussions", link_pager(discussions, "per_page", 20, 2))
+        self.forge.route(f"{root}/commits", link_pager(commits, "per_page", 20, 2))
+        target = self.mod.parse_pr_url("https://gitlab.com/team/app/-/merge_requests/3")
+        brief = self.mod.fetch_gitlab_api(target)
+        self.assertEqual([f.path for f in brief.files], [f"f{n}.py" for n in range(5)])
+        self.assertEqual(len(brief.comments), 5)
+        self.assertEqual(len(brief.commits), 5)
+        pages = self.forge.requested(f"{root}/discussions")
+        self.assertEqual([p.get("per_page") for p in pages], ["100"] * 3)
+        self.assertEqual([p.get("page") for p in pages], [None, "2", "3"])
+        self.assertEqual(brief.notes, [])
+
+    def test_gitea_collects_every_page(self):
+        root = "https://codeberg.org/api/v1/repos/owner/repo/pulls/9"
+        self.forge.route(
+            root,
+            single({"number": 9, "title": "PR", "state": "open", "user": {"login": "ada"}}),
+        )
+        files = [{"filename": f"f{n}.go"} for n in range(5)]
+        self.forge.route(f"{root}/files", link_pager(files, "limit", 30, 2))
+        self.forge.route(f"{root}/reviews", link_pager([], "limit", 30, 2))
+        self.forge.route(
+            "https://codeberg.org/api/v1/repos/owner/repo/issues/9/comments",
+            link_pager(self.numbered_comments(5), "limit", 30, 2),
+        )
+        target = self.mod.parse_pr_url("https://codeberg.org/owner/repo/pulls/9")
+        brief = self.mod.fetch_gitea_api(target)
+        self.assertEqual(len(brief.files), 5)
+        self.assertEqual(len(brief.comments), 5)
+        pages = self.forge.requested(f"{root}/files")
+        self.assertEqual([p.get("limit") for p in pages], ["50"] * 3)
+        self.assertEqual([p.get("page") for p in pages], [None, "2", "3"])
+        self.assertEqual(brief.notes, [])
+
+    def test_bitbucket_cloud_collects_every_page(self):
+        root = "https://api.bitbucket.org/2.0/repositories/ws/repo/pullrequests/11"
+        self.forge.route(
+            root,
+            single({"id": 11, "title": "PR", "state": "OPEN", "author": {"display_name": "Ada"}}),
+        )
+        comments = [
+            {"content": {"raw": f"comment {n}"}, "user": {"display_name": "Ada"}, "created_on": stamp(n)}
+            for n in range(5)
+        ]
+        diffstat = [{"new": {"path": f"f{n}"}, "status": "modified"} for n in range(5)]
+        statuses = [{"name": f"ci {n}", "state": "SUCCESSFUL"} for n in range(5)]
+        self.forge.route(f"{root}/comments", bitbucket_pager(comments, 2))
+        self.forge.route(f"{root}/diffstat", bitbucket_pager(diffstat, 2))
+        self.forge.route(f"{root}/statuses", bitbucket_pager(statuses, 2))
+        target = self.mod.parse_pr_url("https://bitbucket.org/ws/repo/pull-requests/11")
+        brief = self.mod.fetch_bitbucket_api(target)
+        self.assertEqual(len(brief.comments), 5)
+        self.assertEqual(len(brief.files), 5)
+        self.assertEqual(len(brief.checks), 5)
+        pages = self.forge.requested(f"{root}/comments")
+        self.assertEqual([p.get("pagelen") for p in pages], ["50"] * 3)
+        self.assertEqual([p.get("page") for p in pages], [None, "2", "3"])
+        self.assertEqual(brief.notes, [])
+
+    def test_bitbucket_server_collects_every_page(self):
+        root = (
+            "https://git.example.com/rest/api/1.0/projects/KEY/repos/slug/pull-requests/4"
+        )
+        self.forge.route(
+            root,
+            single({"id": 4, "title": "PR", "state": "OPEN", "author": {"user": {"name": "ada"}}}),
+        )
+        changes = [{"path": {"toString": f"f{n}"}, "type": "MODIFY"} for n in range(5)]
+        activities = [
+            {"comment": {"text": f"comment {n}", "author": {"name": "ada"}, "createdDate": n}}
+            for n in range(5)
+        ]
+        self.forge.route(f"{root}/changes", bitbucket_server_pager(changes, 2))
+        self.forge.route(f"{root}/activities", bitbucket_server_pager(activities, 2))
+        target = self.mod.parse_pr_url(
+            "https://git.example.com/projects/KEY/repos/slug/pull-requests/4"
+        )
+        brief = self.mod.fetch_bitbucket_server_api(target)
+        self.assertEqual(len(brief.files), 5)
+        self.assertEqual(len(brief.comments), 5)
+        pages = self.forge.requested(f"{root}/activities")
+        self.assertEqual([p.get("limit") for p in pages], ["100"] * 3)
+        self.assertEqual([p.get("start") for p in pages], [None, "2", "4"])
+        self.assertEqual(brief.notes, [])
+
+    def test_azure_collects_every_page(self):
+        root = (
+            "https://dev.azure.com/org/project/_apis/git/repositories/repo/pullrequests/15"
+        )
+        self.forge.route(
+            root,
+            single({"pullRequestId": 15, "title": "PR", "status": "active"}),
+        )
+        threads = [
+            {"comments": [{"content": f"comment {n}", "author": {"displayName": "Ada"}, "publishedDate": stamp(n)}]}
+            for n in range(5)
+        ]
+        statuses = [{"context": {"name": f"ci {n}"}, "state": "succeeded"} for n in range(5)]
+        self.forge.route(f"{root}/threads", azure_pager(threads, 2))
+        self.forge.route(f"{root}/statuses", azure_pager(statuses, 2))
+        target = self.mod.parse_pr_url(
+            "https://dev.azure.com/org/project/_git/repo/pullrequest/15"
+        )
+        brief = self.mod.fetch_azure_api(target)
+        self.assertEqual(len(brief.comments), 5)
+        self.assertEqual(len(brief.checks), 5)
+        pages = self.forge.requested(f"{root}/threads")
+        self.assertEqual([p.get("api-version") for p in pages], ["7.1"] * 3)
+        self.assertEqual(
+            [p.get("continuationToken") for p in pages], [None, "2", "4"]
+        )
+        self.assertEqual(brief.notes, [])
 
 
 class CliFailureTests(unittest.TestCase):
