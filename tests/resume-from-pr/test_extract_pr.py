@@ -7,6 +7,7 @@ import importlib.util
 import sys
 import unittest
 from pathlib import Path
+from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -817,6 +818,275 @@ class BareNumberResolutionTests(unittest.TestCase):
         self.assertIn("Azure DevOps", message)
         self.assertIn("current branch", message)
 
+
+def query_of(url: str) -> dict[str, str]:
+    return {k: v[-1] for k, v in parse_qs(urlsplit(url).query).items()}
+
+
+def numbered_comments(count: int) -> list[dict]:
+    return [
+        {
+            "body": f"comment {i}",
+            "user": {"login": "ada"},
+            "created_at": f"2026-01-01T{i // 60:02d}:{i % 60:02d}:00Z",
+        }
+        for i in range(1, count + 1)
+    ]
+
+
+class FakeTransport:
+    """Stand-in for http_request: routes by URL path suffix, records requests."""
+
+    def __init__(self, routes):
+        self.routes = routes
+        self.requests: list[str] = []
+
+    def __call__(self, url, headers=None, timeout=30):
+        self.requests.append(url)
+        path = urlsplit(url).path
+        for suffix, handler in self.routes.items():
+            if path.endswith(suffix):
+                return handler(url)
+        return [], {}
+
+    def requested(self, suffix: str) -> list[str]:
+        return [u for u in self.requests if urlsplit(u).path.endswith(suffix)]
+
+
+def link_pages(items, size_param, page_param="page", server_max=30):
+    """Serve items the way GitHub, GitLab, and Gitea do: Link rel="next"."""
+
+    def handler(url):
+        query = query_of(url)
+        size = min(int(query.get(size_param, server_max)), server_max)
+        page = int(query.get(page_param, 1))
+        chunk = items[(page - 1) * size : page * size]
+        headers = {}
+        if page * size < len(items):
+            parts = urlsplit(url)
+            nxt = dict(query, **{page_param: str(page + 1)})
+            next_url = urlunsplit(parts._replace(query=urlencode(nxt)))
+            headers["link"] = f'<{next_url}>; rel="next", <{url}>; rel="first"'
+        return chunk, headers
+
+    return handler
+
+
+class CollectionPagingTests(unittest.TestCase):
+    """Issue #159: every API fetcher pages PR collections and reports gaps."""
+
+    def setUp(self):
+        self.mod = load_mod()
+
+    def patch_transport(self, routes):
+        fake = FakeTransport(routes)
+        original = self.mod.http_request
+        self.mod.http_request = fake
+        self.addCleanup(setattr, self.mod, "http_request", original)
+        return fake
+
+    def github_target(self):
+        return self.mod.parse_pr_url("https://github.com/o/r/pull/7")
+
+    def github_routes(self, **overrides):
+        routes = {
+            "/pulls/7": lambda url: (
+                {"number": 7, "title": "T", "state": "open", "user": {"login": "ada"}},
+                {},
+            ),
+            "/issues/7/comments": link_pages(numbered_comments(45), "per_page"),
+        }
+        routes.update(overrides)
+        return routes
+
+    def test_github_long_discussion_ends_on_newest_comment(self):
+        fake = self.patch_transport(self.github_routes())
+        brief = self.mod.fetch_github_api(self.github_target())
+        self.assertEqual(len([c for c in brief.comments if c.kind == "discussion"]), 45)
+        self.assertIn("comment 45", self.mod.ending_text(brief))
+        pages = fake.requested("/issues/7/comments")
+        self.assertEqual(len(pages), 2)
+        self.assertEqual(query_of(pages[0]).get("per_page"), "100")
+        self.assertEqual(query_of(pages[1]).get("page"), "2")
+
+
+    def test_page_cap_is_reported_in_rendered_brief(self):
+        self.patch_transport(self.github_routes())
+        original = self.mod.MAX_COLLECTION_PAGES
+        self.mod.MAX_COLLECTION_PAGES = 1
+        self.addCleanup(setattr, self.mod, "MAX_COLLECTION_PAGES", original)
+        text = self.mod.render(self.mod.fetch_github_api(self.github_target()))
+        gaps = text.split("## Missing data", 1)[1].split("##", 1)[0]
+        self.assertIn("discussion comments: truncated after 1 pages", gaps)
+
+    def test_failed_collection_is_named_and_rest_still_renders(self):
+        def forbidden(url):
+            raise self.mod.FetchError(f"HTTP 403 for {url}: rate limited")
+
+        routes = self.github_routes(**{"/pulls/7/comments": forbidden})
+        self.patch_transport(routes)
+        brief = self.mod.fetch_github_api(self.github_target())
+        text = self.mod.render(brief)
+        gaps = text.split("## Missing data", 1)[1].split("##", 1)[0]
+        self.assertIn("review comments: request failed", gaps)
+        self.assertIn("HTTP 403", gaps)
+        self.assertIn("comment 45", text.split("## Ending", 1)[1])
+
+    def test_complete_brief_has_no_missing_data_section(self):
+        self.patch_transport(self.github_routes())
+        text = self.mod.render(self.mod.fetch_github_api(self.github_target()))
+        self.assertNotIn("## Missing data", text)
+
+    def test_gitlab_follows_link_header(self):
+        notes = [
+            {"notes": [{"body": f"note {i}", "author": {"username": "ada"},
+                        "created_at": f"2026-01-01T00:{i:02d}:00Z"}]}
+            for i in range(1, 46)
+        ]
+        fake = self.patch_transport(
+            {
+                "/merge_requests/7": lambda url: (
+                    {"iid": 7, "title": "T", "state": "opened"},
+                    {},
+                ),
+                "/discussions": link_pages(notes, "per_page", server_max=20),
+            }
+        )
+        target = self.mod.parse_pr_url("https://gitlab.com/g/p/-/merge_requests/7")
+        brief = self.mod.fetch_gitlab_api(target)
+        self.assertIn("note 45", self.mod.ending_text(brief))
+        pages = fake.requested("/discussions")
+        self.assertEqual(len(pages), 3)
+        self.assertEqual(query_of(pages[0]).get("per_page"), "100")
+        self.assertEqual(query_of(pages[2]).get("page"), "3")
+        self.assertEqual(brief.notes, [])
+
+    def test_gitea_follows_link_header_with_limit(self):
+        fake = self.patch_transport(
+            {
+                "/pulls/7": lambda url: (
+                    {"number": 7, "title": "T", "state": "open"},
+                    {},
+                ),
+                "/issues/7/comments": link_pages(
+                    numbered_comments(45), "limit", server_max=30
+                ),
+            }
+        )
+        target = self.mod.parse_pr_url("https://codeberg.org/o/r/pulls/7")
+        brief = self.mod.fetch_gitea_api(target)
+        self.assertIn("comment 45", self.mod.ending_text(brief))
+        pages = fake.requested("/issues/7/comments")
+        self.assertEqual(len(pages), 2)
+        self.assertEqual(query_of(pages[0]).get("limit"), "50")
+        self.assertEqual(query_of(pages[1]).get("page"), "2")
+
+    def test_bitbucket_cloud_follows_next_field(self):
+        comments = [
+            {"content": {"raw": f"comment {i}"}, "user": {"display_name": "ada"},
+             "created_on": f"2026-01-01T00:{i:02d}:00Z"}
+            for i in range(1, 46)
+        ]
+
+        def serve(url):
+            query = query_of(url)
+            size = min(int(query.get("pagelen", 10)), 30)
+            page = int(query.get("page", 1))
+            body = {"values": comments[(page - 1) * size : page * size]}
+            if page * size < len(comments):
+                body["next"] = url.split("?")[0] + f"?pagelen={size}&page={page + 1}"
+            return body, {}
+
+        fake = self.patch_transport(
+            {
+                "/pullrequests/7": lambda url: (
+                    {"id": 7, "title": "T", "state": "OPEN"},
+                    {},
+                ),
+                "/comments": serve,
+            }
+        )
+        target = self.mod.parse_pr_url("https://bitbucket.org/w/r/pull-requests/7")
+        brief = self.mod.fetch_bitbucket_api(target)
+        self.assertEqual(len(brief.comments), 45)
+        self.assertIn("comment 45", self.mod.ending_text(brief))
+        pages = fake.requested("/comments")
+        self.assertEqual(len(pages), 2)
+        self.assertEqual(query_of(pages[0]).get("pagelen"), "50")
+        self.assertEqual(query_of(pages[1]).get("page"), "2")
+
+    def test_bitbucket_server_follows_next_page_start(self):
+        activities = [
+            {"comment": {"text": f"comment {i}", "author": {"name": "ada"},
+                         "createdDate": 1767225600000 + i * 60000}}
+            for i in range(1, 46)
+        ]
+
+        def serve(url):
+            query = query_of(url)
+            size = min(int(query.get("limit", 25)), 30)
+            start = int(query.get("start", 0))
+            chunk = activities[start : start + size]
+            last = start + size >= len(activities)
+            body = {"values": chunk, "isLastPage": last}
+            if not last:
+                body["nextPageStart"] = start + size
+            return body, {}
+
+        fake = self.patch_transport(
+            {
+                "/pull-requests/7": lambda url: (
+                    {"id": 7, "title": "T", "state": "OPEN"},
+                    {},
+                ),
+                "/activities": serve,
+            }
+        )
+        target = self.mod.parse_pr_url(
+            "https://git.example.com/projects/KEY/repos/slug/pull-requests/7"
+        )
+        brief = self.mod.fetch_bitbucket_server_api(target)
+        self.assertEqual(len(brief.comments), 45)
+        self.assertEqual(brief.comments[-1].body, "comment 45")
+        pages = fake.requested("/activities")
+        self.assertEqual(len(pages), 2)
+        self.assertEqual(query_of(pages[0]).get("limit"), "100")
+        self.assertEqual(query_of(pages[1]).get("start"), "30")
+
+    def test_azure_follows_continuation_token(self):
+        threads = [
+            {"comments": [{"content": f"comment {i}", "author": {"displayName": "ada"},
+                           "publishedDate": f"2026-01-01T00:{i:02d}:00Z"}]}
+            for i in range(1, 46)
+        ]
+
+        def serve(url):
+            token = query_of(url).get("continuationToken")
+            start = int(token or 0)
+            headers = {}
+            if start + 30 < len(threads):
+                headers["x-ms-continuationtoken"] = str(start + 30)
+            return {"value": threads[start : start + 30]}, headers
+
+        fake = self.patch_transport(
+            {
+                "/pullrequests/7": lambda url: (
+                    {"pullRequestId": 7, "title": "T", "status": "active"},
+                    {},
+                ),
+                "/threads": serve,
+            }
+        )
+        target = self.mod.parse_pr_url(
+            "https://dev.azure.com/org/proj/_git/repo/pullrequest/7"
+        )
+        brief = self.mod.fetch_azure_api(target)
+        self.assertIn("comment 45", self.mod.ending_text(brief))
+        pages = fake.requested("/threads")
+        self.assertEqual(len(pages), 2)
+        self.assertEqual(query_of(pages[0]).get("api-version"), "7.1")
+        self.assertEqual(query_of(pages[1]).get("continuationToken"), "30")
+        self.assertEqual(query_of(pages[1]).get("api-version"), "7.1")
 
 class CliFailureTests(unittest.TestCase):
     @classmethod
