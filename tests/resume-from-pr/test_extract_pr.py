@@ -578,6 +578,32 @@ class BriefRenderTests(unittest.TestCase):
         self.assertIn("Looks good now.", ending)
         self.assertNotIn("ada", ending)
 
+    def test_rest_issue_comment_author_comes_from_user(self):
+        """Issue #162: REST issue comments carry the author under `user`."""
+        brief = self.mod.brief_from_github_rest(
+            {"number": 5, "title": "T", "state": "open", "user": {"login": "linus"}},
+            issue_comments=[
+                {
+                    "body": "x",
+                    "user": {"login": "ada"},
+                    "created_at": "2026-01-01T00:00:00Z",
+                }
+            ],
+        )
+        self.assertEqual([c.author for c in brief.comments], ["ada"])
+        self.assertTrue(self.mod.ending_text(brief).startswith("ada: "))
+        self.assertIn("### Comment — ada", self.mod.render(brief))
+
+    def test_gh_view_comment_author_still_resolves(self):
+        brief = self.mod.brief_from_github_view(
+            {
+                "title": "T",
+                "number": 5,
+                "comments": [{"body": "x", "author": {"login": "ada"}}],
+            }
+        )
+        self.assertEqual([c.author for c in brief.comments], ["ada"])
+
     def test_events_without_timestamps_keep_stable_position(self):
         """Issue #65: undated events must not disturb the chronological order
         of timestamped events, and keep their own relative order."""
@@ -1008,7 +1034,7 @@ class CollectionPagingTests(unittest.TestCase):
     def test_github_ending_reports_the_last_of_45_comments(self):
         target = self.github_forge(comments=self.numbered_comments(45))
         brief = self.mod.fetch_github_api(target)
-        self.assertRegex(self.mod.ending_text(brief), r": comment 45$")
+        self.assertEqual(self.mod.ending_text(brief), "ada: comment 45")
         pages = self.forge.requested("https://api.github.com/repos/acme/app/issues/9/comments")
         self.assertEqual(len(pages), 2)
 
@@ -1083,6 +1109,7 @@ class CollectionPagingTests(unittest.TestCase):
         brief = self.mod.fetch_gitea_api(target)
         self.assertEqual(len(brief.files), 5)
         self.assertEqual(len(brief.comments), 5)
+        self.assertEqual({c.author for c in brief.comments}, {"ada"})
         pages = self.forge.requested(f"{root}/files")
         self.assertEqual([p.get("limit") for p in pages], ["50"] * 3)
         self.assertEqual([p.get("page") for p in pages], [None, "2", "3"])
