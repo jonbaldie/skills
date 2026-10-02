@@ -6,49 +6,20 @@
 
 set -euo pipefail
 
-repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-readonly repository_root
+# shellcheck source=tests/lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+new_sandbox skills-in-progress
+
 readonly sync_script="${repository_root}/skills/sync-jonbaldie-skills/scripts/sync-skills.sh"
-test_root="$(mktemp -d "${TMPDIR:-/tmp}/skills-in-progress.XXXXXX")"
-readonly test_root
-
-cleanup() {
-  rm -rf "${test_root}"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$*" >&2
-  exit 1
-}
-
-make_skill() {
-  local repository="$1"
-  local relative_directory="$2"
-  local name="$3"
-  local skill_directory="${repository}/skills/${relative_directory}"
-
-  mkdir -p "${skill_directory}"
-  printf '%s\n' '---' "name: ${name}" 'description: Fixture skill.' '---' >"${skill_directory}/SKILL.md"
-}
-
-commit_repository() {
-  local repository="$1"
-  git -C "${repository}" add .
-  git -C "${repository}" -c user.name=Fixture -c user.email=fixture@example.com commit --quiet -m fixture
-}
-
 readonly matt_repository="${test_root}/matt-source"
 readonly jon_repository="${test_root}/jon-source"
 
-git init --quiet "${matt_repository}"
-make_skill "${matt_repository}" fixture-mp fixture-mp
-make_skill "${matt_repository}" in-progress/matt-unfinished matt-unfinished
+make_skill "${matt_repository}/skills/fixture-mp" fixture-mp
+make_skill "${matt_repository}/skills/in-progress/matt-unfinished" matt-unfinished
 commit_repository "${matt_repository}"
 
-git init --quiet "${jon_repository}"
-make_skill "${jon_repository}" fixture-jb fixture-jb
-make_skill "${jon_repository}" in-progress/jon-unfinished jon-unfinished
+make_skill "${jon_repository}/skills/fixture-jb" fixture-jb
+make_skill "${jon_repository}/skills/in-progress/jon-unfinished" jon-unfinished
 commit_repository "${jon_repository}"
 
 # install.sh run from this checkout installs the real collection, so it is
@@ -106,4 +77,4 @@ JONBALDIE_SKILLS_REPO="${jon_repository}" \
 grep -qx jon-unfinished "${sync_project}/.agents/sync-jonbaldie-skills.manifest" &&
   fail "sync-skills.sh listed a skills/in-progress skill in the manifest"
 
-printf '%s\n' 'install-in-progress: in-progress skills are not distributed'
+pass 'in-progress skills are not distributed'

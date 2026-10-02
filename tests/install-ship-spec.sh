@@ -2,10 +2,11 @@
 
 set -euo pipefail
 
-repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=tests/lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
 public_source="${1:-}"
 expected_revision="${2:-}"
-installation_root="$(mktemp -d "${TMPDIR:-/tmp}/bmf-install.XXXXXX")"
 user_root="${HOME}"
 sandbox_policy="(version 1)
 (allow default)
@@ -14,20 +15,13 @@ sandbox_policy="(version 1)
   (subpath \"${user_root}/.codex\"))"
 
 if ! command -v sandbox-exec >/dev/null 2>&1; then
-  printf '%s\n' \
-    'sandbox-exec is required to prove agent-home isolation.' >&2
-  exit 1
+  fail 'sandbox-exec is required to prove agent-home isolation.'
 fi
 if ! docker info >/dev/null 2>&1; then
-  printf '%s\n' \
-    'Docker is required to prove global-install isolation.' >&2
-  exit 1
+  fail 'Docker is required to prove global-install isolation.'
 fi
 
-cleanup() {
-  rm -rf "${installation_root}"
-}
-trap cleanup EXIT
+new_sandbox bmf-install
 
 # node:22-bookworm already has git/curl; keeps tests offline-friendly for apt.
 DOCKER_IMAGE="${DOCKER_IMAGE:-node:22-bookworm}"
@@ -131,8 +125,8 @@ run_public_global_clone() {
 
 run_documented_project_clone() {
   local project_commands
-  local project_with_spaces="${installation_root}/project with spaces"
-  local local_checkout="${installation_root}/jonbaldie-skills-worktree"
+  local project_with_spaces="${test_root}/project with spaces"
+  local local_checkout="${test_root}/jonbaldie-skills-worktree"
 
   # Materialize a worktree-faithful checkout (git clone only has HEAD).
   rm -rf "${local_checkout}"
@@ -157,12 +151,12 @@ run_documented_project_clone() {
 
   test -f "${project_with_spaces}/.agents/skills/bmf/SKILL.md"
   test -f "${project_with_spaces}/.agents/skills/implement/SKILL.md"
-  test ! -e "${installation_root}/jonbaldie-skills/.agents"
+  test ! -e "${test_root}/jonbaldie-skills/.agents"
 }
 
 run_documented_project_manual() {
-  local manual_project="${installation_root}/manual-project"
-  local local_checkout="${installation_root}/manual-worktree"
+  local manual_project="${test_root}/manual-project"
+  local local_checkout="${test_root}/manual-worktree"
 
   rm -rf "${local_checkout}"
   cp -a "${repository_root}" "${local_checkout}"
@@ -181,7 +175,7 @@ repo="$(mktemp -d)/jonbaldie-skills"
 cp -a "${LOCAL_CHECKOUT}" "${repo}"
 printf 'y\n' | "${repo}/install.sh" --agent "${agent}" --yes
 EOS
-  ) >"${installation_root}/manual-project.log"
+  ) >"${test_root}/manual-project.log"
 
   test -f "${manual_project}/.agents/skills/bmf/SKILL.md"
   test -f "${manual_project}/.agents/skills/implement/SKILL.md"
@@ -299,14 +293,14 @@ run_automatic_codex_detection() {
 }
 
 run_slash_command_harness() {
-  local slash_project="${installation_root}/slash-command-project"
+  local slash_project="${test_root}/slash-command-project"
 
   install_scenario \
     "${slash_project}" \
     run_installer_for_agent \
     y \
     claude-code \
-    "${installation_root}/slash-command-install.log"
+    "${test_root}/slash-command-install.log"
 
   test -f "${slash_project}/.claude/skills/bmf/SKILL.md"
   test -f "${slash_project}/.claude/skills/implement/SKILL.md"
@@ -314,8 +308,8 @@ run_slash_command_harness() {
 }
 
 run_spaced_checkout() {
-  local spaced_checkout="${installation_root}/collection checkout"
-  local spaced_project="${installation_root}/spaced-checkout-project"
+  local spaced_checkout="${test_root}/collection checkout"
+  local spaced_project="${test_root}/spaced-checkout-project"
 
   rm -rf "${spaced_checkout}"
   cp -a "${repository_root}" "${spaced_checkout}"
@@ -329,7 +323,7 @@ run_spaced_checkout() {
         --agent codex \
         --copy \
         --yes
-  ) >"${installation_root}/spaced-checkout-install.log"
+  ) >"${test_root}/spaced-checkout-install.log"
 
   test -f "${spaced_project}/.agents/skills/bmf/SKILL.md"
   test -f "${spaced_project}/.agents/skills/implement/SKILL.md"
@@ -398,12 +392,10 @@ run_public_ship_only() {
   ) >"${output_file}"
 }
 
-project_root="${installation_root}/project"
+project_root="${test_root}/project"
 if [[ -n "${public_source}" ]]; then
   if [[ -z "${expected_revision}" ]]; then
-    printf '%s\n' \
-      'Public verification requires an expected remote revision.' >&2
-    exit 1
+    fail 'Public verification requires an expected remote revision.'
   fi
   run_scenario \
     'anonymous public README project manual install' \
@@ -412,16 +404,16 @@ if [[ -n "${public_source}" ]]; then
     run_public_project_manual \
     "${public_source}" \
     "${expected_revision}" \
-    "${installation_root}/public-install.log"
+    "${test_root}/public-install.log"
 
-  public_ship_only_project="${installation_root}/public-ship-only-project"
+  public_ship_only_project="${test_root}/public-ship-only-project"
   run_scenario \
     'anonymous public README jonbaldie-only install' \
     install_scenario \
     "${public_ship_only_project}" \
     run_public_ship_only \
     "${public_source}" \
-    "${installation_root}/public-ship-only-install.log"
+    "${test_root}/public-ship-only-install.log"
   test -f \
     "${public_ship_only_project}/.agents/skills/bmf/SKILL.md"
   test ! -e \
@@ -441,7 +433,7 @@ else
     run_installer_for_agent \
     y \
     codex \
-    "${installation_root}/accepted-install.log"
+    "${test_root}/accepted-install.log"
   run_scenario \
     'accepted project reinstall' \
     install_scenario \
@@ -449,12 +441,12 @@ else
     run_installer_for_agent \
     y \
     codex \
-    "${installation_root}/accepted-reinstall.log"
+    "${test_root}/accepted-reinstall.log"
 
   grep -Fq 'Some skills in this collection need mattpocock/skills' \
-    "${installation_root}/accepted-install.log"
+    "${test_root}/accepted-install.log"
   grep -Fq 'Install mattpocock/skills now? [y/N]' \
-    "${installation_root}/accepted-install.log"
+    "${test_root}/accepted-install.log"
 
   run_scenario \
     'documented one-line global install' \
@@ -540,7 +532,7 @@ abort "invalid invocation policy" unless agent_metadata.dig("policy", "allow_imp
 RUBY
 
 if [[ -z "${public_source}" ]]; then
-  declined_project="${installation_root}/declined-project"
+  declined_project="${test_root}/declined-project"
   run_scenario \
     'declined project prerequisites' \
     install_scenario \
@@ -548,12 +540,14 @@ if [[ -z "${public_source}" ]]; then
     run_installer_for_agent \
     n \
     codex \
-    "${installation_root}/declined-install.log"
+    "${test_root}/declined-install.log"
 
   grep -Fq 'Continuing without mattpocock/skills.' \
-    "${installation_root}/declined-install.log"
+    "${test_root}/declined-install.log"
   grep -Fq 'Skills that depend on it will not work' \
-    "${installation_root}/declined-install.log"
+    "${test_root}/declined-install.log"
   test -f "${declined_project}/.agents/skills/bmf/SKILL.md"
   test ! -e "${declined_project}/.agents/skills/implement"
 fi
+
+pass

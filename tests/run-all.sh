@@ -10,6 +10,8 @@ set -uo pipefail
 repository_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 tests_root="${repository_root}/tests"
 runner_path="${tests_root}/$(basename -- "${BASH_SOURCE[0]}")"
+# The fixture harness every suite sources; not a suite itself.
+library_path="${tests_root}/lib.sh"
 python_command="${PYTHON:-python3}"
 
 passed=0
@@ -70,7 +72,7 @@ special_suite_skip_reason() {
 cd -- "${repository_root}" || exit 1
 
 while IFS= read -r suite; do
-  [[ "${suite}" == "${runner_path}" ]] && continue
+  [[ "${suite}" == "${runner_path}" || "${suite}" == "${library_path}" ]] && continue
 
   suite_name="${suite#"${repository_root}"/}"
   if is_requested_skip "${suite_name}"; then

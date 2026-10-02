@@ -6,45 +6,25 @@
 
 set -euo pipefail
 
-repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-readonly repository_root
-test_root="$(mktemp -d "${TMPDIR:-/tmp}/skill-tree-test.XXXXXX")"
-readonly test_root
-
-cleanup() {
-  rm -rf "${test_root}"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$*" >&2
-  exit 1
-}
+# shellcheck source=tests/lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+new_sandbox skill-tree-test
 
 # shellcheck source=/dev/null
 source "${repository_root}/skills/sync-jonbaldie-skills/scripts/lib/skill-tree.sh"
 
-make_skill_md() {
-  local directory="$1"
-  local frontmatter_name="$2"
-
-  mkdir -p "${directory}"
-  printf '%s\n' '---' "name: ${frontmatter_name}" 'description: Fixture.' '---' 'Body.' \
-    >"${directory}/SKILL.md"
-}
-
 # --- discover_skill_dirs ---
 
 discovery_root="${test_root}/discovery"
-make_skill_md "${discovery_root}/skills/shipped" shipped
-make_skill_md "${discovery_root}/skills/group/nested" nested
-make_skill_md "${discovery_root}/skills/a/b/c/d/e/f/too-deep" too-deep
+make_skill "${discovery_root}/skills/shipped" shipped
+make_skill "${discovery_root}/skills/group/nested" nested
+make_skill "${discovery_root}/skills/a/b/c/d/e/f/too-deep" too-deep
 for pruned in node_modules .git dist build __pycache__ .pytest_cache in-progress deprecated \
   .agents .claude .codex .pi .cursor .gemini; do
-  make_skill_md "${discovery_root}/skills/${pruned}/hidden" hidden
+  make_skill "${discovery_root}/skills/${pruned}/hidden" hidden
 done
 # A SKILL.md outside skills/ is ignored when skills/ exists.
-make_skill_md "${discovery_root}/outside" outside
+make_skill "${discovery_root}/outside" outside
 
 discovered="$(discover_skill_dirs "${discovery_root}" | sort)"
 expected="$(printf '%s\n' \
@@ -59,8 +39,8 @@ ${expected}"
 # --- skill_name_from_dir ---
 
 names_root="${test_root}/names"
-make_skill_md "${names_root}/quoted" "'My Skill'"
-make_skill_md "${names_root}/underscore" _private
+make_skill "${names_root}/quoted" "'My Skill'"
+make_skill "${names_root}/underscore" _private
 mkdir -p "${names_root}/Fallback Dir"
 printf '%s\n' '# No frontmatter' >"${names_root}/Fallback Dir/SKILL.md"
 
@@ -101,7 +81,7 @@ done
 # --- copy_skill_tree ---
 
 copy_source="${test_root}/copy-source/fixture"
-make_skill_md "${copy_source}" fixture
+make_skill "${copy_source}" fixture
 mkdir -p "${copy_source}/scripts/__pycache__" "${copy_source}/scripts/.pytest_cache" \
   "${copy_source}/build"
 printf '%s\n' 'print("hi")' >"${copy_source}/scripts/tool.py"
@@ -157,4 +137,4 @@ cp -R "${copy_source}" "${prune_target}"
 prune_build_artifacts "${prune_target}"
 assert_copied "${prune_target}" "prune_build_artifacts"
 
-printf '%s\n' 'skill-tree: all scenarios passed'
+pass
