@@ -7,33 +7,12 @@
 
 set -euo pipefail
 
-repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-readonly repository_root
+# shellcheck source=tests/lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+new_sandbox skills-collision-test
+
 readonly sync_script="${repository_root}/skills/sync-jonbaldie-skills/scripts/sync-skills.sh"
 readonly skill_tree_module="${repository_root}/skills/sync-jonbaldie-skills/scripts/lib/skill-tree.sh"
-test_root="$(mktemp -d "${TMPDIR:-/tmp}/skills-collision-test.XXXXXX")"
-readonly test_root
-
-cleanup() {
-  rm -rf "${test_root}"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$*" >&2
-  exit 1
-}
-
-make_skill() {
-  local repo_dir="$1"
-  local rel_dir="$2"
-  local name="$3"
-  local body="$4"
-  local skill_dir="${repo_dir}/skills/${rel_dir}"
-
-  mkdir -p "${skill_dir}"
-  printf -- '---\nname: %s\ndescription: %s\n---\n%s\n' "${name}" "${rel_dir}" "${body}" >"${skill_dir}/SKILL.md"
-}
 
 # install.sh sources the skill-tree module from the collection it installs.
 add_installer() {
@@ -45,20 +24,12 @@ add_installer() {
   cp "${skill_tree_module}" "${module_dir}/skill-tree.sh"
 }
 
-commit_repo() {
-  local repo_dir="$1"
-  git -C "${repo_dir}" add .
-  git -C "${repo_dir}" -c user.name=Fixture -c user.email=fixture@example.com commit --quiet -m fixture
-}
-
 # --- Scenario 1: install.sh detects collision within single repository ---
 repo1="${test_root}/repo1"
-mkdir -p "${repo1}"
-git init --quiet "${repo1}"
-make_skill "${repo1}" alpha "My Skill" "alpha body"
-make_skill "${repo1}" beta "my-skill" "beta body"
-make_skill "${repo1}" fine "fine-skill" "fine body"
-commit_repo "${repo1}"
+make_skill "${repo1}/skills/alpha" "My Skill" "alpha body"
+make_skill "${repo1}/skills/beta" "my-skill" "beta body"
+make_skill "${repo1}/skills/fine" "fine-skill" "fine body"
+commit_repository "${repo1}"
 add_installer "${repo1}"
 
 project1="${test_root}/project1"
@@ -86,13 +57,10 @@ echo "${output1}" | grep -q "beta" || fail "Scenario 1: install.sh did not repor
 # --- Scenario 2: install.sh detects collision across prerequisite and primary repo ---
 mp_repo="${test_root}/mp_repo"
 jb_repo="${test_root}/jb_repo"
-mkdir -p "${mp_repo}" "${jb_repo}"
-git init --quiet "${mp_repo}"
-git init --quiet "${jb_repo}"
-make_skill "${mp_repo}" mp-colliding "Cross Skill" "mp body"
-commit_repo "${mp_repo}"
-make_skill "${jb_repo}" jb-colliding "cross-skill" "jb body"
-commit_repo "${jb_repo}"
+make_skill "${mp_repo}/skills/mp-colliding" "Cross Skill" "mp body"
+commit_repository "${mp_repo}"
+make_skill "${jb_repo}/skills/jb-colliding" "cross-skill" "jb body"
+commit_repository "${jb_repo}"
 add_installer "${jb_repo}"
 
 project2="${test_root}/project2"
@@ -155,4 +123,4 @@ echo "${output4}" | grep -q "mp-colliding" || fail "Scenario 4: sync-skills.sh d
 echo "${output4}" | grep -q "jb-colliding" || fail "Scenario 4: sync-skills.sh did not report colliding source 'jb-colliding'"
 [[ ! -e "${sync_project}/.agents/skills/cross-skill" ]] || fail "Scenario 4: sync-skills.sh created or modified colliding destination"
 
-printf '%s\n' 'install-name-collision: all scenarios passed'
+pass

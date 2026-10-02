@@ -2,22 +2,12 @@
 
 set -euo pipefail
 
-repository_root="$(cd "$(dirname "$0")/.." && pwd -P)"
-readonly repository_root
+# shellcheck source=tests/lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+new_sandbox test-sync-jonbaldie-skills
+
 readonly sync_script="${repository_root}/skills/sync-jonbaldie-skills/scripts/sync-skills.sh"
 readonly copy_script="${repository_root}/skills/sync-jonbaldie-skills/scripts/copy-to-skill-dirs.sh"
-temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/test-sync-jonbaldie-skills.XXXXXX")"
-readonly temporary_root
-
-cleanup() {
-  rm -rf "${temporary_root}"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$*" >&2
-  exit 1
-}
 
 assert_file() {
   [[ -f "$1" ]] || fail "expected file: $1"
@@ -36,39 +26,28 @@ assert_content() {
     fail "expected '${expected}' in ${file}, got '${actual}'"
 }
 
-make_skill() {
-  local repository="$1"
-  local relative_directory="$2"
-  local name="$3"
-  local content="$4"
-  local skill_directory="${repository}/skills/${relative_directory}"
+# content.txt identifies which collection an installed copy came from.
+make_skill_with_content() {
+  local skill_directory="$1"
+  local name="$2"
+  local content="$3"
 
-  mkdir -p "${skill_directory}"
-  printf '%s\n' '---' "name: ${name}" 'description: Fixture skill.' '---' >"${skill_directory}/SKILL.md"
+  make_skill "${skill_directory}" "${name}"
   printf '%s\n' "${content}" >"${skill_directory}/content.txt"
 }
 
-commit_repository() {
-  local repository="$1"
-  git -C "${repository}" add .
-  git -C "${repository}" -c user.name=Fixture -c user.email=fixture@example.com commit --quiet -m fixture
-}
+readonly matt_repository="${test_root}/matt source"
+readonly jon_repository="${test_root}/jon source"
+readonly project="${test_root}/target project"
+readonly external_destination="${test_root}/external skills"
 
-readonly matt_repository="${temporary_root}/matt source"
-readonly jon_repository="${temporary_root}/jon source"
-readonly project="${temporary_root}/target project"
-readonly external_destination="${temporary_root}/external skills"
-
-git init --quiet "${matt_repository}"
-make_skill "${matt_repository}" engineering/alpha alpha 'matt alpha'
-make_skill "${matt_repository}" productivity/helper helper 'matt helper'
-mkdir -p "${matt_repository}/skills/deprecated/ignored"
-printf '%s\n' '---' 'name: ignored' 'description: Ignored fixture.' '---' >"${matt_repository}/skills/deprecated/ignored/SKILL.md"
+make_skill_with_content "${matt_repository}/skills/engineering/alpha" alpha 'matt alpha'
+make_skill_with_content "${matt_repository}/skills/productivity/helper" helper 'matt helper'
+make_skill "${matt_repository}/skills/deprecated/ignored" ignored
 commit_repository "${matt_repository}"
 
-git init --quiet "${jon_repository}"
-make_skill "${jon_repository}" beta beta 'jon beta'
-make_skill "${jon_repository}" shared shared 'jon shared'
+make_skill_with_content "${jon_repository}/skills/beta" beta 'jon beta'
+make_skill_with_content "${jon_repository}/skills/shared" shared 'jon shared'
 commit_repository "${jon_repository}"
 
 mkdir -p "${project}/.agents/skills/unrelated" "${project}/.agents/skills/retired"
@@ -114,13 +93,13 @@ assert_missing "${external_destination}/alpha/scripts/__pycache__"
 assert_missing "${external_destination}/alpha/stray.pyc"
 assert_file "${external_destination}/.sync-jonbaldie-skills.manifest"
 
-make_skill "${matt_repository}" productivity/shared shared 'matt shared'
+make_skill_with_content "${matt_repository}/skills/productivity/shared" shared 'matt shared'
 commit_repository "${matt_repository}"
 if MATTPOCOCK_SKILLS_REPO="${matt_repository}" \
    JONBALDIE_SKILLS_REPO="${jon_repository}" \
-   "${sync_script}" "${project}" >"${temporary_root}/collision.log" 2>&1; then
+   "${sync_script}" "${project}" >"${test_root}/collision.log" 2>&1; then
   fail "expected sync-skills.sh to fail on collision"
 fi
-grep -q "shared" "${temporary_root}/collision.log" || fail "expected collision error to mention 'shared'"
+grep -q "shared" "${test_root}/collision.log" || fail "expected collision error to mention 'shared'"
 
-printf 'PASS: deterministic sync and optional copies\n'
+pass 'deterministic sync and optional copies'

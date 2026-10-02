@@ -2,14 +2,11 @@
 
 set -euo pipefail
 
-repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-test_root="$(mktemp -d "${TMPDIR:-/tmp}/skills-symlinked-agent-root.XXXXXX")"
-test_home="${test_root}/home"
+# shellcheck source=tests/lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+new_sandbox skills-symlinked-agent-root
 
-cleanup() {
-  rm -rf "${test_root}"
-}
-trap cleanup EXIT
+test_home="${test_root}/home"
 
 mkdir -p "${test_home}/.agents/skills" "${test_home}/.claude"
 ln -s ../.agents/skills "${test_home}/.claude/skills"
@@ -28,10 +25,7 @@ canonical_skill="${test_home}/.agents/skills/bmf"
 claude_skill="${test_home}/.claude/skills/bmf"
 
 if [[ -L "${canonical_skill}" ]]; then
-  printf 'Canonical skill became a symlink: %s -> %s\n' \
-    "${canonical_skill}" \
-    "$(readlink "${canonical_skill}")" >&2
-  exit 1
+  fail "Canonical skill became a symlink: ${canonical_skill} -> $(readlink "${canonical_skill}")"
 fi
 
 test -f "${canonical_skill}/SKILL.md"
@@ -39,3 +33,5 @@ test -f "${claude_skill}/SKILL.md"
 cmp \
   "${repository_root}/skills/bmf/SKILL.md" \
   "${canonical_skill}/SKILL.md"
+
+pass

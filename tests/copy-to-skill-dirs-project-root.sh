@@ -6,28 +6,17 @@
 
 set -euo pipefail
 
-repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-readonly repository_root
+# shellcheck source=tests/lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+new_sandbox skills-copy-root-test
+
 readonly copy_script="${repository_root}/skills/sync-jonbaldie-skills/scripts/copy-to-skill-dirs.sh"
-test_root="$(mktemp -d "${TMPDIR:-/tmp}/skills-copy-root-test.XXXXXX")"
-readonly test_root
 readonly project="${test_root}/project"
-
-cleanup() {
-  rm -rf "${test_root}"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$*" >&2
-  exit 1
-}
 
 make_project() {
   rm -rf "${project}"
-  mkdir -p "${project}/.agents/skills/alpha"
+  make_skill "${project}/.agents/skills/alpha" alpha
   printf '%s\n' 'valuable project file' >"${project}/alpha"
-  printf '%s\n' '---' 'name: alpha' '---' >"${project}/.agents/skills/alpha/SKILL.md"
   printf '%s\n' alpha >"${project}/.agents/sync-jonbaldie-skills.manifest"
 }
 
@@ -53,4 +42,4 @@ make_project
 }
 [[ -f "${project}/.claude/skills/alpha/SKILL.md" ]] || fail "valid destination not populated"
 
-printf '%s\n' 'copy-to-skill-dirs-project-root: all scenarios passed'
+pass

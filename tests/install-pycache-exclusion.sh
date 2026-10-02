@@ -6,23 +6,13 @@
 
 set -euo pipefail
 
-repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-readonly repository_root
+# shellcheck source=tests/lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+new_sandbox skills-pycache-test
+
 readonly sync_script="${repository_root}/skills/sync-jonbaldie-skills/scripts/sync-skills.sh"
 readonly copy_script="${repository_root}/skills/sync-jonbaldie-skills/scripts/copy-to-skill-dirs.sh"
 readonly skill_tree_module="${repository_root}/skills/sync-jonbaldie-skills/scripts/lib/skill-tree.sh"
-test_root="$(mktemp -d "${TMPDIR:-/tmp}/skills-pycache-test.XXXXXX")"
-readonly test_root
-
-cleanup() {
-  rm -rf "${test_root}"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$*" >&2
-  exit 1
-}
 
 # shellcheck source=/dev/null
 source "${skill_tree_module}"
@@ -36,14 +26,7 @@ ln -s "${repository_root}/install.sh" "${fixture_repo}/install.sh"
 mkdir -p "${fixture_repo}/skills/sync-jonbaldie-skills/scripts/lib"
 ln -s "${skill_tree_module}" "${fixture_repo}/skills/sync-jonbaldie-skills/scripts/lib/skill-tree.sh"
 
-cat >"${fixture_repo}/skills/fixture-pycache/SKILL.md" <<'EOF'
----
-name: fixture-pycache
-description: Fixture skill with python caches.
----
-
-Fixture skill.
-EOF
+make_skill "${fixture_repo}/skills/fixture-pycache" fixture-pycache
 
 cat >"${fixture_repo}/skills/fixture-pycache/scripts/tool.py" <<'EOF'
 print("hello world")
@@ -155,22 +138,12 @@ assert_clean_installation "${project_no_rsync}" "fallback cp mode"
 # Test 4: Defense-in-depth in sync-skills.sh
 readonly sync_project="${test_root}/sync-project"
 mkdir -p "${sync_project}"
-git -C "${fixture_repo}" init --quiet
-git -C "${fixture_repo}" add .
-git -C "${fixture_repo}" -c user.name=Fixture -c user.email=fixture@example.com commit --quiet -m fixture
+commit_repository "${fixture_repo}"
 
 # Also create empty prerequisite repo for sync-skills
 readonly empty_prereq="${test_root}/empty-prereq"
-git init --quiet "${empty_prereq}"
-mkdir -p "${empty_prereq}/skills/prereq-dummy"
-cat >"${empty_prereq}/skills/prereq-dummy/SKILL.md" <<'EOF'
----
-name: prereq-dummy
-description: Dummy prereq.
----
-EOF
-git -C "${empty_prereq}" add .
-git -C "${empty_prereq}" -c user.name=Fixture -c user.email=fixture@example.com commit --quiet -m fixture
+make_skill "${empty_prereq}/skills/prereq-dummy" prereq-dummy
+commit_repository "${empty_prereq}"
 
 MATTPOCOCK_SKILLS_REPO="${empty_prereq}" \
 JONBALDIE_SKILLS_REPO="${fixture_repo}" \
@@ -200,4 +173,4 @@ EOF
 }
 assert_clean_installation "${sync_project}/.claude/skills" "copy-to-skill-dirs.sh" "fixture-pycache"
 
-printf '%s\n' 'install-pycache-exclusion: all scenarios passed'
+pass

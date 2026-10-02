@@ -6,49 +6,23 @@
 
 set -euo pipefail
 
-repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-readonly repository_root
+# shellcheck source=tests/lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+new_sandbox skills-prereq-prompt
+
 readonly skill_tree_module="${repository_root}/skills/sync-jonbaldie-skills/scripts/lib/skill-tree.sh"
 python_command="${PYTHON:-python3}"
-test_root="$(mktemp -d "${TMPDIR:-/tmp}/skills-prereq-prompt.XXXXXX")"
-readonly test_root
-
-cleanup() {
-  rm -rf "${test_root}"
-}
-trap cleanup EXIT
-
-fail() {
-  printf 'FAIL: %s\n' "$*" >&2
-  exit 1
-}
-
-make_fixture_repo() {
-  local repo_dir="$1"
-  local name="$2"
-
-  mkdir -p "${repo_dir}/skills/${name}"
-  printf -- '---\nname: %s\ndescription: Fixture skill.\n---\nFixture.\n' "${name}" \
-    >"${repo_dir}/skills/${name}/SKILL.md"
-  git -C "${repo_dir}" init --quiet
-}
-
-commit_repo() {
-  local repo_dir="$1"
-  git -C "${repo_dir}" add .
-  git -C "${repo_dir}" -c user.name=Fixture -c user.email=fixture@example.com commit --quiet -m fixture
-}
 
 # A piped installer clones jonbaldie/skills and sources its skill-tree module.
 jon_repo="${test_root}/jon-repo"
-make_fixture_repo "${jon_repo}" fixture-jon
+make_skill "${jon_repo}/skills/fixture-jon" fixture-jon
 mkdir -p "${jon_repo}/skills/sync-jonbaldie-skills/scripts/lib"
 cp "${skill_tree_module}" "${jon_repo}/skills/sync-jonbaldie-skills/scripts/lib/skill-tree.sh"
-commit_repo "${jon_repo}"
+commit_repository "${jon_repo}"
 
 mp_repo="${test_root}/mp-repo"
-make_fixture_repo "${mp_repo}" fixture-mp
-commit_repo "${mp_repo}"
+make_skill "${mp_repo}/skills/fixture-mp" fixture-mp
+commit_repository "${mp_repo}"
 
 # Stream install.sh to Bash the way the one-line install does, in a new session
 # with no controlling terminal, so /dev/tty cannot be opened.
@@ -166,4 +140,4 @@ if [[ -e "${project}/.agents/skills/fixture-mp" ]]; then
   fail 'direct install with closed stdin installed mattpocock/skills'
 fi
 
-printf 'PASS: prerequisite prompt defaults to No without an answer\n'
+pass 'prerequisite prompt defaults to No without an answer'
