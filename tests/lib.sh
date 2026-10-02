@@ -36,6 +36,8 @@ fail() {
   exit 1
 }
 
+# The message is optional; most suites call pass with none.
+# shellcheck disable=SC2120
 pass() {
   printf 'PASS: %s: %s\n' "${suite_name}" "${*:-all scenarios passed}"
 }
