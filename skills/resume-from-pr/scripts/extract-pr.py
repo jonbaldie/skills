@@ -1099,8 +1099,9 @@ def brief_from_github_view(
     for issue in data.get("closingIssuesReferences") or []:
         num = issue.get("number")
         title = issue.get("title") or ""
+        repo_name = (issue.get("repository") or {}).get("nameWithOwner") or ""
         if num:
-            linked.append(f"#{num} {title}".strip())
+            linked.append(f"{repo_name}#{num} {title}".strip())
     repo = None
     url = data.get("url") or ""
     if url:
@@ -1138,6 +1139,29 @@ def brief_from_github_view(
     )
 
 
+# GitHub's closing keywords; REST has no closingIssuesReferences, so read the body.
+CLOSING_REFERENCE = re.compile(
+    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b:?\s+"
+    r"([\w.-]+/[\w.-]+)?#(\d+)\b",
+    re.IGNORECASE,
+)
+
+
+def closing_references(body: str) -> list[dict[str, Any]]:
+    """Issues the PR body closes, shaped like gh's closingIssuesReferences."""
+    refs: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for repo, number in CLOSING_REFERENCE.findall(body):
+        key = f"{repo}#{number}"
+        if key not in seen:
+            seen.add(key)
+            ref: dict[str, Any] = {"number": int(number)}
+            if repo:
+                ref["repository"] = {"nameWithOwner": repo}
+            refs.append(ref)
+    return refs
+
+
 def brief_from_github_rest(
     pr: dict[str, Any],
     *,
@@ -1147,12 +1171,14 @@ def brief_from_github_rest(
     reviews: list[dict[str, Any]] | None = None,
     commits: list[dict[str, Any]] | None = None,
     statuses: list[dict[str, Any]] | None = None,
+    check_runs: list[dict[str, Any]] | None = None,
     source: str = "api",
     host: str | None = None,
 ) -> Brief:
+    body = pr.get("body") or pr.get("description")
     data: dict[str, Any] = {
         "title": pr.get("title"),
-        "body": pr.get("body") or pr.get("description"),
+        "body": body,
         "state": "merged" if pr.get("merged") else pr.get("state"),
         "author": pr.get("user") or pr.get("author"),
         "baseRefName": (pr.get("base") or {}).get("ref") or pr.get("base_branch"),
@@ -1209,10 +1235,21 @@ def brief_from_github_rest(
                 "name": s.get("context") or s.get("name") or (s.get("status") or {}).get(
                     "context"
                 ),
-                "state": s.get("state") or s.get("conclusion") or s.get("status"),
+                "state": str(
+                    s.get("state") or s.get("conclusion") or s.get("status") or "unknown"
+                ).upper(),
             }
             for s in statuses or []
+        ]
+        + [
+            {
+                "name": r.get("name"),
+                # gh reports an unfinished run's status and a finished run's conclusion.
+                "state": str(r.get("conclusion") or r.get("status") or "unknown").upper(),
+            }
+            for r in check_runs or []
         ],
+        "closingIssuesReferences": closing_references(body or ""),
     }
     return brief_from_github_view(
         data, inline=review_comments or [], source=source, host=host
@@ -1270,6 +1307,7 @@ def fetch_github_api(target: Target, cwd: str | None = None) -> Brief:
         "issue comments",
     )
     statuses: list[dict[str, Any]] = []
+    check_runs: list[dict[str, Any]] = []
     sha = (pr.get("head") or {}).get("sha")
     if sha:
         statuses = collect(
@@ -1279,6 +1317,15 @@ def fetch_github_api(target: Target, cwd: str | None = None) -> Brief:
             replace(GITHUB_PAGING, items="statuses"),
             "statuses",
         )
+        check_runs = collect(
+            notes,
+            f"{root}/repos/{target.slug}/commits/{sha}/check-runs",
+            headers,
+            replace(GITHUB_PAGING, items="check_runs"),
+            "check runs",
+        )
+    else:
+        notes.append("checks: not read — the pull request has no head commit SHA")
     brief = brief_from_github_rest(
         pr,
         files=files,
@@ -1287,6 +1334,7 @@ def fetch_github_api(target: Target, cwd: str | None = None) -> Brief:
         reviews=reviews,
         commits=commits,
         statuses=statuses,
+        check_runs=check_runs,
         source="api",
         host=target.host,
     )

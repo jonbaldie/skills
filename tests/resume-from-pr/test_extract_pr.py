@@ -988,7 +988,9 @@ class CollectionPagingTests(unittest.TestCase):
     def setUp(self):
         self.forge = FakeForge(self, self.mod)
 
-    def github_forge(self, *, comments, maximum=30, reviews=None):
+    def github_forge(
+        self, *, comments, maximum=30, reviews=None, check_runs=None, body=None
+    ):
         api = "https://api.github.com/repos/acme/app"
         base = f"{api}/pulls/9"
         self.forge.route(
@@ -1002,6 +1004,7 @@ class CollectionPagingTests(unittest.TestCase):
                     "html_url": "https://github.com/acme/app/pull/9",
                     "head": {"ref": "feat", "sha": "abc1234"},
                     "base": {"ref": "main"},
+                    "body": body,
                 }
             ),
         )
@@ -1018,6 +1021,10 @@ class CollectionPagingTests(unittest.TestCase):
         self.forge.route(
             f"{api}/commits/abc1234/status",
             link_pager([], "per_page", 30, maximum, wrap="statuses"),
+        )
+        self.forge.route(
+            f"{api}/commits/abc1234/check-runs",
+            check_runs or link_pager([], "per_page", 30, maximum, wrap="check_runs"),
         )
         return self.mod.parse_pr_url("https://github.com/acme/app/pull/9")
 
@@ -1066,6 +1073,51 @@ class CollectionPagingTests(unittest.TestCase):
         self.assertRegex(text, r"## Ending\n.*: comment 2\n")
         self.assertIn("## Gaps", text)
         self.assertRegex(text, r"reviews: .*HTTP 403")
+
+    def test_github_actions_check_runs_appear_in_api_brief(self):
+        runs = [
+            {"name": f"build ({os})", "status": "completed", "conclusion": "failure"}
+            for os in ("ubuntu-latest", "windows-latest", "macos-latest")
+        ]
+        runs.append({"name": "lint", "status": "in_progress", "conclusion": None})
+        target = self.github_forge(
+            comments=[],
+            maximum=2,
+            check_runs=link_pager(runs, "per_page", 30, 2, wrap="check_runs"),
+        )
+        brief = self.mod.fetch_github_api(target)
+        text = self.mod.render(brief)
+        self.assertIn(
+            "## Checks\n"
+            "- build (ubuntu-latest): FAILURE\n"
+            "- build (windows-latest): FAILURE\n"
+            "- build (macos-latest): FAILURE\n"
+            "- lint: IN_PROGRESS\n",
+            text,
+        )
+        self.assertRegex(text, r"## Ending\nFailing checks: build \(ubuntu-latest\)")
+        self.assertEqual(brief.notes, [])
+
+    def test_github_check_run_failure_is_a_named_gap(self):
+        target = self.github_forge(comments=[], check_runs=status(403))
+        text = self.mod.render(self.mod.fetch_github_api(target))
+        self.assertIn("## Gaps", text)
+        self.assertRegex(text, r"check runs: .*HTTP 403")
+
+    def test_github_no_checks_has_no_gap(self):
+        target = self.github_forge(comments=[])
+        text = self.mod.render(self.mod.fetch_github_api(target))
+        self.assertNotIn("## Checks", text)
+        self.assertNotIn("## Gaps", text)
+
+    def test_github_api_brief_links_issues_closed_by_the_body(self):
+        target = self.github_forge(
+            comments=[],
+            body="Closes #159.\nAlso fixes: other/repo#7, see #8, resolved #159",
+        )
+        text = self.mod.render(self.mod.fetch_github_api(target))
+        self.assertIn("## Linked issues\n- #159\n- other/repo#7\n", text)
+        self.assertNotIn("- #8", text)
 
     def test_gitlab_collects_every_page(self):
         root = "https://gitlab.com/api/v4/projects/team%2Fapp/merge_requests/3"
