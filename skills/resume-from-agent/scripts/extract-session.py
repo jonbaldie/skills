@@ -1705,6 +1705,29 @@ def run_sibling_extractor(
     return stamp_harness(text, agent)
 
 
+def run_sibling_path_extractor(agent: str, path: Path) -> str | None:
+    """Use the harness-specific parser's explicit-path mode."""
+    script = find_sibling_extractor(agent)
+    if not script:
+        return None
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(script), "--jsonl", str(path)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    text = proc.stdout or ""
+    if not text.strip():
+        return None
+    return stamp_harness(text, agent)
+
+
 def discover_via_sibling_path_scan(
     agent: str,
     cwd: str,
@@ -1856,6 +1879,9 @@ def extract_pi_or_sibling(cand: Candidate) -> Brief:
     if cand.extra.get("explicit_path"):
         if not path.is_file():
             raise SystemExit(f"Pi session transcript not found: {cand.path}")
+        text = run_sibling_path_extractor("pi", path)
+        if text:
+            return _brief_from_preformatted(text, agent="pi", cand=cand)
         return _generic_jsonl_brief(
             path, agent="pi", session_id=cand.session_id, cwd=cand.cwd
         )
@@ -1955,6 +1981,9 @@ def extract_codex_or_sibling(cand: Candidate) -> Brief:
     if cand.extra.get("explicit_path"):
         if not path.is_file():
             raise SystemExit(f"Codex rollout not found: {cand.path}")
+        text = run_sibling_path_extractor("codex", path)
+        if text:
+            return _brief_from_preformatted(text, agent="codex", cand=cand)
         return _codex_rollout_brief(path, session_id=cand.session_id)
     text = run_sibling_extractor("codex", cand.cwd or os.getcwd(), cand.session_id)
     if text:
@@ -2476,17 +2505,68 @@ def extract_path_with_adapter(adapter: Adapter, path: Path) -> Brief:
         raise SystemExit(
             f"Could not parse {path} as {adapter.name} content: {exc}"
         ) from None
-    if not brief.extras.get("__raw__"):
-        _require_identified_content(adapter, path, brief)
+    _require_identified_content(adapter, path, brief)
     return brief
 
 
 def _require_identified_content(adapter: Adapter, path: Path, brief: Brief) -> None:
-    if not (brief.opening_users or brief.recent_turns or brief.ending):
+    raw = brief.extras.get("__raw__")
+    if raw:
+        has_messages = any(
+            section in {"## Opening goal", "## Recent turns"}
+            for section in raw.splitlines()
+        )
+    else:
+        has_messages = bool(brief.opening_users or brief.recent_turns or brief.ending)
+    if not has_messages:
         raise SystemExit(
             f"Could not identify {path} as a {adapter.name} session "
             "(no recognizable messages); refusing to emit a brief."
         )
+
+
+def _identify_jsonl_adapter(path: Path) -> Adapter | None:
+    """Identify the supported Pi or Codex JSONL envelope without parsing turns."""
+    try:
+        with path.open() as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(obj, dict):
+                    continue
+
+                if obj.get("type") == "session" and (
+                    obj.get("id") or obj.get("cwd")
+                ):
+                    return ADAPTERS["pi"]
+                message = obj.get("message")
+                if (
+                    obj.get("type") == "message"
+                    and isinstance(message, dict)
+                    and message.get("role") in {"user", "assistant"}
+                ):
+                    return ADAPTERS["pi"]
+
+                payload = obj.get("payload")
+                if (
+                    isinstance(payload, dict)
+                    and obj.get("type")
+                    in {
+                        "session_meta",
+                        "response_item",
+                        "event_msg",
+                        "turn_context",
+                    }
+                ):
+                    return ADAPTERS["codex"]
+    except (OSError, UnicodeDecodeError):
+        return None
+    return None
 
 
 def extract_path_generic(path: Path, agent_label: str = "unknown") -> Brief:
@@ -2509,8 +2589,12 @@ def extract_path_generic(path: Path, agent_label: str = "unknown") -> Brief:
         )
         return extract_agy(cand)
     if path.suffix in {".jsonl", ".json"}:
-        return _generic_jsonl_brief(
-            path, agent=agent_label, session_id=path.stem, cwd=None
+        adapter = _identify_jsonl_adapter(path)
+        if adapter:
+            return extract_path_with_adapter(adapter, path)
+        raise SystemExit(
+            f"Could not identify {path} as a supported transcript format; "
+            "pass --agent to select a parser."
         )
     raise SystemExit(f"Unsupported path type for generic extract: {path}")
 
@@ -2571,7 +2655,13 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"Path not found: {path}")
         label = agent_filter or "unknown"
         brief = extract_path_generic(path, agent_label=label)
-        sys.stdout.write(render_brief(brief))
+        raw = brief.extras.pop("__raw__", None)
+        if raw:
+            sys.stdout.write(raw)
+            if not raw.endswith(chr(10)):
+                sys.stdout.write(chr(10))
+        else:
+            sys.stdout.write(render_brief(brief))
         return 0
 
     candidates = discover_all(args.cwd, session_id, agent_filter)
