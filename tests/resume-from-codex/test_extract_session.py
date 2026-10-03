@@ -165,6 +165,40 @@ class ParseSessionTests(unittest.TestCase):
         self.assertIn("last_prompt: Legacy user prompt", out)
         self.assertIn("Legacy assistant reply", out)
 
+    def test_turn_aborted_event_recorded_as_ending_signal(self):
+        out = self.brief(
+            [
+                SESSION_META,
+                user_event("Create f01.txt"),
+                record(
+                    "event_msg",
+                    {
+                        "type": "agent_message",
+                        "phase": "commentary",
+                        "message": "I will create each file.",
+                    },
+                ),
+                record(
+                    "event_msg",
+                    {"type": "turn_aborted", "turn_id": "t1", "reason": "interrupted"},
+                ),
+            ]
+        )
+        self.assertIn("## Ending\nturn_aborted: interrupted", out)
+
+    def test_turn_aborted_without_reason_recorded_as_ending_signal(self):
+        out = self.brief(
+            [
+                SESSION_META,
+                user_event("Create f01.txt"),
+                record(
+                    "event_msg",
+                    {"type": "turn_aborted", "turn_id": "t1"},
+                ),
+            ]
+        )
+        self.assertIn("## Ending\nturn_aborted", out)
+
 
 class CustomCodexHomeTests(unittest.TestCase):
     @classmethod

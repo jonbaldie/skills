@@ -295,6 +295,11 @@ def parse_session(path: Path) -> dict:
                     last = payload.get("last_agent_message")
                     if last:
                         ending_signals.append(str(last))
+                elif et == "turn_aborted":
+                    reason = payload.get("reason")
+                    ending_signals.append(
+                        f"turn_aborted: {reason}" if reason else "turn_aborted"
+                    )
                 elif et in {"error", "stream_error"}:
                     msg = payload.get("message") or payload.get("error") or et
                     ending_signals.append(f"{et}: {msg}")
