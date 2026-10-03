@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -443,6 +444,153 @@ class ExtractSessionTests(unittest.TestCase):
         except SystemExit as exc:
             code = exc
         return code, buf.getvalue()
+
+    def test_path_pi_transcript_with_and_without_agent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd_path = Path(tmp) / "project"
+            cwd_path.mkdir()
+            cwd = str(cwd_path)
+            home = Path(tmp) / "home"
+            path = (
+                home
+                / ".pi"
+                / "agent"
+                / "sessions"
+                / self.mod.encode_pi_cwd(cwd)
+                / "2026-10-03T00-00-00-000Z_aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jsonl"
+            )
+            path.parent.mkdir(parents=True)
+            records = [
+                {
+                    "type": "session",
+                    "version": 3,
+                    "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                    "timestamp": "2026-10-03T00:00:00.000Z",
+                    "cwd": cwd,
+                },
+                {
+                    "type": "message",
+                    "id": "1",
+                    "parentId": None,
+                    "timestamp": "2026-10-03T00:00:01.000Z",
+                    "message": {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Fix the failing login test"}
+                        ],
+                    },
+                },
+                {
+                    "type": "message",
+                    "id": "2",
+                    "parentId": "1",
+                    "timestamp": "2026-10-03T00:00:02.000Z",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "text", "text": "Reading tests/test_login.py first."}
+                        ],
+                        "stopReason": "stop",
+                    },
+                },
+            ]
+            path.write_text("\n".join(json.dumps(record) for record in records) + "\n")
+
+            with patch.object(self.mod, "home", return_value=home), patch.dict(
+                os.environ, {"HOME": str(home)}
+            ):
+                discovery_code, discovery = self._main_output(
+                    ["--cwd", cwd, "--agent", "pi"]
+                )
+                self.assertEqual(discovery_code, 0)
+                for agent_args in ([], ["--agent", "pi"]):
+                    with self.subTest(agent_args=agent_args):
+                        code, out = self._main_output(
+                            [*agent_args, "--path", str(path)]
+                        )
+                        self.assertEqual(code, 0)
+                        self.assertEqual(out, discovery)
+                        self.assertIn("agent: pi", out)
+                        self.assertIn(
+                            "session_id: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", out
+                        )
+                        self.assertIn(f"cwd: {cwd}", out)
+                        self.assertIn("Fix the failing login test", out)
+                        self.assertIn("Reading tests/test_login.py first.", out)
+
+    def test_path_codex_transcript_with_and_without_agent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cwd_path = Path(tmp) / "project"
+            cwd_path.mkdir()
+            cwd = str(cwd_path)
+            codex_home = Path(tmp) / "codex"
+            path = codex_home / "sessions" / "2026" / "10" / "03" / (
+                "rollout-2026-10-03T00-00-00-11111111-2222-3333-4444-555555555555.jsonl"
+            )
+            path.parent.mkdir(parents=True)
+            records = [
+                {
+                    "type": "session_meta",
+                    "payload": {
+                        "id": "11111111-2222-3333-4444-555555555555",
+                        "cwd": cwd,
+                        "cli_version": "0.160.0",
+                    },
+                },
+                {
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "user_message",
+                        "message": "Create f01.txt through f12.txt",
+                    },
+                },
+                {
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "agent_message",
+                        "phase": "commentary",
+                        "message": "I will create each file with a separate apply_patch call.",
+                    },
+                },
+            ]
+            path.write_text("\n".join(json.dumps(record) for record in records) + "\n")
+
+            with patch.dict(
+                os.environ,
+                {"HOME": str(Path(tmp) / "home"), "CODEX_HOME": str(codex_home)},
+            ):
+                discovery_code, discovery = self._main_output(
+                    ["--cwd", cwd, "--agent", "codex"]
+                )
+                self.assertEqual(discovery_code, 0)
+                for agent_args in ([], ["--agent", "codex"]):
+                    with self.subTest(agent_args=agent_args):
+                        code, out = self._main_output(
+                            [*agent_args, "--path", str(path)]
+                        )
+                        self.assertEqual(code, 0)
+                        self.assertEqual(out, discovery)
+                        self.assertIn("agent: codex", out)
+                        self.assertIn(
+                            "session_id: 11111111-2222-3333-4444-555555555555", out
+                        )
+                        self.assertIn(f"cwd: {cwd}", out)
+                        self.assertIn("Create f01.txt through f12.txt", out)
+                        self.assertIn(
+                            "I will create each file with a separate apply_patch call.",
+                            out,
+                        )
+
+    def test_path_without_agent_rejects_unidentifiable_jsonl(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "unknown.jsonl"
+            path.write_text(json.dumps({"type": "not-a-session", "value": 1}) + "\n")
+
+            code, _ = self._main_output(["--path", str(path)])
+
+            self.assertIsInstance(code, SystemExit)
+            self.assertIn("Could not identify", str(code))
+            self.assertIn(str(path), str(code))
 
     def test_path_agent_hermes_uses_hermes_adapter(self):
         with tempfile.TemporaryDirectory() as tmp:
