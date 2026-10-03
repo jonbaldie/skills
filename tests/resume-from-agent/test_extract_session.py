@@ -617,6 +617,55 @@ class ExtractSessionTests(unittest.TestCase):
             self.assertIn("Ship the PR", out)
             self.assertIn("All shipped.", out)
 
+    def test_path_agent_codex_records_turn_aborted_ending(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rollout = Path(tmp) / "rollout-xyz.jsonl"
+            lines = [
+                json.dumps(
+                    {
+                        "timestamp": "2026-01-01T00:00:00Z",
+                        "type": "session_meta",
+                        "payload": {"id": "rollout-xyz", "cwd": "/ws"},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2026-01-01T00:00:01Z",
+                        "type": "event_msg",
+                        "payload": {"type": "user_message", "message": "Create files"},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2026-01-01T00:00:02Z",
+                        "type": "event_msg",
+                        "payload": {
+                            "type": "agent_message",
+                            "phase": "commentary",
+                            "message": "I will create files.",
+                        },
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2026-01-01T00:00:03Z",
+                        "type": "event_msg",
+                        "payload": {
+                            "type": "turn_aborted",
+                            "turn_id": "t1",
+                            "reason": "interrupted",
+                        },
+                    }
+                ),
+            ]
+            rollout.write_text("\n".join(lines) + "\n")
+            code, out = self._main_output(
+                ["--agent", "codex", "--path", str(rollout)]
+            )
+            self.assertEqual(code, 0)
+            self.assertIn("agent: codex", out)
+            self.assertIn("## Ending\nturn_aborted: interrupted", out)
+
     def test_path_agent_mismatch_fails_nonzero(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "state.db"

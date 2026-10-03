@@ -2168,7 +2168,10 @@ def _codex_rollout_payloads(path: Path) -> list[dict]:
                 "turn_context",
             } or payload.get("type"):
                 identified = True
-                payloads.append(payload)
+                entry = dict(payload)
+                if obj.get("type") and "_event_type" not in entry:
+                    entry["_event_type"] = obj.get("type")
+                payloads.append(entry)
     if not identified:
         raise SystemExit(
             f"Could not identify {path} as a codex rollout: no payload records found"
@@ -2191,18 +2194,34 @@ def _codex_rollout_brief(path: Path, session_id: str | None = None) -> Brief:
 
     for payload in payloads:
         ptype = payload.get("type")
-        if ptype == "session_meta":
+        event_type = payload.get("_event_type") or ptype
+        if event_type == "session_meta" or ptype == "session_meta":
             sid = str(payload.get("id") or sid)
             cwd = str(payload.get("cwd")) if payload.get("cwd") else cwd
             git = payload.get("git")
             if isinstance(git, dict) and git.get("branch"):
                 git_branch = str(git["branch"])
-        elif ptype == "turn_context":
+        elif event_type == "turn_context" or ptype == "turn_context":
             if payload.get("model"):
                 model = str(payload["model"])
-        elif ptype == "event_msg":
-            if payload.get("type") in {"task_complete", "turn_complete"}:
-                endings.append(f"event: {payload.get('type')}")
+        elif event_type == "event_msg" or ptype in {
+            "turn_aborted",
+            "task_complete",
+            "turn_complete",
+            "error",
+            "stream_error",
+        }:
+            et = payload.get("type") if event_type == "event_msg" else ptype
+            if et == "turn_aborted":
+                reason = payload.get("reason")
+                endings.append(
+                    f"turn_aborted: {reason}" if reason else "turn_aborted"
+                )
+            elif et in {"task_complete", "turn_complete"}:
+                endings.append(f"event: {et}")
+            elif et in {"error", "stream_error"}:
+                msg = payload.get("message") or payload.get("error") or et
+                endings.append(f"{et}: {msg}")
             continue
         elif ptype == "function_call":
             name = str(payload.get("name") or "tool")
