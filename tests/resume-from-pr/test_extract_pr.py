@@ -773,14 +773,17 @@ class BareNumberResolutionTests(unittest.TestCase):
         self.patch_run_cmd(
             "origin\thttps://codeberg.org/owner/repo.git (fetch)\n", branch="feature/x"
         )
-        self.patch_http_json(
-            lambda url, headers=None, timeout=30: [
-                {
-                    "number": 9,
-                    "html_url": "https://codeberg.org/owner/repo/pulls/9",
-                    "head": {"ref": "feature/x", "repo": {"full_name": "owner/repo"}},
-                }
-            ]
+        FakeForge(self, self.mod).route(
+            "https://codeberg.org/api/v1/repos/owner/repo/pulls",
+            single(
+                [
+                    {
+                        "number": 9,
+                        "html_url": "https://codeberg.org/owner/repo/pulls/9",
+                        "head": {"ref": "feature/x", "repo": {"full_name": "owner/repo"}},
+                    }
+                ]
+            ),
         )
         t = self.mod.resolve_current_branch("workspace")
         self.assertEqual(t.provider, "gitea")
@@ -1166,6 +1169,65 @@ class CollectionPagingTests(unittest.TestCase):
         self.assertEqual([p.get("limit") for p in pages], ["50"] * 3)
         self.assertEqual([p.get("page") for p in pages], [None, "2", "3"])
         self.assertEqual(brief.notes, [])
+
+    def gitea_open_prs(self, prs, fail_page=None):
+        pulls = "https://codeberg.org/api/v1/repos/owner/repo/pulls"
+        pager = link_pager(prs, "limit", 30, 2)
+
+        def handler(key, query):
+            if fail_page and query.get("page") == str(fail_page):
+                return 500
+            return pager(key, query)
+
+        self.forge.route(pulls, handler)
+        remote = self.mod.target_from_remote("0", "https://codeberg.org/owner/repo.git")
+        return pulls, remote
+
+    @staticmethod
+    def gitea_pr(number, ref, full_name="owner/repo"):
+        return {
+            "number": number,
+            "html_url": f"https://codeberg.org/{full_name}/pulls/{number}",
+            "head": {"ref": ref, "repo": {"full_name": full_name}},
+        }
+
+    def test_gitea_branch_lookup_reads_past_first_page(self):
+        prs = [self.gitea_pr(n, f"other-{n}") for n in range(1, 3)]
+        prs.append(self.gitea_pr(30, "feature/x"))
+        pulls, remote = self.gitea_open_prs(prs)
+        t = self.mod.gitea_branch_target(remote, "feature/x")
+        self.assertEqual(t.number, "30")
+        pages = self.forge.requested(pulls)
+        self.assertEqual([p.get("page") for p in pages], [None, "2"])
+        self.assertEqual({p.get("state") for p in pages}, {"open"})
+
+    def test_gitea_branch_lookup_prefers_same_repo_on_later_page(self):
+        prs = [
+            self.gitea_pr(5, "feature/x", full_name="fork/repo"),
+            self.gitea_pr(6, "other"),
+            self.gitea_pr(7, "feature/x"),
+        ]
+        _, remote = self.gitea_open_prs(prs)
+        t = self.mod.gitea_branch_target(remote, "feature/x")
+        self.assertEqual(t.number, "7")
+
+    def test_gitea_branch_lookup_complete_listing_without_match(self):
+        prs = [self.gitea_pr(n, f"other-{n}") for n in range(1, 4)]
+        _, remote = self.gitea_open_prs(prs)
+        with self.assertRaises(self.mod.FetchError) as ctx:
+            self.mod.gitea_branch_target(remote, "feature/x")
+        self.assertIn("no open pull request for branch 'feature/x'", str(ctx.exception))
+
+    def test_gitea_branch_lookup_incomplete_listing_without_match(self):
+        prs = [self.gitea_pr(n, f"other-{n}") for n in range(1, 4)]
+        prs.append(self.gitea_pr(30, "feature/x"))
+        _, remote = self.gitea_open_prs(prs, fail_page=2)
+        with self.assertRaises(self.mod.FetchError) as ctx:
+            self.mod.gitea_branch_target(remote, "feature/x")
+        message = str(ctx.exception)
+        self.assertNotIn("no open pull request", message)
+        self.assertIn("incomplete", message)
+        self.assertIn("HTTP 500", message)
 
     def test_bitbucket_cloud_collects_every_page(self):
         root = "https://api.bitbucket.org/2.0/repositories/ws/repo/pullrequests/11"

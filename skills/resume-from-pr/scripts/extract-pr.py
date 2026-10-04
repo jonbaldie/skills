@@ -2129,15 +2129,11 @@ def gitea_branch_target(remote: Target, branch: str) -> Target:
         raise Skip("no owner/repo for Gitea API")
     host = remote.host
     root = f"https://{host}/api/v1/repos/{remote.slug}/pulls?state=open"
-    try:
-        data = http_json(root, headers=gitea_headers())
-    except Skip as exc:
-        raise _branch_lookup_failure("gitea", remote, branch, f"network error: {exc}") from exc
-    except FetchError as exc:
-        raise _branch_lookup_failure("gitea", remote, branch, str(exc)) from exc
-    prs = data if isinstance(data, list) else []
+    # Gitea cannot filter /pulls by head branch, so read every page before
+    # deciding the branch has no open pull request.
+    listing = http_collection(root, gitea_headers(), GITEA_PAGING, "open pull requests")
     same_repo = fork = None
-    for pr in prs:
+    for pr in listing.items:
         if not isinstance(pr, dict):
             continue
         head = pr.get("head") or {}
@@ -2150,6 +2146,10 @@ def gitea_branch_target(remote: Target, branch: str) -> Target:
         else:
             fork = fork or pr
     pr = same_repo or fork
+    if not pr and listing.note:
+        raise _branch_lookup_failure(
+            "gitea", remote, branch, f"open pull request listing incomplete: {listing.note}"
+        )
     if not pr:
         raise _branch_lookup_empty("gitea", remote, branch)
     return Target(
