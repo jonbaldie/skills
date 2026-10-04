@@ -1029,6 +1029,18 @@ class ExtractSessionTests(unittest.TestCase):
                     }
                 )
                 + "\n"
+                + json.dumps(
+                    {
+                        "type": "message",
+                        "message": {
+                            "role": "assistant",
+                            "content": [
+                                {"type": "text", "text": f"reply to {prompt}"}
+                            ],
+                        },
+                    }
+                )
+                + "\n"
             )
         os.utime(exact, (1_700_000_000, 1_700_000_000))
         os.utime(decoy, (1_700_003_600, 1_700_003_600))
@@ -1054,8 +1066,8 @@ class ExtractSessionTests(unittest.TestCase):
                     self.assertNotIn(str(decoy), out)
                     self.assertIn("session_id: 7f3a\n", out)
                     self.assertNotIn("decoy prompt", out)
-                    if label == "sibling":
-                        self.assertIn("exact prompt", out)
+                    self.assertIn("exact prompt", out)
+                    self.assertIn("reply to exact prompt", out)
 
     def test_pi_list_shows_each_sessions_real_id_exact_first(self):
         cwd = "/work/proj"

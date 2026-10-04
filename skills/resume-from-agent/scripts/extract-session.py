@@ -2303,8 +2303,9 @@ def _generic_jsonl_brief(
                 continue
             if not isinstance(obj, dict):
                 continue
-            role = obj.get("role") or obj.get("type")
             message = obj.get("message") if isinstance(obj.get("message"), dict) else obj
+            # Pi wraps turns as {"type": "message", "message": {"role": ...}} (#177).
+            role = message.get("role") or obj.get("role") or obj.get("type")
             content = message.get("content") if isinstance(message, dict) else None
             text = extract_text(content) if content is not None else extract_text(
                 obj.get("text") or obj.get("content")
