@@ -1007,6 +1007,106 @@ class ExtractSessionTests(unittest.TestCase):
             self.assertIn("exact prompt", out)
             self.assertNotIn("decoy prompt", out)
 
+    def _write_pi_exact_and_decoy(self, home: Path, cwd: str):
+        """An older exact-id Pi session and a newer id-prefix decoy (#175)."""
+        sess = (
+            home / ".pi" / "agent" / "sessions" / self.mod.encode_pi_cwd(cwd)
+        )
+        sess.mkdir(parents=True)
+        exact = sess / "2026-01-01T12-00-00-000Z_7f3a.jsonl"
+        decoy = sess / "2026-01-01T13-00-00-000Z_7f3a99b2.jsonl"
+        for path, session_id, prompt in (
+            (exact, "7f3a", "exact prompt"),
+            (decoy, "7f3a99b2", "decoy prompt"),
+        ):
+            path.write_text(
+                json.dumps({"type": "session", "id": session_id, "cwd": cwd})
+                + "\n"
+                + json.dumps(
+                    {
+                        "type": "message",
+                        "message": {"role": "user", "content": prompt},
+                    }
+                )
+                + "\n"
+            )
+        os.utime(exact, (1_700_000_000, 1_700_000_000))
+        os.utime(decoy, (1_700_003_600, 1_700_003_600))
+        return exact, decoy
+
+    def test_pi_brief_matches_selected_candidate_with_or_without_sibling(self):
+        cwd = "/work/proj"
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            exact, decoy = self._write_pi_exact_and_decoy(home, cwd)
+            sibling = self.mod.find_sibling_extractor
+            self.assertIsNotNone(sibling("pi"))
+            for label, finder in (
+                ("sibling", sibling),
+                ("standalone", lambda agent: None),
+            ):
+                with self.subTest(label), patch.dict(
+                    os.environ, {"HOME": str(home)}
+                ), patch.object(self.mod, "find_sibling_extractor", finder):
+                    code, out = self._main_output(["--cwd", cwd, "pi", "7f3a"])
+                    self.assertEqual(code, 0)
+                    self.assertIn(f"path: {exact}\n", out)
+                    self.assertNotIn(str(decoy), out)
+                    self.assertIn("session_id: 7f3a\n", out)
+                    self.assertNotIn("decoy prompt", out)
+                    if label == "sibling":
+                        self.assertIn("exact prompt", out)
+
+    def test_pi_list_shows_each_sessions_real_id_exact_first(self):
+        cwd = "/work/proj"
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            exact, decoy = self._write_pi_exact_and_decoy(home, cwd)
+            with patch.dict(os.environ, {"HOME": str(home)}):
+                code, out = self._main_output(
+                    ["--cwd", cwd, "--list", "pi", "7f3a"]
+                )
+        self.assertEqual(code, 0)
+        rows = [line for line in out.splitlines() if line[:1].isdigit()]
+        self.assertEqual(len(rows), 2)
+        self.assertIn("id=7f3a ", rows[0])
+        self.assertIn(f"path={exact}", rows[0])
+        self.assertIn("id=7f3a99b2 ", rows[1])
+        self.assertIn(f"path={decoy}", rows[1])
+
+    def test_rank_candidates_orders_by_match_tier_then_recency(self):
+        C = self.mod.Candidate
+
+        def cand(sid, match, mtime):
+            return C(agent="x", session_id=sid, cwd=None, mtime=mtime, match=match)
+
+        ranked = self.mod.rank_candidates(
+            [
+                cand("title-newest", "title", 600.0),
+                cand("substring", "id-substring", 500.0),
+                cand("prefix-new", "id-prefix", 400.0),
+                cand("prefix-old", "id-prefix", 300.0),
+                cand("exact", "exact", 100.0),
+            ]
+        )
+        self.assertEqual(
+            [c.session_id for c in ranked],
+            ["exact", "prefix-new", "prefix-old", "substring", "title-newest"],
+        )
+        winner, notes = self.mod.pick_candidate(ranked)
+        self.assertEqual(winner.session_id, "exact")
+        self.assertTrue(any("exact" in n for n in notes))
+
+    def test_rank_candidates_without_query_is_newest_first(self):
+        C = self.mod.Candidate
+        ranked = self.mod.rank_candidates(
+            [
+                C(agent="x", session_id="old", cwd=None, mtime=1.0),
+                C(agent="x", session_id="new", cwd=None, mtime=2.0),
+            ]
+        )
+        self.assertEqual([c.session_id for c in ranked], ["new", "old"])
+
     def test_discover_codex_honors_codex_home(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

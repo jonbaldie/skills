@@ -62,6 +62,7 @@ python3 .../extract-session.py --agent codex --path ~/.codex/sessions/.../rollou
 
 - If the user passed an **agent** name and/or **session** id, pass them through (positional args or `--agent`).
 - If they passed none, omit both — the script ranks every cwd match by mtime and takes the newest.
+- With a session id, the script ranks exact id matches first, then id prefix/suffix, id substring, and title matches; mtime breaks ties within a tier. `--list` shows each candidate's real id and `match=` tier.
 - On failure (nothing found, unknown agent, bad path), stop and report the error. Do not invent a session.
 - Prefer this skill over the per-agent `/resume-from-*` skills when the user does not know which harness ran last. Use a per-agent skill when they explicitly name one and you only have that skill installed.
 

@@ -243,6 +243,31 @@ def open_sqlite_ro(path: Path) -> sqlite3.Connection:
 # ---------------------------------------------------------------------------
 
 
+# How a session matched the user's query, best first. Discovery without a
+# query leaves `Candidate.match` as None and ranks by recency alone.
+MATCH_TIERS = ("exact", "id-prefix", "id-substring", "title")
+
+
+def match_session_id(query: str, *ids: str | None) -> str | None:
+    """Best id tier at which `query` matches any of `ids`, or None."""
+    best: str | None = None
+    for sid in ids:
+        if not sid:
+            continue
+        if sid == query:
+            return "exact"
+        if sid.startswith(query) or sid.endswith(query):
+            best = "id-prefix"
+        elif query in sid and best is None:
+            best = "id-substring"
+    return best
+
+
+def match_title(query: str, *titles: str | None) -> str | None:
+    q = query.lower()
+    return "title" if any(t and q in t.lower() for t in titles) else None
+
+
 @dataclass
 class Candidate:
     agent: str
@@ -252,9 +277,11 @@ class Candidate:
     title: str | None = None
     path: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
+    match: str | None = None
 
-    def sort_key(self) -> float:
-        return self.mtime
+    def sort_key(self) -> tuple[int, float]:
+        tier = MATCH_TIERS.index(self.match) if self.match else len(MATCH_TIERS)
+        return (tier, -self.mtime)
 
 
 @dataclass
@@ -516,10 +543,11 @@ def discover_hermes(cwd: str, session_id: str | None) -> list[Candidate]:
                 FROM sessions
                 WHERE id = ? OR id LIKE ? OR ifnull(title,'') = ?
                    OR lower(ifnull(title,'')) LIKE lower(?)
-                ORDER BY COALESCE(ended_at, started_at) DESC
+                ORDER BY id = ? DESC, id LIKE ? DESC,
+                         COALESCE(ended_at, started_at) DESC
                 LIMIT 10
                 """,
-                (sid, f"%{sid}%", sid, f"%{sid}%"),
+                (sid, f"%{sid}%", sid, f"%{sid}%", sid, f"%{sid}%"),
             ).fetchall()
         else:
             cwd_r = resolve_path(cwd)
@@ -550,6 +578,12 @@ def discover_hermes(cwd: str, session_id: str | None) -> list[Candidate]:
                         "git_branch": row["git_branch"],
                         "message_count": row["message_count"],
                     },
+                    match=(
+                        match_session_id(session_id.strip(), row["id"])
+                        or match_title(session_id.strip(), row["title"])
+                    )
+                    if session_id
+                    else None,
                 )
             )
         return out
@@ -714,18 +748,13 @@ def discover_dirac(cwd: str, session_id: str | None) -> list[Candidate]:
         item_cwd = item.get("cwdOnTaskInitialization") or item.get(
             "workspaceRootPath"
         )
+        match = None
         if session_id:
             sid = session_id.strip()
-            ulid = str(item.get("ulid") or "")
-            task = str(item.get("task") or "")
-            if not (
-                tid == sid
-                or tid.startswith(sid)
-                or sid in tid
-                or ulid == sid
-                or sid in ulid
-                or (sid.lower() in task.lower() if task else False)
-            ):
+            match = match_session_id(
+                sid, tid, str(item.get("ulid") or "")
+            ) or match_title(sid, str(item.get("task") or ""))
+            if not match:
                 continue
         else:
             if not item_cwd or resolve_path(str(item_cwd)) not in {cwd_r, cwd}:
@@ -750,6 +779,7 @@ def discover_dirac(cwd: str, session_id: str | None) -> list[Candidate]:
                 title=str(item.get("task") or "")[:200] or None,
                 path=str(task_dir) if task_dir.is_dir() else str(history_path),
                 extra={"ulid": item.get("ulid"), "modelId": item.get("modelId")},
+                match=match,
             )
         )
     return out
@@ -926,14 +956,13 @@ def discover_goose(cwd: str, session_id: str | None) -> list[Candidate]:
             continue
         meta = _goose_read_meta(path)
         sid = path.stem
+        match = None
         if session_id:
             sid_q = session_id.strip()
-            desc = str(meta.get("description") or "")
-            if not (
-                sid == sid_q
-                or sid_q in sid
-                or (sid_q.lower() in desc.lower() if desc else False)
-            ):
+            match = match_session_id(sid_q, sid) or match_title(
+                sid_q, str(meta.get("description") or "")
+            )
+            if not match:
                 continue
         else:
             wd = meta.get("working_dir")
@@ -949,6 +978,7 @@ def discover_goose(cwd: str, session_id: str | None) -> list[Candidate]:
                 title=str(meta.get("description") or "") or None,
                 path=str(path),
                 extra={"message_count": meta.get("message_count")},
+                match=match,
             )
         )
     return out
@@ -1096,9 +1126,10 @@ def discover_cursor(cwd: str, session_id: str | None) -> list[Candidate]:
         if "subagents" in jsonl.parts:
             return
         sid = jsonl.stem
+        match = None
         if session_id:
-            q = session_id.strip()
-            if not (sid == q or q in sid or sid.startswith(q)):
+            match = match_session_id(session_id.strip(), sid)
+            if not match:
                 return
         # recover cwd from project name best-effort
         recovered = "/" + project_name.replace("-", "/")
@@ -1111,6 +1142,7 @@ def discover_cursor(cwd: str, session_id: str | None) -> list[Candidate]:
                 mtime=jsonl.stat().st_mtime,
                 title=None,
                 path=str(jsonl),
+                match=match,
             )
         )
 
@@ -1256,17 +1288,13 @@ def discover_gemini(cwd: str, session_id: str | None) -> list[Candidate]:
             sid = path.stem
             # session-2026-06-04T17-29-17fecec4 -> prefer trailing token
             short = sid.split("-")[-1] if "-" in sid else sid
+            match = None
             if session_id:
-                q = session_id.strip()
-                if not (
-                    q in sid
-                    or q in short
-                    or sid.endswith(q)
-                    or short.startswith(q)
-                ):
-                    # also allow full uuid inside file header later; filename first
-                    if q not in path.name:
-                        continue
+                match = match_session_id(
+                    session_id.strip(), short, sid, path.name
+                )
+                if not match:
+                    continue
             out.append(
                 Candidate(
                     agent="gemini",
@@ -1276,6 +1304,7 @@ def discover_gemini(cwd: str, session_id: str | None) -> list[Candidate]:
                     title=None,
                     path=str(path),
                     extra={"tmp_dir": tmp_dir.name},
+                    match=match,
                 )
             )
     return out
@@ -1478,9 +1507,10 @@ def discover_agy(cwd: str, session_id: str | None) -> list[Candidate]:
     out: list[Candidate] = []
     for db in root.glob("*.db"):
         sid = db.stem
+        match = None
         if session_id:
-            q = session_id.strip()
-            if not (sid == q or q in sid):
+            match = match_session_id(session_id.strip(), sid)
+            if not match:
                 continue
         elif wanted_ids and sid not in wanted_ids:
             # brain ids sometimes differ from conversation file names; allow mtime scan of mapped only
@@ -1495,6 +1525,7 @@ def discover_agy(cwd: str, session_id: str | None) -> list[Candidate]:
                 mtime=db.stat().st_mtime,
                 title=None,
                 path=str(db),
+                match=match,
             )
         )
     # If session_id lookup found nothing via name, still try
@@ -1678,18 +1709,13 @@ def stamp_harness(text: str, harness: str) -> str:
     return body
 
 
-def run_sibling_extractor(
-    agent: str, cwd: str, session_id: str | None
-) -> str | None:
+def run_sibling_extractor(agent: str, args: list[str]) -> str | None:
     script = find_sibling_extractor(agent)
     if not script:
         return None
-    cmd = [sys.executable, str(script), "--cwd", cwd]
-    if session_id:
-        cmd.append(session_id)
     try:
         proc = subprocess.run(
-            cmd,
+            [sys.executable, str(script), *args],
             check=False,
             capture_output=True,
             text=True,
@@ -1706,63 +1732,12 @@ def run_sibling_extractor(
 
 
 def run_sibling_path_extractor(agent: str, path: Path) -> str | None:
-    """Use the harness-specific parser's explicit-path mode."""
-    script = find_sibling_extractor(agent)
-    if not script:
-        return None
-    try:
-        proc = subprocess.run(
-            [sys.executable, str(script), "--jsonl", str(path)],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if proc.returncode != 0:
-        return None
-    text = proc.stdout or ""
-    if not text.strip():
-        return None
-    return stamp_harness(text, agent)
+    """Use the harness-specific parser's explicit-path mode.
 
-
-def discover_via_sibling_path_scan(
-    agent: str,
-    cwd: str,
-    session_id: str | None,
-    path_globs: list[tuple[Path, str]],
-    cwd_from_path: Callable[[Path], str | None] | None = None,
-) -> list[Candidate]:
-    """Fallback discovery when we only know filesystem layout."""
-    out: list[Candidate] = []
-    cwd_r = resolve_path(cwd)
-    for base, pattern in path_globs:
-        if not base.exists():
-            continue
-        for path in base.glob(pattern):
-            if not path.is_file():
-                continue
-            if session_id and session_id.strip() not in path.name:
-                continue
-            path_cwd = cwd_from_path(path) if cwd_from_path else None
-            if session_id is None:
-                if path_cwd and resolve_path(path_cwd) not in {cwd_r, cwd}:
-                    continue
-                if path_cwd is None:
-                    # For dir-encoded stores, check parent name
-                    pass
-            out.append(
-                Candidate(
-                    agent=agent,
-                    session_id=path.stem,
-                    cwd=path_cwd or cwd,
-                    mtime=path.stat().st_mtime,
-                    path=str(path),
-                )
-            )
-    return out
+    Discovery has already chosen this file, so the sibling must render it
+    rather than resolve the user's query again under its own rules.
+    """
+    return run_sibling_extractor(agent, ["--jsonl", str(path)])
 
 
 def encode_claude_cwd(cwd: str) -> str:
@@ -1792,6 +1767,7 @@ def discover_claude(cwd: str, session_id: str | None) -> list[Candidate]:
                     cwd=None,
                     mtime=path.stat().st_mtime,
                     path=str(path),
+                    match="exact",
                 )
             )
         return out
@@ -1822,19 +1798,23 @@ def extract_claude_or_sibling(cand: Candidate) -> Brief:
         return _generic_jsonl_brief(
             path, agent="claude", session_id=cand.session_id, cwd=cand.cwd
         )
-    text = run_sibling_extractor("claude", cand.cwd or os.getcwd(), cand.session_id)
+    if not path.is_file():
+        raise SystemExit(f"Claude session found but transcript missing: {path}")
+    text = run_sibling_path_extractor("claude", path)
     if text:
         return _brief_from_preformatted(text, agent="claude", cand=cand)
     # Minimal fallback parse
-    if not path.is_file():
-        raise SystemExit(
-            "Claude session found but no extractor available and path missing"
-        )
     return _generic_jsonl_brief(path, agent="claude", session_id=cand.session_id, cwd=cand.cwd)
 
 
 def encode_pi_cwd(cwd: str) -> str:
     return "--" + cwd.strip("/").replace("/", "-") + "--"
+
+
+def pi_session_id(path: Path) -> str:
+    # Pi names transcripts <timestamp>_<session id>.jsonl.
+    stem = path.stem
+    return stem.split("_", 1)[1] if "_" in stem else stem
 
 
 def discover_pi(cwd: str, session_id: str | None) -> list[Candidate]:
@@ -1845,13 +1825,15 @@ def discover_pi(cwd: str, session_id: str | None) -> list[Candidate]:
     if session_id:
         sid = session_id.strip()
         for path in root.rglob(f"*{sid}*.jsonl"):
+            real_id = pi_session_id(path)
             out.append(
                 Candidate(
                     agent="pi",
-                    session_id=sid,
+                    session_id=real_id,
                     cwd=None,
                     mtime=path.stat().st_mtime,
                     path=str(path),
+                    match=match_session_id(sid, real_id, path.stem),
                 )
             )
         return out
@@ -1860,12 +1842,10 @@ def discover_pi(cwd: str, session_id: str | None) -> list[Candidate]:
         if not project.is_dir():
             continue
         for path in project.glob("*.jsonl"):
-            stem = path.stem
-            sid = stem.split("_", 1)[1] if "_" in stem else stem
             out.append(
                 Candidate(
                     agent="pi",
-                    session_id=sid,
+                    session_id=pi_session_id(path),
                     cwd=cwd,
                     mtime=path.stat().st_mtime,
                     path=str(path),
@@ -1885,11 +1865,11 @@ def extract_pi_or_sibling(cand: Candidate) -> Brief:
         return _generic_jsonl_brief(
             path, agent="pi", session_id=cand.session_id, cwd=cand.cwd
         )
-    text = run_sibling_extractor("pi", cand.cwd or os.getcwd(), cand.session_id)
+    if not path.is_file():
+        raise SystemExit(f"Pi session found but transcript missing: {path}")
+    text = run_sibling_path_extractor("pi", path)
     if text:
         return _brief_from_preformatted(text, agent="pi", cand=cand)
-    if not path.is_file():
-        raise SystemExit("Pi session found but extractor unavailable")
     return _generic_jsonl_brief(path, agent="pi", session_id=cand.session_id, cwd=cand.cwd)
 
 
@@ -1920,6 +1900,25 @@ def load_codex_thread_names() -> dict[str, str]:
     return names
 
 
+def codex_session_id(path: Path) -> str:
+    """Session id from a rollout's session_meta, else its filename uuid."""
+    try:
+        with path.open() as fh:
+            obj = json.loads(fh.readline() or "{}")
+        payload = obj.get("payload") if isinstance(obj, dict) else None
+        if isinstance(payload, dict):
+            sid = payload.get("session_id") or payload.get("id")
+            if sid:
+                return str(sid)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        pass
+    m = re.search(
+        r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        path.stem,
+    )
+    return m.group(0) if m else path.stem
+
+
 def discover_codex(cwd: str, session_id: str | None) -> list[Candidate]:
     root = codex_home() / "sessions"
     if not root.is_dir():
@@ -1928,20 +1927,25 @@ def discover_codex(cwd: str, session_id: str | None) -> list[Candidate]:
     cwd_r = resolve_path(cwd)
     if session_id:
         sid = session_id.strip()
-        hits = [(path, sid) for path in root.rglob(f"*{sid}*.jsonl")]
+        hits: list[tuple[Path, str, str | None]] = []
+        for path in root.rglob(f"*{sid}*.jsonl"):
+            real_id = codex_session_id(path)
+            hits.append(
+                (path, real_id, match_session_id(sid, real_id, path.stem))
+            )
         if not hits:
             names = load_codex_thread_names()
             matched_ids = [
                 candidate_id
                 for candidate_id, name in names.items()
-                if name == sid or sid.lower() in name.lower()
+                if match_title(sid, name)
             ]
             for candidate_id in matched_ids:
                 hits.extend(
-                    (path, candidate_id)
+                    (path, candidate_id, "title")
                     for path in root.rglob(f"*{candidate_id}*.jsonl")
                 )
-        for path, candidate_id in hits:
+        for path, candidate_id, match in hits:
             out.append(
                 Candidate(
                     agent="codex",
@@ -1949,6 +1953,7 @@ def discover_codex(cwd: str, session_id: str | None) -> list[Candidate]:
                     cwd=None,
                     mtime=path.stat().st_mtime,
                     path=str(path),
+                    match=match,
                 )
             )
         return out
@@ -1985,11 +1990,11 @@ def extract_codex_or_sibling(cand: Candidate) -> Brief:
         if text:
             return _brief_from_preformatted(text, agent="codex", cand=cand)
         return _codex_rollout_brief(path, session_id=cand.session_id)
-    text = run_sibling_extractor("codex", cand.cwd or os.getcwd(), cand.session_id)
+    if not path.is_file():
+        raise SystemExit(f"Codex session found but rollout missing: {path}")
+    text = run_sibling_path_extractor("codex", path)
     if text:
         return _brief_from_preformatted(text, agent="codex", cand=cand)
-    if not path.is_file():
-        raise SystemExit("Codex session found but extractor unavailable")
     return _generic_jsonl_brief(path, agent="codex", session_id=cand.session_id, cwd=cand.cwd)
 
 
@@ -2076,6 +2081,12 @@ def discover_opencode(cwd: str, session_id: str | None) -> list[Candidate]:
             extra = {}
             if data.get("slug"):
                 extra["slug"] = str(data["slug"])
+            match = None
+            if session_id:
+                # A slug is a human label like a title, not an id.
+                match = match_session_id(session_id.strip(), sid) or match_title(
+                    session_id.strip(), data.get("slug"), data.get("title")
+                )
             out.append(
                 Candidate(
                     agent="opencode",
@@ -2085,6 +2096,7 @@ def discover_opencode(cwd: str, session_id: str | None) -> list[Candidate]:
                     title=str(data["title"]) if data.get("title") else None,
                     path=str(db),
                     extra=extra,
+                    match=match,
                 )
             )
         return out
@@ -2100,8 +2112,17 @@ def extract_opencode_or_sibling(cand: Candidate) -> Brief:
             f"OpenCode sessions live in a store db; cannot parse {cand.path!r} "
             "directly. Install resume-from-opencode and pass the session id instead."
         )
+    # Pass the selected store and real id so the sibling cannot re-resolve
+    # the user's query to a different session.
     text = run_sibling_extractor(
-        "opencode", cand.cwd or os.getcwd(), cand.session_id
+        "opencode",
+        [
+            "--cwd",
+            cand.cwd or os.getcwd(),
+            "--db",
+            cand.path or "",
+            cand.session_id,
+        ],
     )
     if text:
         return _brief_from_preformatted(text, agent="opencode", cand=cand)
@@ -2392,6 +2413,11 @@ register(
 # ---------------------------------------------------------------------------
 
 
+def rank_candidates(candidates: list[Candidate]) -> list[Candidate]:
+    """Best match tier first, newest first within a tier."""
+    return sorted(candidates, key=Candidate.sort_key)
+
+
 def discover_all(
     cwd: str,
     session_id: str | None,
@@ -2420,7 +2446,7 @@ def discover_all(
     uniq: dict[tuple[str, str, str | None], Candidate] = {}
     for c in found:
         uniq[(c.agent, c.session_id, c.path)] = c
-    ranked = sorted(uniq.values(), key=lambda c: c.mtime, reverse=True)
+    ranked = rank_candidates(list(uniq.values()))
     if not ranked and errors and agent_filter:
         raise SystemExit(
             "Discovery failed for "
@@ -2434,14 +2460,15 @@ def discover_all(
 def format_list(candidates: list[Candidate]) -> str:
     if not candidates:
         return "No matching sessions.\n"
-    lines = ["# Session candidates (newest first)", ""]
+    lines = ["# Session candidates (best match first, then newest)", ""]
     for i, c in enumerate(candidates[:30], 1):
         ts = datetime.fromtimestamp(c.mtime).isoformat(timespec="seconds") if c.mtime else "?"
         title = f" — {c.title}" if c.title else ""
         cwd = f" cwd={c.cwd}" if c.cwd else ""
         path = f" path={c.path}" if c.path else ""
+        match = f"  match={c.match}" if c.match else ""
         lines.append(
-            f"{i}. {c.agent}  id={c.session_id}  mtime={ts}{title}{cwd}{path}"
+            f"{i}. {c.agent}  id={c.session_id}{match}  mtime={ts}{title}{cwd}{path}"
         )
     if len(candidates) > 30:
         lines.append(f"… and {len(candidates) - 30} more")
@@ -2466,6 +2493,13 @@ def pick_candidate(
         notes.append(
             f"Selected {winner.agent} over {len(candidates) - 1} other match(es)."
         )
+        newer = [c for c in candidates[1:] if c.mtime > winner.mtime]
+        if newer:
+            tiers = ", ".join(sorted({c.match or "unranked" for c in newer}))
+            notes.append(
+                f"Preferred {winner.match} match over {len(newer)} newer "
+                f"{tiers} match(es)."
+            )
     return winner, notes
 
 
