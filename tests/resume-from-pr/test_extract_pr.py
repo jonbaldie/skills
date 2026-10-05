@@ -1314,6 +1314,11 @@ class GitFallbackTests(unittest.TestCase):
     def setUpClass(cls):
         cls.mod = load_mod()
 
+    def patch_run_cmd(self, fake):
+        original = self.mod.run_cmd
+        self.mod.run_cmd = fake
+        self.addCleanup(setattr, self.mod, "run_cmd", original)
+
     def pick(self, listing: str, number: str = "7"):
         return self.mod.parse_pr_ref_listing(listing, number)
 
@@ -1408,7 +1413,7 @@ class GitFallbackTests(unittest.TestCase):
         self.assertEqual(brief.commits, [])
         self.assertEqual(brief.files, [])
 
-    def test_fetch_git_runs_the_same_commands(self):
+    def test_fetch_git_command_sequence(self):
         mod = self.mod
         calls = []
         outputs = {
@@ -1425,9 +1430,7 @@ class GitFallbackTests(unittest.TestCase):
                 return "Fix auth\n"
             return outputs[argv[1]]
 
-        original = mod.run_cmd
-        mod.run_cmd = fake
-        self.addCleanup(setattr, mod, "run_cmd", original)
+        self.patch_run_cmd(fake)
         target = mod.Target(provider="github", host="github.com", number="7")
         brief = mod.fetch_git(target, "/repo")
         local = "refs/resume-from-pr/7"
@@ -1446,7 +1449,6 @@ class GitFallbackTests(unittest.TestCase):
         self.assertEqual(brief.head_sha, "h222")
         self.assertEqual([f.path for f in brief.files], ["README.md"])
 
-
     def test_fetch_git_reads_the_sha_when_the_ref_fetch_fails(self):
         mod = self.mod
         calls = []
@@ -1459,9 +1461,7 @@ class GitFallbackTests(unittest.TestCase):
                 return "h222\trefs/pull/7/head\n"
             raise mod.Skip("git failed")
 
-        original = mod.run_cmd
-        mod.run_cmd = fake
-        self.addCleanup(setattr, mod, "run_cmd", original)
+        self.patch_run_cmd(fake)
         target = mod.Target(provider="github", host="github.com", number="7")
         brief = mod.fetch_git(target, "/repo")
         self.assertEqual(calls[3], ["git", "log", "--format=%h %s", "-15", "h222"])

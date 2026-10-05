@@ -1899,7 +1899,7 @@ def brief_from_git(
     message: str | None = None,
     numstat: str | None = None,
 ) -> Brief:
-    """Build a brief from git output; ``None`` means that command failed."""
+    """Build a brief from git output; a missing output leaves its fields at defaults."""
     commits = [line for line in (log or "").splitlines() if line.strip()]
     title = commits[0].split(" ", 1)[-1] if commits else f"PR/MR {target.number}"
     return Brief(
@@ -1927,7 +1927,7 @@ def fetch_git(target: Target, cwd: str | None) -> Brief:
         raise Skip("not a git repository")
     last_err = "no matching PR ref"
 
-    def output(argv: list[str]) -> str | None:
+    def output_or_none(argv: list[str]) -> str | None:
         try:
             return run_cmd(argv, cwd=cwd)
         except Skip:
@@ -1944,16 +1944,16 @@ def fetch_git(target: Target, cwd: str | None) -> Brief:
             continue
         sha, ref = hit
         local = f"refs/resume-from-pr/{target.number}"
-        if output(["git", "fetch", "--quiet", name, f"{ref}:{local}"]) is None:
+        if output_or_none(["git", "fetch", "--quiet", name, f"{ref}:{local}"]) is None:
             local = sha
         return brief_from_git(
             target,
             sha=sha,
             ref=ref,
             remote_url=url,
-            log=output(["git", "log", "--format=%h %s", "-15", local]),
-            message=output(["git", "log", "-1", "--format=%B", local]),
-            numstat=output(["git", "diff", "--numstat", f"{name}/HEAD...{local}"]),
+            log=output_or_none(["git", "log", "--format=%h %s", "-15", local]),
+            message=output_or_none(["git", "log", "-1", "--format=%B", local]),
+            numstat=output_or_none(["git", "diff", "--numstat", f"{name}/HEAD...{local}"]),
         )
     raise Skip(last_err)
 
