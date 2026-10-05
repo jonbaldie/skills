@@ -1309,6 +1309,166 @@ class CollectionPagingTests(unittest.TestCase):
         self.assertEqual(brief.notes, [])
 
 
+class GitFallbackTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_mod()
+
+    def pick(self, listing: str, number: str = "7"):
+        return self.mod.parse_pr_ref_listing(listing, number)
+
+    def test_head_ref_beats_merge_ref_listed_first(self):
+        listing = (
+            "m111\trefs/pull/7/merge\n"
+            "h222\trefs/pull/7/head\n"
+        )
+        self.assertEqual(self.pick(listing), ("h222", "refs/pull/7/head"))
+
+    def test_head_ref_beats_merge_ref_listed_second(self):
+        listing = (
+            "h222\trefs/pull/7/head\n"
+            "m111\trefs/pull/7/merge\n"
+        )
+        self.assertEqual(self.pick(listing), ("h222", "refs/pull/7/head"))
+
+    def test_merge_only_listing_returns_merge_ref(self):
+        listing = (
+            "a000\trefs/heads/main\n"
+            "m111\trefs/pull/7/merge\n"
+        )
+        self.assertEqual(self.pick(listing), ("m111", "refs/pull/7/merge"))
+
+    def test_no_matching_ref_returns_none(self):
+        listing = (
+            "a000\tHEAD\n"
+            "b111\trefs/pull/70/head\n"
+            "c222\trefs/pull/17/head\n"
+        )
+        self.assertIsNone(self.pick(listing))
+
+    def test_gitlab_merge_request_ref(self):
+        listing = "g333\trefs/merge-requests/7/head\n"
+        self.assertEqual(self.pick(listing), ("g333", "refs/merge-requests/7/head"))
+
+    def test_bitbucket_pull_request_from_ref(self):
+        listing = (
+            "b444\trefs/pull-requests/7/merge\n"
+            "b555\trefs/pull-requests/7/from\n"
+        )
+        self.assertEqual(self.pick(listing), ("b555", "refs/pull-requests/7/from"))
+
+    def test_malformed_listing_lines_are_skipped(self):
+        listing = "\njunk\nh222\trefs/pull/7/head\n"
+        self.assertEqual(self.pick(listing), ("h222", "refs/pull/7/head"))
+
+    def test_numstat_counts_and_binary_files(self):
+        files = self.mod.parse_git_numstat(
+            "10\t2\tsrc/auth.ts\n-\t-\tassets/logo.png\n"
+        )
+        self.assertEqual(
+            [(f.path, f.additions, f.deletions) for f in files],
+            [("src/auth.ts", 10, 2), ("assets/logo.png", None, None)],
+        )
+
+    def test_numstat_malformed_lines_are_skipped(self):
+        files = self.mod.parse_git_numstat("\n3 1 spaces.txt\n4\tonly-two\n1\t0\tok.py\n")
+        self.assertEqual([f.path for f in files], ["ok.py"])
+
+    def test_brief_from_git_output(self):
+        target = self.mod.Target(
+            provider="github", host="github.com", number="7", owner="acme", repo="app"
+        )
+        brief = self.mod.brief_from_git(
+            target,
+            sha="h222",
+            ref="refs/pull/7/head",
+            remote_url="git@github.com:acme/app.git",
+            log="abc1234 Fix auth middleware\ndef5678 wip\n",
+            message="Fix auth middleware\n\nLonger body.\n",
+            numstat="10\t2\tsrc/auth.ts\n",
+        )
+        self.assertEqual(brief.provider, "github")
+        self.assertEqual(brief.url, "git@github.com:acme/app.git refs/pull/7/head")
+        self.assertEqual(brief.title, "Fix auth middleware")
+        self.assertEqual(brief.body, "Fix auth middleware\n\nLonger body.")
+        self.assertEqual(brief.commits, ["abc1234 Fix auth middleware", "def5678 wip"])
+        self.assertEqual(brief.head_sha, "h222")
+        self.assertEqual(brief.repo, "acme/app")
+        self.assertEqual(brief.source, "git")
+        self.assertEqual([f.path for f in brief.files], ["src/auth.ts"])
+
+    def test_brief_from_git_without_command_output(self):
+        target = self.mod.Target(provider="unknown", host="example.com", number="7")
+        brief = self.mod.brief_from_git(
+            target, sha="h222", ref="refs/pull/7/head", remote_url="origin-url"
+        )
+        self.assertEqual(brief.provider, "git")
+        self.assertEqual(brief.title, "PR/MR 7")
+        self.assertEqual(brief.body, "")
+        self.assertEqual(brief.commits, [])
+        self.assertEqual(brief.files, [])
+
+    def test_fetch_git_runs_the_same_commands(self):
+        mod = self.mod
+        calls = []
+        outputs = {
+            "remote": "origin\tgit@github.com:acme/app.git (fetch)\n",
+            "ls-remote": "m111\trefs/pull/7/merge\nh222\trefs/pull/7/head\n",
+            "fetch": "",
+            "log": "abc1234 Fix auth\n",
+            "diff": "1\t1\tREADME.md\n",
+        }
+
+        def fake(argv, cwd=None, timeout=45):
+            calls.append(argv)
+            if argv[1] == "log" and argv[2] == "-1":
+                return "Fix auth\n"
+            return outputs[argv[1]]
+
+        original = mod.run_cmd
+        mod.run_cmd = fake
+        self.addCleanup(setattr, mod, "run_cmd", original)
+        target = mod.Target(provider="github", host="github.com", number="7")
+        brief = mod.fetch_git(target, "/repo")
+        local = "refs/resume-from-pr/7"
+        self.assertEqual(
+            calls,
+            [
+                ["git", "remote", "-v"],
+                ["git", "ls-remote", "origin"],
+                ["git", "fetch", "--quiet", "origin", f"refs/pull/7/head:{local}"],
+                ["git", "log", "--format=%h %s", "-15", local],
+                ["git", "log", "-1", "--format=%B", local],
+                ["git", "diff", "--numstat", f"origin/HEAD...{local}"],
+            ],
+        )
+        self.assertEqual(brief.title, "Fix auth")
+        self.assertEqual(brief.head_sha, "h222")
+        self.assertEqual([f.path for f in brief.files], ["README.md"])
+
+
+    def test_fetch_git_reads_the_sha_when_the_ref_fetch_fails(self):
+        mod = self.mod
+        calls = []
+
+        def fake(argv, cwd=None, timeout=45):
+            calls.append(argv)
+            if argv[1] == "remote":
+                return "origin\tgit@github.com:acme/app.git (fetch)\n"
+            if argv[1] == "ls-remote":
+                return "h222\trefs/pull/7/head\n"
+            raise mod.Skip("git failed")
+
+        original = mod.run_cmd
+        mod.run_cmd = fake
+        self.addCleanup(setattr, mod, "run_cmd", original)
+        target = mod.Target(provider="github", host="github.com", number="7")
+        brief = mod.fetch_git(target, "/repo")
+        self.assertEqual(calls[3], ["git", "log", "--format=%h %s", "-15", "h222"])
+        self.assertEqual(calls[5], ["git", "diff", "--numstat", "origin/HEAD...h222"])
+        self.assertEqual(brief.title, "PR/MR 7")
+        self.assertEqual(brief.files, [])
+
 class CliFailureTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
