@@ -1469,6 +1469,7 @@ class GitFallbackTests(unittest.TestCase):
         self.assertEqual(brief.title, "PR/MR 7")
         self.assertEqual(brief.files, [])
 
+
 class CliFailureTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
