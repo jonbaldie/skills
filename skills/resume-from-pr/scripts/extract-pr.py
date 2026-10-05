@@ -1853,6 +1853,72 @@ def git_remotes(cwd: str) -> list[tuple[str, str]]:
     return ordered
 
 
+def parse_pr_ref_listing(listing: str, number: str) -> tuple[str, str] | None:
+    """Pick ``(sha, ref)`` for PR ``number`` from ``git ls-remote`` output.
+
+    A head/from ref wins outright; a merge ref is used only when no head/from
+    ref is advertised.
+    """
+    wanted = {pat.format(n=number) for pat in PR_REF_PATTERNS}
+    hit = None
+    for line in listing.splitlines():
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        sha, ref = parts[0], parts[1]
+        if ref in wanted:
+            hit = (sha, ref)
+            if ref.endswith("/head") or ref.endswith("/from"):
+                break
+    return hit
+
+
+def parse_git_numstat(numstat: str) -> list[FileChange]:
+    files: list[FileChange] = []
+    for line in numstat.splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 3:
+            add, delete, path = parts[0], parts[1], parts[2]
+            files.append(
+                FileChange(
+                    path=path,
+                    additions=int(add) if add.isdigit() else None,
+                    deletions=int(delete) if delete.isdigit() else None,
+                )
+            )
+    return files
+
+
+def brief_from_git(
+    target: Target,
+    *,
+    sha: str,
+    ref: str,
+    remote_url: str,
+    log: str | None = None,
+    message: str | None = None,
+    numstat: str | None = None,
+) -> Brief:
+    """Build a brief from git output; a missing output leaves its fields at defaults."""
+    commits = [line for line in (log or "").splitlines() if line.strip()]
+    title = commits[0].split(" ", 1)[-1] if commits else f"PR/MR {target.number}"
+    return Brief(
+        provider=target.provider if target.provider != "unknown" else "git",
+        url=target.url or f"{remote_url} {ref}",
+        number=target.number,
+        title=title,
+        state="open",
+        author="",
+        body=(message or "").strip(),
+        head_sha=sha,
+        repo=target.slug,
+        host=target.host,
+        source="git",
+        files=parse_git_numstat(numstat or ""),
+        commits=commits,
+    )
+
+
 def fetch_git(target: Target, cwd: str | None) -> Brief:
     if not cwd:
         raise Skip("no cwd for git fallback")
@@ -1860,85 +1926,34 @@ def fetch_git(target: Target, cwd: str | None) -> Brief:
     if not remotes:
         raise Skip("not a git repository")
     last_err = "no matching PR ref"
+
+    def output_or_none(argv: list[str]) -> str | None:
+        try:
+            return run_cmd(argv, cwd=cwd)
+        except Skip:
+            return None
+
     for name, url in remotes:
         try:
             listing = run_cmd(["git", "ls-remote", name], cwd=cwd, timeout=30)
         except Skip as exc:
             last_err = str(exc)
             continue
-        wanted = {pat.format(n=target.number) for pat in PR_REF_PATTERNS}
-        hit = None
-        for line in listing.splitlines():
-            parts = line.split()
-            if len(parts) < 2:
-                continue
-            sha, ref = parts[0], parts[1]
-            if ref in wanted:
-                hit = (sha, ref)
-                if ref.endswith("/head") or ref.endswith("/from"):
-                    break
+        hit = parse_pr_ref_listing(listing, target.number)
         if not hit:
             continue
         sha, ref = hit
-        try:
-            run_cmd(
-                ["git", "fetch", "--quiet", name, f"{ref}:refs/resume-from-pr/{target.number}"],
-                cwd=cwd,
-            )
-            local = f"refs/resume-from-pr/{target.number}"
-        except Skip:
+        local = f"refs/resume-from-pr/{target.number}"
+        if output_or_none(["git", "fetch", "--quiet", name, f"{ref}:{local}"]) is None:
             local = sha
-        files: list[FileChange] = []
-        commits: list[str] = []
-        title = f"PR/MR {target.number}"
-        body = ""
-        try:
-            log = run_cmd(
-                ["git", "log", "--format=%h %s", "-15", local],
-                cwd=cwd,
-            )
-            commits = [line for line in log.splitlines() if line.strip()]
-            if commits:
-                title = commits[0].split(" ", 1)[-1]
-        except Skip:
-            pass
-        try:
-            msg = run_cmd(["git", "log", "-1", "--format=%B", local], cwd=cwd)
-            body = msg.strip()
-        except Skip:
-            pass
-        try:
-            stat = run_cmd(
-                ["git", "diff", "--numstat", f"{name}/HEAD...{local}"],
-                cwd=cwd,
-            )
-            for line in stat.splitlines():
-                parts = line.split("\t")
-                if len(parts) >= 3:
-                    add, delete, path = parts[0], parts[1], parts[2]
-                    files.append(
-                        FileChange(
-                            path=path,
-                            additions=int(add) if add.isdigit() else None,
-                            deletions=int(delete) if delete.isdigit() else None,
-                        )
-                    )
-        except Skip:
-            pass
-        return Brief(
-            provider=target.provider if target.provider != "unknown" else "git",
-            url=target.url or f"{url} {ref}",
-            number=target.number,
-            title=title,
-            state="open",
-            author="",
-            body=body,
-            head_sha=sha,
-            repo=target.slug,
-            host=target.host,
-            source="git",
-            files=files,
-            commits=commits,
+        return brief_from_git(
+            target,
+            sha=sha,
+            ref=ref,
+            remote_url=url,
+            log=output_or_none(["git", "log", "--format=%h %s", "-15", local]),
+            message=output_or_none(["git", "log", "-1", "--format=%B", local]),
+            numstat=output_or_none(["git", "diff", "--numstat", f"{name}/HEAD...{local}"]),
         )
     raise Skip(last_err)
 
