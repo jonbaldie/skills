@@ -1,7 +1,6 @@
 ---
 name: mutation-testing
 description: Manually introduce small faults and check whether the existing tests catch them, with an optional automated-tool index.
-disable-model-invocation: true
 ---
 
 # Mutation testing
