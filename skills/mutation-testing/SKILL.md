@@ -5,9 +5,15 @@ description: Manually introduce small faults and check whether the existing test
 
 # Mutation testing
 
-Ask: **if this behaviour were wrong, would the tests fail?** Perform manual
-mutation testing: choose and apply small production changes yourself, then run
-existing automated checks. Reading tests or proposing mutations is not a run.
+Ask: **if this behaviour were wrong, would the tests fail?** Perform the manual
+green–mutant–green loop below yourself, one mutant at a time, using direct source
+edits and existing test/build commands. Reading tests or proposing mutations is
+not a run.
+
+**Procedure failure:** replacing the manual loop with a mutation framework or
+custom driver, such as immediately writing a Python script to apply mutants and
+collect results. Keep mutation decisions, edits, and evidence inspection in the
+agent's hands; existing test/build scripts execute the checks.
 
 ## 1. Establish the target and baseline
 
@@ -27,14 +33,28 @@ Use isolated test data and services. Mutants must not deploy, change live
 infrastructure, contact real customers, or write to production data. For SQL,
 CI, containers, or infrastructure code, use a local sandbox or disposable stack.
 
+Before starting builds, tests, or sandbox services, inspect host CPU/load,
+available memory, swap pressure, and free workspace/evidence disk space. Record a
+**host budget** with measurable limits, a sampling interval, and breach durations
+that trigger a stop. Base it on observed headroom, leaving capacity for existing
+workloads. Default to one build/test worker, including runner-internal parallelism.
+Set a finite timeout for every command, including the baseline. Defer execution
+and report the blocker if the host is already outside budget.
+
+Monitor at that interval during commands and recheck between mutants; retain
+readings and stops as evidence. On a breach, stop launching work, terminate only
+this pass's processes and descendants, and restore the source. Resume within the
+host budget, reducing workers or narrowing checks as needed; establish a passing
+baseline for any changed configuration.
+
 Run the applicable unchanged-source checks. Record commands, working directory,
 configuration, exit codes, test discovery/counts where available, and logs. Verify
 that they exercise the intended implementation rather than an installed copy or
 stale build. A failing, flaky, empty, or unavailable baseline blocks that scope;
 report the blocker rather than count subsequent failures as kills.
 
-**Ready:** the target state is recoverable and the selected checks actually run
-and pass on it.
+**Ready:** the target state is recoverable, host headroom meets the recorded
+budget, and the selected checks actually run and pass on it.
 
 ## 2. Select plausible faults
 
@@ -55,8 +75,8 @@ input or scenario that should distinguish original from mutant. Useful changes:
 
 Keep each mutant to one fault and syntactically valid where possible. Mutate the
 implementation, not its tests or expected values. Avoid changes already known to
-be behaviourally equivalent. Record a finite per-command timeout and a run budget
-based on baseline duration; default to sequential execution.
+be behaviourally equivalent. Calibrate per-command timeouts and the total run
+budget from baseline duration, within the host budget.
 
 **Ready:** each selected mutant has a fault hypothesis, an observation to test it,
 and a bounded command. Record relevant behaviours left outside the sample.
@@ -76,6 +96,8 @@ For each mutant, starting from the saved baseline:
 4. Restore the exact pre-mutation contents, including on error or interruption.
    Verify the restored diff/content and rerun the applicable checks. A restoration
    failure stops the pass; preserve recovery information and tell the user.
+   If host headroom prevents verification tests, keep the source restored and
+   report verification as blocked until the host budget permits a rerun.
 
 Classify each result from evidence, not just a non-zero exit:
 
@@ -84,7 +106,7 @@ Classify each result from evidence, not just a non-zero exit:
 | **Killed** | A test detects the intended behavioural fault; the same checks pass before and after restoration. Name the detecting test and observation. |
 | **Survived** | The mutation is present in the tested implementation and the selected checks pass. State which checks; survival alone does not prove a missing test. |
 | **Invalid** | The mutant cannot build, parse, or start because the edit is invalid. Compiler rejection is not a test kill. |
-| **Inconclusive** | Timeout, flakiness, infrastructure failure, stale build, no tests discovered, or an unrelated failure prevents attribution. |
+| **Inconclusive** | Timeout, resource exhaustion/budget stop, flakiness, infrastructure failure, stale build, no tests discovered, or an unrelated failure prevents attribution. |
 | **Not run** | Safety, budget, or another stated blocker prevented execution. |
 
 Keep timeouts separate unless a repeatable, mutation-caused violation of an
@@ -118,7 +140,8 @@ survival result separately from the improved suite's result.
 Save a concise report and replayable mutation diffs/logs using the repository's
 report convention, or a clearly named scratch directory if none exists. Include:
 
-- Target revision plus working changes, scope, baseline commands, budget, and limits.
+- Target revision plus working changes, scope, baseline commands, run/host budgets,
+  resource readings and stops, and limits.
 - An indexed ledger: ID, file/line, fault, checks run, outcome, evidence links.
 - Confirmed gaps ranked by behavioural impact, with concrete test recommendations.
 - Counts for every outcome, equivalent survivors identified separately, and
