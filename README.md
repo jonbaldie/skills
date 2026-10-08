@@ -329,6 +329,24 @@ Credit: [`unclebob/deintroverter4clj`](https://github.com/unclebob/deintroverter
 
 ---
 
+### I need to know whether my tests catch faults
+
+[`mutation-testing`](./skills/mutation-testing/SKILL.md) manually introduces small
+faults, runs the existing checks, and restores the code after each experiment.
+It reports observed kills, survivors, and inconclusive results with concrete test
+recommendations. An optional tool index starts with Quality Gates' Go, Rust, and
+Haskell runners, then covers other ecosystems.
+
+```text
+/mutation-testing
+/mutation-testing src/payments — focus on validation and retries
+```
+
+Uses the codebase supplied by your instruction or conversation, falling back to
+the current repository. [Audit and rationale](docs/research/mutation-testing-audit.md).
+
+---
+
 ### I want to find real bugs before my users do
 
 **The problem.** Agents wrote the code. TDD says the behavior you anticipated
