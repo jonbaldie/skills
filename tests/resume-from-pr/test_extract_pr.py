@@ -3,10 +3,14 @@
 
 from __future__ import annotations
 
+import http.client
 import importlib.util
 import io
 import json
+import socket
+import struct
 import sys
+import threading
 import unittest
 import urllib.error
 import urllib.parse
@@ -1690,6 +1694,109 @@ class BitbucketHeadShaTests(unittest.TestCase):
         brief = self.mod.fetch_bitbucket_server_api(target)
         self.assertEqual(brief.head_sha, "server-tip")
         self.assertFalse(any("/commit/" in url for url in self.forge.requests))
+
+
+def one_shot_server(testcase, reply):
+    """Accept one request on localhost and answer it with reply(conn)."""
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    server.listen(1)
+    testcase.addCleanup(server.close)
+
+    def run():
+        conn, _ = server.accept()
+        with conn:
+            conn.recv(65536)
+            reply(conn)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    testcase.addCleanup(thread.join, 5)
+    return f"http://127.0.0.1:{server.getsockname()[1]}/api/v1/repos/o/r/pulls/1"
+
+
+def reset_connection(conn):
+    # A zero linger timeout makes close() send RST instead of FIN.
+    conn.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+
+
+def close_without_response(conn):
+    pass
+
+
+class DroppedConnectionTests(unittest.TestCase):
+    """A host that drops the connection is a network error (issue #191)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_mod()
+
+    def test_connection_reset_is_a_network_error(self):
+        url = one_shot_server(self, reset_connection)
+        with self.assertRaises(self.mod.Skip) as ctx:
+            self.mod.http_page(url)
+        self.assertIn(f"network error for {url}", str(ctx.exception))
+
+    def test_remote_close_before_response_is_a_network_error(self):
+        url = one_shot_server(self, close_without_response)
+        with self.assertRaises(self.mod.Skip) as ctx:
+            self.mod.http_page(url)
+        self.assertIn(f"network error for {url}", str(ctx.exception))
+
+    def test_http_status_is_still_a_fetch_error(self):
+        def not_found(conn):
+            conn.sendall(
+                b"HTTP/1.1 404 Not Found\r\nContent-Length: 2\r\n"
+                b"Connection: close\r\n\r\n{}"
+            )
+
+        url = one_shot_server(self, not_found)
+        with self.assertRaises(self.mod.FetchError) as ctx:
+            self.mod.http_page(url)
+        self.assertIn(f"HTTP 404 for {url}", str(ctx.exception))
+
+    def test_success_still_returns_the_body(self):
+        def ok(conn):
+            conn.sendall(
+                b"HTTP/1.1 200 OK\r\nContent-Length: 11\r\nX-Total: 3\r\n"
+                b"Connection: close\r\n\r\n{\"id\": 42}\n"
+            )
+
+        url = one_shot_server(self, ok)
+        body, headers = self.mod.http_page(url)
+        self.assertEqual(body, {"id": 42})
+        self.assertEqual(headers["x-total"], "3")
+
+    def test_cli_reports_a_dropped_connection_in_one_line(self):
+        mod = self.mod
+
+        def dropped(request, timeout=30):
+            raise http.client.RemoteDisconnected(
+                "Remote end closed connection without response"
+            )
+
+        def no_git(argv, cwd=None, timeout=45):
+            raise mod.Skip("git unavailable")
+
+        original_urlopen = mod.urllib.request.urlopen
+        mod.urllib.request.urlopen = dropped
+        self.addCleanup(setattr, mod.urllib.request, "urlopen", original_urlopen)
+        original_run_cmd = mod.run_cmd
+        mod.run_cmd = no_git
+        self.addCleanup(setattr, mod, "run_cmd", original_run_cmd)
+
+        pr = "https://codeberg.org/forgejo/forgejo/pulls/14781"
+        with self.assertRaises(SystemExit) as ctx:
+            mod.main([pr])
+        message = str(ctx.exception)
+        self.assertTrue(
+            message.startswith(f"Gitea/Forgejo: failed to fetch pull/merge request {pr}: "),
+            message,
+        )
+        self.assertIn(
+            "network error for https://codeberg.org/api/v1/repos/forgejo/forgejo/pulls/14781",
+            message,
+        )
 
 
 if __name__ == "__main__":

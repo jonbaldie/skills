@@ -838,6 +838,10 @@ def http_page(
         raise FetchError(f"HTTP {exc.code} for {url}: {truncate(body, 240)}") from exc
     except urllib.error.URLError as exc:
         raise Skip(f"network error for {url}: {exc.reason}") from exc
+    except ConnectionError as exc:
+        # urlopen wraps send failures in URLError but not a reset or close while
+        # awaiting the response (http.client.RemoteDisconnected is one).
+        raise Skip(f"network error for {url}: {exc}") from exc
     if not raw.strip():
         return None, response_headers
     try:
