@@ -1507,6 +1507,36 @@ def bitbucket_headers() -> dict[str, str]:
     return {}
 
 
+# Bitbucket Cloud abbreviates source.commit.hash. git fetch needs the full id.
+_FULL_COMMIT_ID = re.compile(r"[0-9a-fA-F]{40}\Z")
+
+
+def bitbucket_cloud_head_sha(pr: dict[str, Any], headers: dict[str, str]) -> str | None:
+    """Commit id git can fetch, or None when the payload has no head hash.
+
+    A 40-character id is already fetchable and is not requested again. A shorter
+    id is read from the linked commit object. An unreadable link raises the
+    fetch error instead of publishing the abbreviation.
+    """
+    commit = ((pr.get("source") or {}).get("commit") or {})
+    if not isinstance(commit, dict):
+        return None
+    digest = commit.get("hash")
+    if not isinstance(digest, str) or not digest:
+        return None
+    if _FULL_COMMIT_ID.fullmatch(digest):
+        return digest
+    self_link = ((commit.get("links") or {}).get("self") or {})
+    href = self_link.get("href") if isinstance(self_link, dict) else None
+    if not isinstance(href, str) or not href:
+        raise FetchError(f"Bitbucket abbreviated head {digest} has no commit link")
+    data = http_json(href, headers=headers)
+    resolved = data.get("hash") if isinstance(data, dict) else None
+    if not isinstance(resolved, str) or not _FULL_COMMIT_ID.fullmatch(resolved):
+        raise FetchError(f"Bitbucket commit {href} did not return a full hash")
+    return resolved
+
+
 def brief_from_bitbucket(
     pr: dict[str, Any],
     *,
@@ -1592,6 +1622,7 @@ def fetch_bitbucket_api(target: Target, cwd: str | None = None) -> Brief:
     pr = http_json(root, headers=headers)
     if not isinstance(pr, dict):
         raise FetchError(f"No Bitbucket pull request {target.slug}#{target.number}")
+    head_sha = bitbucket_cloud_head_sha(pr, headers)
 
     notes: list[str] = []
     comments = collect(notes, f"{root}/comments", headers, BITBUCKET_PAGING, "comments")
@@ -1605,6 +1636,7 @@ def fetch_bitbucket_api(target: Target, cwd: str | None = None) -> Brief:
         source="api",
         host=target.host,
     )
+    brief.head_sha = head_sha
     brief.notes = notes
     return brief
 
