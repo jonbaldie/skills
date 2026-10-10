@@ -402,7 +402,8 @@ unexplored, leaving product fixes for a subsequent task.
 ```
 
 Pass notes: [2026-09-26 skills](docs/exploratory-testing/2026-09-26-skills.md),
-[2026-10-03 resume skills](docs/exploratory-testing/2026-10-03-resume-skills.md).
+[2026-10-03 resume skills](docs/exploratory-testing/2026-10-03-resume-skills.md),
+[2026-10-10 PR hosts and install](docs/exploratory-testing/2026-10-10-pr-hosts-and-install.md).
 
 ---
 
