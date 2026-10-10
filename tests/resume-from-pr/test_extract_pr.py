@@ -1170,6 +1170,23 @@ class CollectionPagingTests(unittest.TestCase):
         self.assertEqual([p.get("page") for p in pages], [None, "2", "3"])
         self.assertEqual(brief.notes, [])
 
+    def test_gitea_api_brief_names_the_gitea_provider(self):
+        root = "https://gitea.com/api/v1/repos/gitea/tea/pulls/1126"
+        self.forge.route(
+            root,
+            single({"number": 1126, "title": "PR", "state": "open", "user": {"login": "ada"}}),
+        )
+        for path in ("files", "reviews"):
+            self.forge.route(f"{root}/{path}", link_pager([], "limit", 30, 1))
+        self.forge.route(
+            "https://gitea.com/api/v1/repos/gitea/tea/issues/1126/comments",
+            link_pager([], "limit", 30, 1),
+        )
+        target = self.mod.parse_pr_url("https://gitea.com/gitea/tea/pulls/1126")
+        text = self.mod.render(self.mod.fetch_gitea_api(target))
+        self.assertIn("provider: gitea\n", text)
+        self.assertIn("host: gitea.com\n", text)
+
     def gitea_open_prs(self, prs, fail_page=None):
         pulls = "https://codeberg.org/api/v1/repos/owner/repo/pulls"
         pager = link_pager(prs, "limit", 30, 2)

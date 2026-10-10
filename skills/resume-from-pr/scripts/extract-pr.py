@@ -1699,6 +1699,8 @@ def fetch_gitea_api(target: Target, cwd: str | None = None) -> Brief:
         source="api",
         host=host,
     )
+    # The GitHub-shaped builder stamps github; this brief came from Gitea.
+    brief.provider = "gitea"
     brief.notes = notes
     return brief
 
