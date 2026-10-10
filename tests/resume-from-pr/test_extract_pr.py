@@ -502,6 +502,24 @@ class BriefRenderTests(unittest.TestCase):
         self.assertIn("cache.py:12 — reviewer", text)
         self.assertIn("pipeline: failed", text)
 
+    def test_gitlab_brief_repo_is_project_path(self):
+        # GitLab's references.full names the merge request, not the project.
+        mr = {
+            "iid": 4044,
+            "web_url": "https://gitlab.com/gitlab-org/cli/-/merge_requests/4044",
+            "references": {"short": "!4044", "full": "gitlab-org/cli!4044"},
+        }
+        brief = self.mod.brief_from_gitlab(mr, host="gitlab.com")
+        self.assertIn("repo: gitlab-org/cli\n", self.mod.render(brief))
+
+    def test_gitlab_brief_repo_from_web_url(self):
+        mr = {
+            "iid": 7,
+            "web_url": "https://gitlab.com/group/sub/app/-/merge_requests/7",
+        }
+        brief = self.mod.brief_from_gitlab(mr, host="gitlab.com")
+        self.assertEqual(brief.repo, "group/sub/app")
+
     def test_bitbucket_brief(self):
         pr = {
             "id": 3,

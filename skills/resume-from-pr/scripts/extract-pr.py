@@ -1359,6 +1359,16 @@ def gitlab_project_id(target: Target) -> str:
     return urllib.parse.quote(path, safe="")
 
 
+def gitlab_project_path(mr: dict[str, Any]) -> str | None:
+    """Return the project path; references.full is the MR ref, e.g. g/p!7."""
+    refs = mr.get("references") if isinstance(mr.get("references"), dict) else {}
+    full = refs.get("full") or ""
+    if "!" in full:
+        return full.rsplit("!", 1)[0] or None
+    m = re.match(r"^https?://[^/]+/(?P<path>.+?)/(?:-/)?merge_requests/\d+", mr.get("web_url") or "")
+    return m.group("path") if m else None
+
+
 def brief_from_gitlab(
     mr: dict[str, Any],
     *,
@@ -1425,9 +1435,7 @@ def brief_from_gitlab(
         base=mr.get("target_branch"),
         head=mr.get("source_branch"),
         head_sha=mr.get("sha") or diff_refs.get("head_sha"),
-        repo=mr.get("references", {}).get("full")
-        if isinstance(mr.get("references"), dict)
-        else None,
+        repo=gitlab_project_path(mr),
         host=host,
         source=source,
         files=files,
