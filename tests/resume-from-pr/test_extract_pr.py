@@ -1516,5 +1516,181 @@ class CliFailureTests(unittest.TestCase):
         self.assertIn("pull/merge request URL", str(ctx.exception))
 
 
+# Issue #190: Bitbucket Cloud's pull-request payload abbreviates the head.
+BITBUCKET_SHORT = "fe55684f21d5"
+BITBUCKET_FULL = "fe55684f21d513aa09e86eaf639f3c6d3556d991"
+
+
+class BitbucketHeadShaTests(unittest.TestCase):
+    """head_sha must be a commit id git can fetch (issue #190)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_mod()
+
+    def setUp(self):
+        self.forge = FakeForge(self, self.mod)
+
+    def patch_run_cmd(self, remotes_output, branch=None):
+        mod = self.mod
+        original = mod.run_cmd
+
+        def fake(argv, cwd=None, timeout=45):
+            key = " ".join(argv)
+            if key.startswith("git remote -v"):
+                return remotes_output
+            if key.startswith("git rev-parse"):
+                if branch is None:
+                    raise mod.Skip("no branch")
+                return branch
+            raise mod.Skip(f"unmocked command: {argv}")
+
+        mod.run_cmd = fake
+        self.addCleanup(setattr, mod, "run_cmd", original)
+
+    def render_main(self, argv):
+        buf = io.StringIO()
+        original = self.mod.sys.stdout
+        self.mod.sys.stdout = buf
+        self.addCleanup(setattr, self.mod.sys, "stdout", original)
+        self.mod.main(argv)
+        return buf.getvalue()
+
+    def cloud_pr(self, digest, *, link=None):
+        commit = {"hash": digest}
+        if link is not None:
+            commit["links"] = {"self": {"href": link}}
+        return {
+            "id": 11,
+            "title": "Docs",
+            "description": "Fix the README.",
+            "state": "OPEN",
+            "author": {"display_name": "Pat"},
+            "source": {"branch": {"name": "docs"}, "commit": commit},
+            "destination": {
+                "branch": {"name": "master"},
+                "repository": {"full_name": "ws/repo"},
+            },
+            "links": {"html": {"href": "https://bitbucket.org/ws/repo/pull-requests/11"}},
+        }
+
+    def route_cloud(self, payload, *, commit_body=None, commit_status=None):
+        root = "https://api.bitbucket.org/2.0/repositories/ws/repo/pullrequests/11"
+        self.forge.route(root, single(payload))
+        for name in ("comments", "diffstat", "statuses"):
+            self.forge.route(f"{root}/{name}", bitbucket_pager([], 2))
+        link = (((payload.get("source") or {}).get("commit") or {}).get("links") or {}).get(
+            "self", {}
+        ).get("href")
+        if link and commit_body is not None:
+            self.forge.route(link, single(commit_body))
+        elif link and commit_status is not None:
+            self.forge.route(link, status(commit_status))
+        self.forge.route(
+            "https://api.bitbucket.org/2.0/repositories/ws/repo/pullrequests",
+            single(
+                {
+                    "values": [
+                        {
+                            "id": 11,
+                            "links": {
+                                "html": {
+                                    "href": "https://bitbucket.org/ws/repo/pull-requests/11"
+                                }
+                            },
+                        }
+                    ]
+                }
+            ),
+        )
+        return self.mod.parse_pr_url("https://bitbucket.org/ws/repo/pull-requests/11")
+
+    def test_abbreviated_hash_renders_the_linked_commit_id(self):
+        link = (
+            "https://api.bitbucket.org/2.0/repositories/ws/repo/commit/" + BITBUCKET_SHORT
+        )
+        target = self.route_cloud(
+            self.cloud_pr(BITBUCKET_SHORT, link=link),
+            commit_body={"hash": BITBUCKET_FULL, "type": "commit"},
+        )
+        text = self.mod.render(self.mod.fetch_bitbucket_api(target))
+        self.assertIn(f"head_sha: {BITBUCKET_FULL}\n", text)
+        self.assertNotIn(f"head_sha: {BITBUCKET_SHORT}\n", text)
+        self.assertIn("title: Docs\n", text)
+        self.assertIn("head: docs\n", text)
+        self.assertIn(link, self.forge.requests)
+
+    def test_full_hash_is_unchanged_and_does_not_request_the_commit(self):
+        link = "https://api.bitbucket.org/2.0/repositories/ws/repo/commit/" + BITBUCKET_FULL
+        target = self.route_cloud(self.cloud_pr(BITBUCKET_FULL, link=link))
+        brief = self.mod.fetch_bitbucket_api(target)
+        self.assertEqual(brief.head_sha, BITBUCKET_FULL)
+        self.assertNotIn(link, self.forge.requests)
+
+    def test_unreadable_commit_link_raises_the_fetch_error(self):
+        link = (
+            "https://api.bitbucket.org/2.0/repositories/ws/repo/commit/" + BITBUCKET_SHORT
+        )
+        target = self.route_cloud(
+            self.cloud_pr(BITBUCKET_SHORT, link=link), commit_status=404
+        )
+        with self.assertRaises(self.mod.FetchError) as ctx:
+            self.mod.fetch_bitbucket_api(target)
+        message = str(ctx.exception)
+        self.assertIn(f"HTTP 404 for {link}", message)
+
+    def test_missing_commit_link_does_not_publish_the_abbreviation(self):
+        target = self.route_cloud(self.cloud_pr(BITBUCKET_SHORT))
+        with self.assertRaises(self.mod.FetchError):
+            self.mod.fetch_bitbucket_api(target)
+
+    def test_url_number_and_current_branch_share_head_sha(self):
+        link = (
+            "https://api.bitbucket.org/2.0/repositories/ws/repo/commit/" + BITBUCKET_SHORT
+        )
+        self.route_cloud(
+            self.cloud_pr(BITBUCKET_SHORT, link=link),
+            commit_body={"hash": BITBUCKET_FULL, "type": "commit"},
+        )
+        url_text = self.render_main(["https://bitbucket.org/ws/repo/pull-requests/11"])
+        self.patch_run_cmd(
+            "origin\thttps://bitbucket.org/ws/repo.git (fetch)\n", branch="docs"
+        )
+        number_text = self.render_main(["--cwd", "workspace", "11"])
+        branch_text = self.render_main(["--cwd", "workspace"])
+        expected = f"head_sha: {BITBUCKET_FULL}\n"
+        self.assertIn(expected, url_text)
+        self.assertIn(expected, number_text)
+        self.assertIn(expected, branch_text)
+        self.assertNotIn(f"head_sha: {BITBUCKET_SHORT}\n", url_text)
+        self.assertNotIn(f"head_sha: {BITBUCKET_SHORT}\n", number_text)
+        self.assertNotIn(f"head_sha: {BITBUCKET_SHORT}\n", branch_text)
+
+    def test_bitbucket_server_head_sha_is_latest_commit(self):
+        root = (
+            "https://git.example.com/rest/api/1.0/projects/KEY/repos/slug/pull-requests/4"
+        )
+        self.forge.route(
+            root,
+            single(
+                {
+                    "id": 4,
+                    "title": "PR",
+                    "state": "OPEN",
+                    "fromRef": {"displayId": "feature", "latestCommit": "server-tip"},
+                    "toRef": {"displayId": "master"},
+                }
+            ),
+        )
+        self.forge.route(f"{root}/changes", bitbucket_server_pager([], 2))
+        self.forge.route(f"{root}/activities", bitbucket_server_pager([], 2))
+        target = self.mod.parse_pr_url(
+            "https://git.example.com/projects/KEY/repos/slug/pull-requests/4"
+        )
+        brief = self.mod.fetch_bitbucket_server_api(target)
+        self.assertEqual(brief.head_sha, "server-tip")
+        self.assertFalse(any("/commit/" in url for url in self.forge.requests))
+
+
 if __name__ == "__main__":
     unittest.main()
