@@ -26,8 +26,9 @@ it skips the prerequisite; pass `--with-prereqs` to install it. Pass flags after
 
 Once installed successfully, use `/sync-jonbaldie-skills` to update them.
 The skill installs both collections into the requested project's
-`.agents/skills` directory first, then asks whether to copy them into
-`.claude/skills`, `.gemini/skills`, or another skill directory.
+`.agents/skills` directory first, then asks whether to copy them into another
+agent's skill directory (such as Claude Code's or Gemini CLI's) or any other
+skill directory.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jonbaldie/skills/main/install.sh | bash -s -- --agent codex --with-prereqs
@@ -72,7 +73,7 @@ projects:
 ```bash
 git clone https://github.com/jonbaldie/skills.git jonbaldie-skills
 cd jonbaldie-skills
-agent=codex # Or claude-code, opencode, pi, or cursor
+agent=codex # Or claude-code, opencode, pi, cursor, or gemini
 ./install.sh --global --agent "${agent}" --yes
 ```
 
@@ -83,7 +84,7 @@ Run the cloned installer while the project is the working directory:
 ```bash
 cd "/path/to/your-project"
 git clone https://github.com/jonbaldie/skills.git ../jonbaldie-skills
-agent=codex # Or claude-code, opencode, pi, or cursor
+agent=codex # Or claude-code, opencode, pi, cursor, or gemini
 ../jonbaldie-skills/install.sh --agent "${agent}" --yes
 ```
 
@@ -98,7 +99,7 @@ Run from the project that will use the skills. Clones this repo to a temp dir an
 installs both collections into the current project:
 
 ```bash
-agent=codex # Or claude-code, opencode, pi, or cursor
+agent=codex # Or claude-code, opencode, pi, cursor, or gemini
 repo="$(mktemp -d)/jonbaldie-skills"
 git clone --depth 1 https://github.com/jonbaldie/skills.git "${repo}"
 printf 'y\n' | "${repo}/install.sh" --agent "${agent}" --yes
@@ -107,7 +108,7 @@ printf 'y\n' | "${repo}/install.sh" --agent "${agent}" --yes
 ### Globally manually
 
 ```bash
-agent=codex # Or claude-code, opencode, pi, or cursor
+agent=codex # Or claude-code, opencode, pi, cursor, or gemini
 curl -fsSL https://raw.githubusercontent.com/jonbaldie/skills/main/install.sh | bash -s -- --global --agent "${agent}" --with-prereqs
 ```
 

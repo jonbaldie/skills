@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  printf 'Usage: %s <project-directory> <skill-directory> [<skill-directory> ...]\n' "$(basename "$0")" >&2
+  printf 'Usage: %s <project-directory> (<skill-directory> | --agent <name>)...\n' "$(basename "$0")" >&2
 }
 
 die() {
@@ -22,12 +22,15 @@ done
 
 # shellcheck source=/dev/null
 source "$(dirname "${BASH_SOURCE[0]}")/lib/skill-tree.sh"
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/lib/agent-destinations.sh"
 
 [[ -d "$1" ]] || die "project directory does not exist: $1"
 project_root="$(cd "$1" && pwd -P)"
 readonly project_root
-canonical_skills_dir="${project_root}/.agents/skills"
-readonly canonical_manifest="${project_root}/.agents/sync-jonbaldie-skills.manifest"
+canonical_skills_dir="$(canonical_skills_dir "${project_root}")"
+canonical_manifest="$(dirname "${canonical_skills_dir}")/sync-jonbaldie-skills.manifest"
+readonly canonical_manifest
 shift
 
 [[ -d "${canonical_skills_dir}" ]] || die "canonical skills directory is missing; run sync-skills.sh first"
@@ -97,10 +100,40 @@ copy_to_directory() {
   printf 'Additional destination: %s\n' "${destination}"
 }
 
-for requested_directory in "$@"; do
+agent_directory() {
+  local agent="$1"
+
+  [[ -n "${agent}" ]] || die "--agent needs an agent name"
+  agent_is_known "${agent}" ||
+    die "unknown agent: ${agent} (supported: $(supported_agents_list))"
+  agent_skills_dir "${agent}" project "${project_root}"
+}
+
+# Named agents resolve to their project destinations; every other argument is
+# a skill directory, even when it is spelled like an agent name.
+requested_directories=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --agent)
+      [[ $# -ge 2 ]] || die "--agent needs an agent name"
+      requested_directories+=("$(agent_directory "$2")") || exit 1
+      shift 2
+      ;;
+    --agent=*)
+      requested_directories+=("$(agent_directory "${1#*=}")") || exit 1
+      shift
+      ;;
+    *)
+      requested_directories+=("$1")
+      shift
+      ;;
+  esac
+done
+
+for requested_directory in "${requested_directories[@]}"; do
   validate_requested_directory "${requested_directory}"
 done
 
-for requested_directory in "$@"; do
+for requested_directory in "${requested_directories[@]}"; do
   copy_to_directory "${requested_directory}"
 done

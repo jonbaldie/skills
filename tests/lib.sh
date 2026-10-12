@@ -8,6 +8,7 @@
 #   fail <message>                report a failed assertion and exit 1
 #   pass [message]                report the suite passed
 #   make_skill <dir> <name> [body]
+#   add_collection_modules <dir>
 #   commit_repository <dir>
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -52,6 +53,15 @@ make_skill() {
   mkdir -p "${directory}"
   printf '%s\n' '---' "name: ${name}" 'description: Fixture skill.' '---' "${body}" \
     >"${directory}/SKILL.md"
+}
+
+# Copies the shell modules install.sh sources from the collection it installs
+# into the fixture collection at <dir>.
+add_collection_modules() {
+  local lib="skills/sync-jonbaldie-skills/scripts/lib"
+
+  mkdir -p "$1/${lib}"
+  cp "${repository_root}/${lib}/"*.sh "$1/${lib}/"
 }
 
 # Commits everything under <dir>, initializing the repository on first use.

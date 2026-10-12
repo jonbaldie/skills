@@ -16,12 +16,12 @@ Install both collections into one project's canonical Agent Skills directory.
 
 It installs both collections into `<project>/.agents/skills`, replaces previously managed skills with their current versions, and leaves unrelated skills alone. Use its output to report the two source commit IDs and the canonical destination. Do not inspect agent harness folders or reconstruct the installation yourself.
 
-3. Only after the canonical install succeeds, ask whether the user also wants the managed skills copied to `<project>/.claude/skills`, `<project>/.gemini/skills`, or any other skill directories. Stop and wait for their answer.
+3. Only after the canonical install succeeds, ask whether the user also wants the managed skills copied for other agents, such as Claude Code (`.claude/skills`) or Gemini CLI (`.gemini/skills`), or into any other skill directories. Stop and wait for their answer.
 
-4. If they choose additional directories, run:
+4. If they choose additional destinations, run:
 
 ```bash
-"<this-skill-directory>/scripts/copy-to-skill-dirs.sh" "/absolute/path/to/project" ".claude/skills" ".gemini/skills"
+"<this-skill-directory>/scripts/copy-to-skill-dirs.sh" "/absolute/path/to/project" --agent claude-code --agent gemini
 ```
 
-Pass only the directories they chose. Relative paths resolve beneath the project; absolute paths remain absolute. The script copies only skills managed by the canonical installer and leaves unrelated entries alone.
+Pass only the destinations they chose: `--agent <name>` for an agent, or a directory path for anything else. An unknown agent name fails before anything is copied and lists the supported names. Relative paths resolve beneath the project; absolute paths remain absolute. Agents that read `.agents/skills` need no copy. The script copies only skills managed by the canonical installer and leaves unrelated entries alone.
