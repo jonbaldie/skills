@@ -12,16 +12,11 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 new_sandbox skills-collision-test
 
 readonly sync_script="${repository_root}/skills/sync-jonbaldie-skills/scripts/sync-skills.sh"
-readonly skill_tree_module="${repository_root}/skills/sync-jonbaldie-skills/scripts/lib/skill-tree.sh"
-
-# install.sh sources the skill-tree module from the collection it installs.
 add_installer() {
   local repo_dir="$1"
-  local module_dir="${repo_dir}/skills/sync-jonbaldie-skills/scripts/lib"
 
   cp "${repository_root}/install.sh" "${repo_dir}/install.sh"
-  mkdir -p "${module_dir}"
-  cp "${skill_tree_module}" "${module_dir}/skill-tree.sh"
+  add_collection_modules "${repo_dir}"
 }
 
 # --- Scenario 1: install.sh detects collision within single repository ---

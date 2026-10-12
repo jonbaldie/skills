@@ -10,14 +10,12 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 new_sandbox skills-prereq-prompt
 
-readonly skill_tree_module="${repository_root}/skills/sync-jonbaldie-skills/scripts/lib/skill-tree.sh"
 python_command="${PYTHON:-python3}"
 
-# A piped installer clones jonbaldie/skills and sources its skill-tree module.
+# A piped installer clones jonbaldie/skills and sources its shell modules.
 jon_repo="${test_root}/jon-repo"
 make_skill "${jon_repo}/skills/fixture-jon" fixture-jon
-mkdir -p "${jon_repo}/skills/sync-jonbaldie-skills/scripts/lib"
-cp "${skill_tree_module}" "${jon_repo}/skills/sync-jonbaldie-skills/scripts/lib/skill-tree.sh"
+add_collection_modules "${jon_repo}"
 commit_repository "${jon_repo}"
 
 mp_repo="${test_root}/mp-repo"

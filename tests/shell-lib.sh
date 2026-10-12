@@ -78,6 +78,15 @@ make_skill "${test_root}/fixture/skills/group/beta" "'Beta Skill'" 'beta body'
 [[ "$(tail -n 1 "${test_root}/fixture/skills/group/beta/SKILL.md")" == 'beta body' ]] ||
   fail "make_skill did not write the given body"
 
+# --- add_collection_modules ---
+
+add_collection_modules "${test_root}/collection"
+for module in skill-tree agent-destinations; do
+  cmp -s "${repository_root}/skills/sync-jonbaldie-skills/scripts/lib/${module}.sh" \
+    "${test_root}/collection/skills/sync-jonbaldie-skills/scripts/lib/${module}.sh" ||
+    fail "add_collection_modules did not copy ${module}.sh"
+done
+
 # --- commit_repository ---
 
 commit_repository "${test_root}/fixture"

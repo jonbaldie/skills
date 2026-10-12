@@ -22,9 +22,7 @@ readonly fixture_repo="${test_root}/fixture-repo"
 mkdir -p "${fixture_repo}/skills/fixture-pycache/scripts/__pycache__"
 mkdir -p "${fixture_repo}/skills/fixture-pycache/scripts/.pytest_cache"
 ln -s "${repository_root}/install.sh" "${fixture_repo}/install.sh"
-# install.sh sources the skill-tree module from the collection it installs.
-mkdir -p "${fixture_repo}/skills/sync-jonbaldie-skills/scripts/lib"
-ln -s "${skill_tree_module}" "${fixture_repo}/skills/sync-jonbaldie-skills/scripts/lib/skill-tree.sh"
+add_collection_modules "${fixture_repo}"
 
 make_skill "${fixture_repo}/skills/fixture-pycache" fixture-pycache
 

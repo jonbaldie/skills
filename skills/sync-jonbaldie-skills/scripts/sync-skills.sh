@@ -23,11 +23,18 @@ for command_name in git find awk dirname basename mkdir rm cp sort grep mktemp m
   command -v "${command_name}" >/dev/null 2>&1 || die "missing required command: ${command_name}"
 done
 
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/lib/skill-tree.sh"
+# shellcheck source=/dev/null
+source "$(dirname "${BASH_SOURCE[0]}")/lib/agent-destinations.sh"
+
 [[ -d "$1" ]] || die "project directory does not exist: $1"
 project_root="$(cd "$1" && pwd -P)"
 readonly project_root
-readonly agent_root="${project_root}/.agents"
-readonly skills_dir="${agent_root}/skills"
+skills_dir="$(canonical_skills_dir "${project_root}")"
+readonly skills_dir
+agent_root="$(dirname "${skills_dir}")"
+readonly agent_root
 readonly manifest="${agent_root}/sync-jonbaldie-skills.manifest"
 temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/sync-jonbaldie-skills.XXXXXX")"
 readonly temporary_root
@@ -40,9 +47,6 @@ cleanup() {
   rm -rf "${temporary_root}"
 }
 trap cleanup EXIT
-
-# shellcheck source=/dev/null
-source "$(dirname "${BASH_SOURCE[0]}")/lib/skill-tree.sh"
 
 validate_skill_collisions() {
   local manifest_file="$1"

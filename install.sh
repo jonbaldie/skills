@@ -16,13 +16,19 @@ declare -a selected_agents=()
 declare -a selected_skills=()
 declare -a cleanup_paths=()
 installed_skills_registry=""
+# Collection roots. Set by resolve_*_root rather than printed, so clones made
+# there are registered in cleanup_paths of this shell, not a subshell's copy.
+jon_root=""
+mp_root=""
 
 script_from_stdin=false
 repository_root=""
 explicit_scope="" # global | project | empty
+show_help=false
 
+# Needs the agent-destinations module loaded.
 usage() {
-  cat <<'EOF'
+  cat <<EOF
 Install jonbaldie/skills for coding agents (no npm required).
 
 Usage:
@@ -35,7 +41,7 @@ Options:
                           curl one-liner)
       --project           Install into the current directory only
   -a, --agent <name>      Target agent (repeatable). Supported:
-                          codex, claude-code, opencode, pi, cursor, universal
+                          $(supported_agents_list)
   -s, --skill <name>      Install only named skill(s). Default: all
   -y, --yes               Accepted for compatibility (no prompts beyond prereqs)
       --copy              Copy into agent dirs instead of symlinking
@@ -155,8 +161,8 @@ parse_args() {
         shift
         ;;
       -h | --help)
-        usage
-        exit 0
+        show_help=true
+        return
         ;;
       --)
         shift
@@ -173,113 +179,29 @@ parse_args() {
   fi
 }
 
-home_dir() {
-  printf '%s\n' "${HOME:-$(cd ~ && pwd)}"
-}
-
-config_home() {
-  printf '%s\n' "${XDG_CONFIG_HOME:-$(home_dir)/.config}"
-}
-
-codex_home() {
-  if [[ -n "${CODEX_HOME:-}" ]]; then
-    printf '%s\n' "${CODEX_HOME}"
-  else
-    printf '%s\n' "$(home_dir)/.codex"
-  fi
-}
-
-claude_home() {
-  if [[ -n "${CLAUDE_CONFIG_DIR:-}" ]]; then
-    printf '%s\n' "${CLAUDE_CONFIG_DIR}"
-  else
-    printf '%s\n' "$(home_dir)/.claude"
-  fi
-}
-
-# Prints: name|display|project_skills_dir|global_skills_dir|detect_path
-agent_db() {
-  cat <<EOF
-codex|Codex|.agents/skills|$(codex_home)/skills|$(codex_home)
-claude-code|Claude Code|.claude/skills|$(claude_home)/skills|$(claude_home)
-opencode|OpenCode|.agents/skills|$(config_home)/opencode/skills|$(config_home)/opencode
-pi|Pi|.pi/skills|$(home_dir)/.pi/agent/skills|$(home_dir)/.pi/agent
-cursor|Cursor|.agents/skills|$(home_dir)/.cursor/skills|$(home_dir)/.cursor
-universal|Universal|.agents/skills|$(home_dir)/.agents/skills|
-EOF
-}
-
-lookup_agent() {
-  local want="$1" line name
-  while IFS= read -r line; do
-    name="${line%%|*}"
-    if [[ "${name}" == "${want}" ]]; then
-      printf '%s\n' "${line}"
-      return 0
-    fi
-  done < <(agent_db)
-  return 1
-}
-
-agent_is_universal() {
-  local project_dir="$1"
-  [[ "${project_dir}" == ".agents/skills" ]]
-}
-
-detect_agents() {
-  local name display project_dir global_dir detect_path
-  local -a found=()
-
-  while IFS='|' read -r name display project_dir global_dir detect_path; do
-    [[ "${name}" == "universal" ]] && continue
-    if [[ -n "${detect_path}" && -e "${detect_path}" ]]; then
-      found+=("${name}")
-    fi
-  done < <(agent_db)
-
-  if [[ ${#found[@]} -eq 0 ]]; then
-    found=(universal)
-  fi
-
-  selected_agents=("${found[@]}")
-}
-
-canonical_skills_dir() {
+install_scope() {
   if [[ "${global_install}" == true ]]; then
-    printf '%s\n' "$(home_dir)/.agents/skills"
+    printf '%s\n' global
   else
-    printf '%s\n' "$(pwd)/.agents/skills"
+    printf '%s\n' project
   fi
 }
 
-agent_skills_dir() {
-  local agent_name="$1"
-  local display project_dir global_dir
-  local line
-  line="$(lookup_agent "${agent_name}")" || die "Unsupported agent: ${agent_name}"
-  IFS='|' read -r _ display project_dir global_dir _ <<<"${line}"
-
+# The directory an install writes below: home for global, cwd for project.
+install_root() {
   if [[ "${global_install}" == true ]]; then
-    if [[ -z "${global_dir}" ]]; then
-      die "${display} does not support global skill installation"
-    fi
-    # Agents whose project dir is already .agents/skills install globally to the
-    # canonical ~/.agents/skills path (same behavior as the skills CLI).
-    if agent_is_universal "${project_dir}"; then
-      canonical_skills_dir
-      return
-    fi
-    printf '%s\n' "${global_dir}"
+    agent_home_dir
   else
-    printf '%s\n' "$(pwd)/${project_dir}"
+    pwd
   fi
 }
 
-agent_display_name() {
-  local line display
-  line="$(lookup_agent "$1")" || die "Unsupported agent: $1"
-  IFS='|' read -r _ display _ <<<"${line}"
-  printf '%s\n' "${display}"
+install_canonical_dir() {
+  canonical_skills_dir "$(install_root)"
+}
+
+install_agent_dir() {
+  agent_skills_dir "$1" "$(install_scope)" "$(pwd)" || exit 1
 }
 
 clone_repo() {
@@ -290,7 +212,7 @@ clone_repo() {
 
 resolve_jonbaldie_root() {
   if [[ -n "${repository_root}" && -d "${repository_root}/skills" ]]; then
-    printf '%s\n' "${repository_root}"
+    jon_root="${repository_root}"
     return
   fi
 
@@ -300,7 +222,7 @@ resolve_jonbaldie_root() {
   cleanup_paths+=("${tmp}")
   log_status "Cloning jonbaldie/skills..."
   clone_repo "${JONBALDIE_REPO_URL}" "${tmp}/repo"
-  printf '%s\n' "${tmp}/repo"
+  jon_root="${tmp}/repo"
 }
 
 resolve_mattpocock_root() {
@@ -310,17 +232,22 @@ resolve_mattpocock_root() {
   cleanup_paths+=("${tmp}")
   log_status "Cloning mattpocock/skills..."
   clone_repo "${MATTPOCOCK_REPO_URL}" "${tmp}/repo"
-  printf '%s\n' "${tmp}/repo"
+  mp_root="${tmp}/repo"
 }
 
-# The skill-tree module defines how skills are discovered, named and copied.
-# A curl|bash run has no checkout until the collection is cloned, so it is
-# sourced from the resolved collection root.
-load_skill_tree_module() {
-  local module="$1/skills/sync-jonbaldie-skills/scripts/lib/skill-tree.sh"
-  [[ -f "${module}" ]] || die "Missing skill-tree module: ${module}"
-  # shellcheck source=/dev/null
-  source "${module}"
+# The skill-tree module defines how skills are discovered, named and copied;
+# the agent-destinations module defines which agents exist and where their
+# skills go. A curl|bash run has no checkout until the collection is cloned,
+# so both are sourced from the resolved collection root.
+load_collection_modules() {
+  local lib="$1/skills/sync-jonbaldie-skills/scripts/lib"
+  local module
+
+  for module in skill-tree agent-destinations; do
+    [[ -f "${lib}/${module}.sh" ]] || die "Missing ${module} module: ${lib}/${module}.sh"
+    # shellcheck source=/dev/null
+    source "${lib}/${module}.sh"
+  done
 }
 
 skill_selected() {
@@ -369,11 +296,11 @@ install_skill_dir() {
     printf '%s\t%s\n' "${name}" "${real_dir}" >>"${installed_skills_registry}"
   fi
 
-  canonical="$(canonical_skills_dir)/${name}"
+  canonical="$(install_canonical_dir)/${name}"
 
   if [[ "${copy_mode}" == true ]]; then
     for agent_name in "${selected_agents[@]}"; do
-      agent_dir="$(agent_skills_dir "${agent_name}")/${name}"
+      agent_dir="$(install_agent_dir "${agent_name}")/${name}"
       copy_skill_tree "${skill_dir}" "${agent_dir}"
       installed_any=true
     done
@@ -382,7 +309,7 @@ install_skill_dir() {
     copy_skill_tree "${skill_dir}" "${canonical}"
     installed_any=true
     for agent_name in "${selected_agents[@]}"; do
-      agent_dir="$(agent_skills_dir "${agent_name}")/${name}"
+      agent_dir="$(install_agent_dir "${agent_name}")/${name}"
       if [[ "${agent_dir}" == "${canonical}" ]]; then
         continue
       fi
@@ -458,12 +385,19 @@ ask_prereqs() {
   return 1
 }
 
+detect_agents() {
+  local agent
+  while IFS= read -r agent; do
+    selected_agents+=("${agent}")
+  done < <(detected_agents)
+}
+
 validate_agents() {
   local agent
   for agent in "${selected_agents[@]}"; do
-    lookup_agent "${agent}" >/dev/null ||
+    agent_is_known "${agent}" ||
       die "Unsupported agent: ${agent}
-Supported: codex, claude-code, opencode, pi, cursor, universal"
+Supported: $(supported_agents_list)"
   done
 }
 
@@ -558,20 +492,23 @@ main() {
     global_install=true
   fi
 
+  local total_matches=0
+  resolve_jonbaldie_root
+  load_collection_modules "${jon_root}"
+
+  if [[ "${show_help}" == true ]]; then
+    usage
+    return
+  fi
+
   if [[ ${#selected_agents[@]} -eq 0 ]]; then
     detect_agents
   fi
   validate_agents
   print_install_targets
 
-  local jon_root
-  local total_matches=0
-  jon_root="$(resolve_jonbaldie_root)"
-  load_skill_tree_module "${jon_root}"
-
-  local mp_root=""
   if ask_prereqs; then
-    mp_root="$(resolve_mattpocock_root)"
+    resolve_mattpocock_root
   fi
 
   local -a roots_to_install=()
@@ -600,7 +537,7 @@ main() {
   fi
 
   if [[ "${global_install}" == true ]]; then
-    log "Done. Skills installed under $(canonical_skills_dir) (and agent paths as needed)."
+    log "Done. Skills installed under $(install_canonical_dir) (and agent paths as needed)."
   else
     log "Done. Skills installed for this project."
   fi
