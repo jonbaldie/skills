@@ -1,0 +1,100 @@
+RUN: tests/agent-destinations.sh
+PASS: agent-destinations: all scenarios passed
+PASS: tests/agent-destinations.sh
+RUN: tests/copy-to-skill-dirs-agents.sh
+PASS: copy-to-skill-dirs-agents: all scenarios passed
+PASS: tests/copy-to-skill-dirs-agents.sh
+RUN: tests/copy-to-skill-dirs-project-root.sh
+PASS: copy-to-skill-dirs-project-root: all scenarios passed
+PASS: tests/copy-to-skill-dirs-project-root.sh
+RUN: tests/install-agent-destinations.sh
+PASS: install-agent-destinations: all scenarios passed
+PASS: tests/install-agent-destinations.sh
+RUN: tests/install-in-progress.sh
+PASS: install-in-progress: in-progress skills are not distributed
+PASS: tests/install-in-progress.sh
+RUN: tests/install-name-collision.sh
+PASS: install-name-collision: all scenarios passed
+PASS: tests/install-name-collision.sh
+RUN: tests/install-prereq-prompt.sh
+PASS: install-prereq-prompt: prerequisite prompt defaults to No without an answer
+PASS: tests/install-prereq-prompt.sh
+RUN: tests/install-pycache-exclusion.sh
+PASS: install-pycache-exclusion: all scenarios passed
+PASS: tests/install-pycache-exclusion.sh
+SKIP: tests/install-ship-spec.sh (RUN_ALL_SKIP requested)
+RUN: tests/install-skill-filter.sh
+Cloning mattpocock/skills...
+warning: --depth is ignored in local clones; use file:// instead.
+PASS: install-skill-filter: all scenarios passed
+PASS: tests/install-skill-filter.sh
+RUN: tests/install-symlinked-agent-root.sh
+PASS: install-symlinked-agent-root: all scenarios passed
+PASS: tests/install-symlinked-agent-root.sh
+RUN: tests/shell-lib.sh
+PASS: shell-lib: all scenarios passed
+PASS: tests/shell-lib.sh
+RUN: tests/skill-tree.sh
+PASS: skill-tree: all scenarios passed
+PASS: tests/skill-tree.sh
+RUN: tests/sync-jonbaldie-skills.sh
+Fetching mattpocock/skills...
+warning: --depth is ignored in local clones; use file:// instead.
+Fetching jonbaldie/skills...
+warning: --depth is ignored in local clones; use file:// instead.
+Installing mattpocock/skills...
+  installed alpha
+  installed helper
+Installing jonbaldie/skills...
+  installed beta
+  installed shared
+  removed retired skill retired
+mattpocock/skills commit: 98073f64867191de7a332a88518de49a8be25cf3
+jonbaldie/skills commit: c4084df7c05d136c4ab515986ac9515e46afa235
+Canonical destination: /Users/jonathanbaldie/.fleet/events/scratch/09d37a433d08a3f3e2ddc13ef7ace6bf64b613a11eebe608270eb17af95c02eb/test-sync-jonbaldie-skills.ifVMS2/target project/.agents/skills
+Fetching mattpocock/skills...
+warning: --depth is ignored in local clones; use file:// instead.
+Fetching jonbaldie/skills...
+warning: --depth is ignored in local clones; use file:// instead.
+Installing mattpocock/skills...
+  installed alpha
+  installed helper
+Installing jonbaldie/skills...
+  installed beta
+  installed shared
+mattpocock/skills commit: 98073f64867191de7a332a88518de49a8be25cf3
+jonbaldie/skills commit: c4084df7c05d136c4ab515986ac9515e46afa235
+Canonical destination: /Users/jonathanbaldie/.fleet/events/scratch/09d37a433d08a3f3e2ddc13ef7ace6bf64b613a11eebe608270eb17af95c02eb/test-sync-jonbaldie-skills.ifVMS2/target project/.agents/skills
+  copied alpha -> /Users/jonathanbaldie/.fleet/events/scratch/09d37a433d08a3f3e2ddc13ef7ace6bf64b613a11eebe608270eb17af95c02eb/test-sync-jonbaldie-skills.ifVMS2/target project/.claude/skills
+  copied beta -> /Users/jonathanbaldie/.fleet/events/scratch/09d37a433d08a3f3e2ddc13ef7ace6bf64b613a11eebe608270eb17af95c02eb/test-sync-jonbaldie-skills.ifVMS2/target project/.claude/skills
+  copied helper -> /Users/jonathanbaldie/.fleet/events/scratch/09d37a433d08a3f3e2ddc13ef7ace6bf64b613a11eebe608270eb17af95c02eb/test-sync-jonbaldie-skills.ifVMS2/target project/.claude/skills
+  copied shared -> /Users/jonathanbaldie/.fleet/events/scratch/09d37a433d08a3f3e2ddc13ef7ace6bf64b613a11eebe608270eb17af95c02eb/test-sync-jonbaldie-skills.ifVMS2/target project/.claude/skills
+Additional destination: /Users/jonathanbaldie/.fleet/events/scratch/09d37a433d08a3f3e2ddc13ef7ace6bf64b613a11eebe608270eb17af95c02eb/test-sync-jonbaldie-skills.ifVMS2/target project/.claude/skills
+  copied alpha -> /Users/jonathanbaldie/.fleet/events/scratch/09d37a433d08a3f3e2ddc13ef7ace6bf64b613a11eebe608270eb17af95c02eb/test-sync-jonbaldie-skills.ifVMS2/external skills
+  copied beta -> /Users/jonathanbaldie/.fleet/events/scratch/09d37a433d08a3f3e2ddc13ef7ace6bf64b613a11eebe608270eb17af95c02eb/test-sync-jonbaldie-skills.ifVMS2/external skills
+  copied helper -> /Users/jonathanbaldie/.fleet/events/scratch/09d37a433d08a3f3e2ddc13ef7ace6bf64b613a11eebe608270eb17af95c02eb/test-sync-jonbaldie-skills.ifVMS2/external skills
+  copied shared -> /Users/jonathanbaldie/.fleet/events/scratch/09d37a433d08a3f3e2ddc13ef7ace6bf64b613a11eebe608270eb17af95c02eb/test-sync-jonbaldie-skills.ifVMS2/external skills
+Additional destination: /Users/jonathanbaldie/.fleet/events/scratch/09d37a433d08a3f3e2ddc13ef7ace6bf64b613a11eebe608270eb17af95c02eb/test-sync-jonbaldie-skills.ifVMS2/external skills
+PASS: sync-jonbaldie-skills: deterministic sync and optional copies
+PASS: tests/sync-jonbaldie-skills.sh
+RUN: pytest tests
+============================= test session starts ==============================
+platform darwin -- Python 3.14.5, pytest-9.1.1, pluggy-1.6.0
+rootdir: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills
+configfile: pytest.ini
+plugins: anyio-4.14.0
+collected 176 items
+
+tests/resume-from-agent/test_extract_session.py ........................ [ 13%]
+............                                                             [ 20%]
+tests/resume-from-claude/test_extract_session.py .........               [ 25%]
+tests/resume-from-codex/test_extract_session.py .............            [ 32%]
+tests/resume-from-opencode/test_extract_session.py ......                [ 36%]
+tests/resume-from-pi/test_extract_session.py ........                    [ 40%]
+tests/resume-from-pr/test_extract_pr.py ................................ [ 59%]
+........................................................................ [100%]
+
+============================= 176 passed in 0.53s ==============================
+PASS: pytest tests
+
+Test suites: 14 passed, 1 skipped, 0 failed

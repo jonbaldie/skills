@@ -1,0 +1,118 @@
+cwd: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills
+argv: [PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/skills/sync-jonbaldie-skills/scripts/copy-to-skill-dirs.sh'), PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync'), '--agent', 'claude-code', 'custom skills']
+/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/skills/sync-jonbaldie-skills/scripts/lib/agent-destinations.sh: line 99: local: project_root: readonly variable
+  copied ask-matt -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied bmf -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied code-review -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied codebase-design -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied deintrovert-tests -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied diagnosing-bugs -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied domain-modeling -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied exploratory-testing -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied finding-bugs -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied finding-seams -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied git-guardrails-claude-code -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied grill-me -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied grill-with-docs -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied grilling -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied handoff -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied hill-climbing -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied implement -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied implement-spec -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied improve-codebase-architecture -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied migrate-to-shoehorn -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied mutation-testing -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied options -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied perffuzz -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied pr -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied promote-fork-pr-upstream -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied prototype -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied research -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied resume-from-agent -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied resume-from-claude -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied resume-from-codex -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied resume-from-opencode -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied resume-from-pi -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied resume-from-pr -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied retro -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied scaffold-exercises -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied scale-test-impact-analysis -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied seeking-performance -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied setup-matt-pocock-skills -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied setup-pre-commit -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied ship-pr -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied sync-jonbaldie-skills -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied tdd -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied teach -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied to-questionnaire -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied to-spec -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied to-summary -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied to-tickets -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied triage -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied user-journeys -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied wait-what -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied walk-the-spec -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied wayfinder -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied wizard -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied worked-example -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied writing-for-agents -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+Additional destination: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.claude/skills
+  copied ask-matt -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied bmf -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied code-review -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied codebase-design -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied deintrovert-tests -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied diagnosing-bugs -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied domain-modeling -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied exploratory-testing -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied finding-bugs -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied finding-seams -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied git-guardrails-claude-code -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied grill-me -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied grill-with-docs -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied grilling -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied handoff -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied hill-climbing -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied implement -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied implement-spec -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied improve-codebase-architecture -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied migrate-to-shoehorn -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied mutation-testing -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied options -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied perffuzz -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied pr -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied promote-fork-pr-upstream -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied prototype -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied research -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied resume-from-agent -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied resume-from-claude -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied resume-from-codex -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied resume-from-opencode -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied resume-from-pi -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied resume-from-pr -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied retro -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied scaffold-exercises -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied scale-test-impact-analysis -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied seeking-performance -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied setup-matt-pocock-skills -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied setup-pre-commit -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied ship-pr -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied sync-jonbaldie-skills -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied tdd -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied teach -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied to-questionnaire -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied to-spec -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied to-summary -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied to-tickets -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied triage -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied user-journeys -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied wait-what -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied walk-the-spec -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied wayfinder -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied wizard -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied worked-example -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+  copied writing-for-agents -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+Additional destination: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/custom skills
+EXIT: 0
+options bytes match: True
+sync-jonbaldie-skills bytes match: True

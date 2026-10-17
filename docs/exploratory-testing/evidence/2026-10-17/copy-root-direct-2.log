@@ -1,0 +1,5 @@
+cwd: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills
+argv: [PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/skills/sync-jonbaldie-skills/scripts/copy-to-skill-dirs.sh'), PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/copy-root-bypass-2'), '.']
+error: skill directory must not be the project root or one of its ancestors: .
+EXIT: 1
+user work exists: True

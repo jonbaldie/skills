@@ -1,0 +1,7 @@
+cwd: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/install-2
+argv: [PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/install.sh'), '--agent', 'pi', '--without-prereqs', '--skill', 'options', '--skill', 'not-a-real-skill']
+Installing to: Pi
+Installing jonbaldie/skills...
+  installed options
+Done. Skills installed for this project.
+EXIT: 0
