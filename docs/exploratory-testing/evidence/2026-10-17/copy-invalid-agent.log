@@ -1,0 +1,5 @@
+cwd: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills
+argv: [PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/skills/sync-jonbaldie-skills/scripts/copy-to-skill-dirs.sh'), PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync'), 'should-not-exist', '--agent', 'invalid']
+error: unknown agent: invalid (supported: codex, claude-code, opencode, pi, cursor, gemini, universal)
+EXIT: 1
+earlier destination exists: False

@@ -1,0 +1,67 @@
+cwd: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills
+argv: [PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/skills/sync-jonbaldie-skills/scripts/sync-skills.sh'), PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync')]
+Fetching mattpocock/skills...
+warning: --depth is ignored in local clones; use file:// instead.
+Fetching jonbaldie/skills...
+warning: --depth is ignored in local clones; use file:// instead.
+Installing mattpocock/skills...
+  installed setup-pre-commit
+  installed git-guardrails-claude-code
+  installed scaffold-exercises
+  installed migrate-to-shoehorn
+  installed research
+  installed domain-modeling
+  installed wayfinder
+  installed setup-matt-pocock-skills
+  installed diagnosing-bugs
+  installed code-review
+  installed to-tickets
+  installed ask-matt
+  installed wizard
+  installed improve-codebase-architecture
+  installed to-spec
+  installed codebase-design
+  installed triage
+  installed prototype
+  installed pr
+  installed grill-with-docs
+  installed retro
+  installed implement
+  installed implement-spec
+  installed tdd
+  installed writing-for-agents
+  installed wait-what
+  installed handoff
+  installed to-questionnaire
+  installed teach
+  installed grill-me
+  installed grilling
+Installing jonbaldie/skills...
+  installed options
+  installed ship-pr
+  installed deintrovert-tests
+  installed hill-climbing
+  installed resume-from-agent
+  installed bmf
+  installed resume-from-pr
+  installed finding-bugs
+  installed finding-seams
+  installed resume-from-pi
+  installed resume-from-codex
+  installed resume-from-opencode
+  installed perffuzz
+  installed worked-example
+  installed resume-from-claude
+  installed seeking-performance
+  installed promote-fork-pr-upstream
+  installed walk-the-spec
+  installed to-summary
+  installed mutation-testing
+  installed exploratory-testing
+  installed user-journeys
+  installed sync-jonbaldie-skills
+  installed scale-test-impact-analysis
+mattpocock/skills commit: 49dd158d1076134a641b33efb035946536778336
+jonbaldie/skills commit: d6cd38afe8cd9eac76c7727db65442505ae867de
+Canonical destination: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync/.agents/skills
+EXIT: 0

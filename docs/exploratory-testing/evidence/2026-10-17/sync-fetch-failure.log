@@ -1,0 +1,6 @@
+cwd: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills
+argv: [PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/skills/sync-jonbaldie-skills/scripts/sync-skills.sh'), PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/sync')]
+Fetching mattpocock/skills...
+fatal: repository '/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/missing-repository' does not exist
+EXIT: 128
+manifest unchanged: True

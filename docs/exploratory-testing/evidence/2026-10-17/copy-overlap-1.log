@@ -1,0 +1,7 @@
+cwd: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills
+argv: [PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/skills/sync-jonbaldie-skills/scripts/copy-to-skill-dirs.sh'), PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/copy-overlap-1'), '.agents/skills/options']
+  copied options -> /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/copy-overlap-1/.agents/skills/options
+Additional destination: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-17/projects/copy-overlap-1/.agents/skills/options
+EXIT: 0
+SKILL.md count after copy: 2
+original exists: True
