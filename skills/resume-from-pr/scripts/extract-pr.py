@@ -580,11 +580,75 @@ class FileChange:
     change_type: str | None = None
 
 
+_CHECK_STATUS_MAP: dict[str, str] = {
+    # Success
+    "success": "success",
+    "successful": "success",
+    "succeeded": "success",
+    "passed": "success",
+    # Failure
+    "failure": "failure",
+    "failed": "failure",
+    "timed_out": "failure",
+    "timedout": "failure",
+    "partiallysucceeded": "failure",
+    "partially_succeeded": "failure",
+    # Canceled / Stopped
+    "canceled": "canceled",
+    "cancelled": "canceled",
+    "stopped": "canceled",
+    "cancelling": "canceled",
+    "aborted": "canceled",
+    # Pending / In-progress
+    "pending": "pending",
+    "in_progress": "pending",
+    "inprogress": "pending",
+    "running": "pending",
+    "queued": "pending",
+    "created": "pending",
+    "waiting_for_resource": "pending",
+    "preparing": "pending",
+    "scheduled": "pending",
+    "manual": "pending",
+    "expected": "pending",
+    "notstarted": "pending",
+    "not_started": "pending",
+    "requested": "pending",
+    "waiting": "pending",
+    "notset": "pending",
+    "not_set": "pending",
+    # Skipped / Not applicable
+    "skipped": "skipped",
+    "neutral": "skipped",
+    "notapplicable": "skipped",
+    "not_applicable": "skipped",
+    "ignored": "skipped",
+    # Error
+    "error": "error",
+    # Action required
+    "action_required": "action_required",
+    "actionrequired": "action_required",
+}
+
+
+def normalize_check_status(raw: str | None) -> str:
+    if not raw or not isinstance(raw, str):
+        return "unknown"
+    normalized = raw.strip().lower()
+    return _CHECK_STATUS_MAP.get(normalized, "unknown")
+
+
 @dataclass
 class Check:
     name: str
     status: str
     details: str | None = None
+
+    def __post_init__(self) -> None:
+        self.status = normalize_check_status(self.status)
+        if self.details is not None:
+            cleaned = str(self.details).strip()
+            self.details = cleaned if cleaned else None
 
 
 @dataclass
@@ -786,7 +850,7 @@ def ending_text(brief: Brief) -> str:
     failing = [
         c
         for c in brief.checks
-        if c.status.upper() in {"FAILURE", "FAILED", "CANCELLED", "ERROR", "ACTION_REQUIRED"}
+        if normalize_check_status(c.status) in {"failure", "canceled", "error", "action_required"}
     ]
     if failing:
         names = ", ".join(c.name for c in failing[:5])
@@ -1084,7 +1148,21 @@ def brief_from_github_view(
             or item.get("status")
             or "unknown"
         )
-        checks.append(Check(name=name, status=str(status)))
+        details = (
+            item.get("targetUrl")
+            or item.get("detailsUrl")
+            or item.get("target_url")
+            or item.get("details_url")
+            or item.get("url")
+            or None
+        )
+        checks.append(
+            Check(
+                name=name,
+                status=normalize_check_status(str(status)),
+                details=details,
+            )
+        )
     commits: list[str] = []
     for commit in data.get("commits") or []:
         headline = commit.get("messageHeadline") or commit.get("message") or ""
@@ -1241,7 +1319,8 @@ def brief_from_github_rest(
                 ),
                 "state": str(
                     s.get("state") or s.get("conclusion") or s.get("status") or "unknown"
-                ).upper(),
+                ),
+                "targetUrl": s.get("target_url") or s.get("targetUrl") or s.get("url"),
             }
             for s in statuses or []
         ]
@@ -1249,7 +1328,8 @@ def brief_from_github_rest(
             {
                 "name": r.get("name"),
                 # gh reports an unfinished run's status and a finished run's conclusion.
-                "state": str(r.get("conclusion") or r.get("status") or "unknown").upper(),
+                "state": str(r.get("conclusion") or r.get("status") or "unknown"),
+                "detailsUrl": r.get("details_url") or r.get("detailsUrl") or r.get("html_url") or r.get("url"),
             }
             for r in check_runs or []
         ],
@@ -1421,8 +1501,8 @@ def brief_from_gitlab(
         checks.append(
             Check(
                 name="pipeline",
-                status=str(pipeline.get("status") or "unknown"),
-                details=pipeline.get("web_url"),
+                status=normalize_check_status(str(pipeline.get("status") or "unknown")),
+                details=pipeline.get("web_url") or None,
             )
         )
     labels = [str(x) for x in (mr.get("labels") or [])]
@@ -1585,10 +1665,14 @@ def brief_from_bitbucket(
         )
     checks = []
     for item in statuses or []:
+        links = item.get("links") if isinstance(item.get("links"), dict) else {}
+        html_link = links.get("html") if isinstance(links.get("html"), dict) else {}
+        details = item.get("url") or html_link.get("href") or None
         checks.append(
             Check(
                 name=item.get("name") or item.get("key") or "status",
-                status=str(item.get("state") or "unknown"),
+                status=normalize_check_status(str(item.get("state") or "unknown")),
+                details=details,
             )
         )
     links = pr.get("links") or {}
@@ -1797,12 +1881,14 @@ def brief_from_azure(
             )
     checks = []
     for item in statuses or []:
+        details = item.get("targetUrl") or item.get("target_url") or None
         checks.append(
             Check(
                 name=item.get("context", {}).get("name")
                 if isinstance(item.get("context"), dict)
                 else item.get("description") or "status",
-                status=str(item.get("state") or "unknown"),
+                status=normalize_check_status(str(item.get("state") or "unknown")),
+                details=details,
             )
         )
     repo = (pr.get("repository") or {}).get("name")

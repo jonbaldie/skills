@@ -460,7 +460,7 @@ class BriefRenderTests(unittest.TestCase):
         self.assertIn("Continue the interceptor work.", text)
         self.assertIn("src/auth.ts:44 — linus", text)
         self.assertIn("This leaks the token.", text)
-        self.assertIn("tests: FAILURE", text)
+        self.assertIn("tests: failure", text)
         self.assertIn("#3 Auth gap", text)
         self.assertIn("Continue the interrupted work from this brief.", text)
         self.assertIn("Changes Requested", text)
@@ -504,7 +504,7 @@ class BriefRenderTests(unittest.TestCase):
         self.assertIn("provider: gitlab", text)
         self.assertIn("head: feat/cache", text)
         self.assertIn("cache.py:12 — reviewer", text)
-        self.assertIn("pipeline: failed", text)
+        self.assertIn("pipeline: failure", text)
 
     def test_gitlab_brief_repo_is_project_path(self):
         # GitLab's references.full names the merge request, not the project.
@@ -1114,10 +1114,10 @@ class CollectionPagingTests(unittest.TestCase):
         text = self.mod.render(brief)
         self.assertIn(
             "## Checks\n"
-            "- build (ubuntu-latest): FAILURE\n"
-            "- build (windows-latest): FAILURE\n"
-            "- build (macos-latest): FAILURE\n"
-            "- lint: IN_PROGRESS\n",
+            "- build (ubuntu-latest): failure\n"
+            "- build (windows-latest): failure\n"
+            "- build (macos-latest): failure\n"
+            "- lint: pending\n",
             text,
         )
         self.assertRegex(text, r"## Ending\nFailing checks: build \(ubuntu-latest\)")
@@ -1797,6 +1797,304 @@ class DroppedConnectionTests(unittest.TestCase):
             "network error for https://codeberg.org/api/v1/repos/forgejo/forgejo/pulls/14781",
             message,
         )
+
+
+class NormalizeCheckStatusTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_mod()
+
+    def test_success_mappings(self):
+        cases = ["SUCCESS", "success", "successful", "SUCCESSFUL", "succeeded", "SUCCEEDED", "passed", "PASSED"]
+        for case in cases:
+            with self.subTest(case=case):
+                self.assertEqual(self.mod.normalize_check_status(case), "success")
+
+    def test_failure_mappings(self):
+        cases = [
+            "FAILURE", "failure", "failed", "FAILED",
+            "timed_out", "TIMED_OUT", "timedout", "TIMEDOUT",
+            "partiallySucceeded", "partially_succeeded", "PARTIALLY_SUCCEEDED",
+        ]
+        for case in cases:
+            with self.subTest(case=case):
+                self.assertEqual(self.mod.normalize_check_status(case), "failure")
+
+    def test_pending_mappings(self):
+        cases = [
+            "PENDING", "pending", "in_progress", "IN_PROGRESS", "inprogress", "INPROGRESS",
+            "running", "RUNNING", "queued", "QUEUED", "created", "waiting_for_resource",
+            "preparing", "scheduled", "manual", "expected", "notStarted", "not_started",
+            "requested", "waiting", "notSet", "not_set",
+        ]
+        for case in cases:
+            with self.subTest(case=case):
+                self.assertEqual(self.mod.normalize_check_status(case), "pending")
+
+    def test_canceled_mappings(self):
+        cases = [
+            "CANCELLED", "cancelled", "canceled", "CANCELED",
+            "STOPPED", "stopped", "cancelling", "aborted",
+        ]
+        for case in cases:
+            with self.subTest(case=case):
+                self.assertEqual(self.mod.normalize_check_status(case), "canceled")
+
+    def test_skipped_mappings(self):
+        cases = [
+            "SKIPPED", "skipped", "neutral", "NEUTRAL",
+            "notApplicable", "NOTAPPLICABLE", "not_applicable", "ignored",
+        ]
+        for case in cases:
+            with self.subTest(case=case):
+                self.assertEqual(self.mod.normalize_check_status(case), "skipped")
+
+    def test_error_mappings(self):
+        cases = ["ERROR", "error"]
+        for case in cases:
+            with self.subTest(case=case):
+                self.assertEqual(self.mod.normalize_check_status(case), "error")
+
+    def test_action_required_mappings(self):
+        cases = ["ACTION_REQUIRED", "action_required", "actionrequired"]
+        for case in cases:
+            with self.subTest(case=case):
+                self.assertEqual(self.mod.normalize_check_status(case), "action_required")
+
+    def test_unknown_mappings(self):
+        cases = ["", "   ", None, "unknown", "UNKNOWN", "unexpected_provider_state"]
+        for case in cases:
+            with self.subTest(case=case):
+                result = self.mod.normalize_check_status(case)
+                self.assertEqual(result, "unknown")
+                self.assertNotEqual(result, "success")
+
+    def test_idempotent_canonical_statuses(self):
+        canonical = [
+            "success", "failure", "pending", "canceled",
+            "skipped", "error", "action_required", "unknown",
+        ]
+        for s in canonical:
+            with self.subTest(status=s):
+                self.assertEqual(self.mod.normalize_check_status(s), s)
+
+
+class ForgeCheckConstructionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_mod()
+
+    def test_github_view_check_construction_and_details(self):
+        data = {
+            "title": "T",
+            "number": 1,
+            "statusCheckRollup": [
+                {"name": "run-ci", "conclusion": "SUCCESS", "detailsUrl": "https://ci.example.com/run"},
+                {"context": "status-ci", "state": "FAILURE", "targetUrl": "https://ci.example.com/status"},
+                {"name": "no-url", "conclusion": "NEUTRAL"},
+            ],
+        }
+        brief = self.mod.brief_from_github_view(data)
+        self.assertEqual(len(brief.checks), 3)
+        self.assertEqual(brief.checks[0].name, "run-ci")
+        self.assertEqual(brief.checks[0].status, "success")
+        self.assertEqual(brief.checks[0].details, "https://ci.example.com/run")
+        self.assertEqual(brief.checks[1].name, "status-ci")
+        self.assertEqual(brief.checks[1].status, "failure")
+        self.assertEqual(brief.checks[1].details, "https://ci.example.com/status")
+        self.assertEqual(brief.checks[2].name, "no-url")
+        self.assertEqual(brief.checks[2].status, "skipped")
+        self.assertIsNone(brief.checks[2].details)
+
+    def test_github_rest_check_construction_and_details(self):
+        pr = {"number": 1, "title": "T", "state": "open"}
+        statuses = [
+            {"context": "status-ci", "state": "success", "target_url": "https://ci.example.com/s"},
+            {"context": "status-no-url", "state": "error"},
+        ]
+        check_runs = [
+            {"name": "run-ci", "status": "completed", "conclusion": "action_required", "details_url": "https://ci.example.com/r"},
+            {"name": "run-no-url", "status": "in_progress", "conclusion": None},
+        ]
+        brief = self.mod.brief_from_github_rest(pr, statuses=statuses, check_runs=check_runs)
+        self.assertEqual(len(brief.checks), 4)
+        self.assertEqual(brief.checks[0].status, "success")
+        self.assertEqual(brief.checks[0].details, "https://ci.example.com/s")
+        self.assertEqual(brief.checks[1].status, "error")
+        self.assertIsNone(brief.checks[1].details)
+        self.assertEqual(brief.checks[2].status, "action_required")
+        self.assertEqual(brief.checks[2].details, "https://ci.example.com/r")
+        self.assertEqual(brief.checks[3].status, "pending")
+        self.assertIsNone(brief.checks[3].details)
+
+    def test_gitlab_check_construction_and_details(self):
+        mr_with_url = {
+            "iid": 1,
+            "title": "T",
+            "state": "opened",
+            "head_pipeline": {"status": "canceled", "web_url": "https://gitlab.com/ci/1"},
+        }
+        brief = self.mod.brief_from_gitlab(mr_with_url)
+        self.assertEqual(len(brief.checks), 1)
+        self.assertEqual(brief.checks[0].name, "pipeline")
+        self.assertEqual(brief.checks[0].status, "canceled")
+        self.assertEqual(brief.checks[0].details, "https://gitlab.com/ci/1")
+
+        mr_no_url = {
+            "iid": 2,
+            "title": "T",
+            "state": "opened",
+            "head_pipeline": {"status": "running"},
+        }
+        brief_no_url = self.mod.brief_from_gitlab(mr_no_url)
+        self.assertEqual(brief_no_url.checks[0].status, "pending")
+        self.assertIsNone(brief_no_url.checks[0].details)
+
+    def test_bitbucket_check_construction_and_details(self):
+        pr = {
+            "id": 1,
+            "title": "T",
+            "state": "OPEN",
+            "links": {"html": {"href": "https://bitbucket.org/w/r/pull-requests/1"}},
+        }
+        statuses = [
+            {"name": "build", "state": "STOPPED", "url": "https://ci.example.com/build/1"},
+            {"key": "lint", "state": "SUCCESSFUL", "links": {"html": {"href": "https://ci.example.com/lint/1"}}},
+            {"name": "test", "state": "INPROGRESS"},
+        ]
+        brief = self.mod.brief_from_bitbucket(pr, statuses=statuses)
+        self.assertEqual(len(brief.checks), 3)
+        self.assertEqual(brief.checks[0].name, "build")
+        self.assertEqual(brief.checks[0].status, "canceled")
+        self.assertEqual(brief.checks[0].details, "https://ci.example.com/build/1")
+        self.assertEqual(brief.checks[1].name, "lint")
+        self.assertEqual(brief.checks[1].status, "success")
+        self.assertEqual(brief.checks[1].details, "https://ci.example.com/lint/1")
+        self.assertEqual(brief.checks[2].name, "test")
+        self.assertEqual(brief.checks[2].status, "pending")
+        self.assertIsNone(brief.checks[2].details)
+
+    def test_azure_check_construction_and_details(self):
+        pr = {
+            "pullRequestId": 1,
+            "title": "T",
+            "status": "active",
+        }
+        statuses = [
+            {"context": {"name": "ci"}, "state": "succeeded", "targetUrl": "https://dev.azure.com/b/1"},
+            {"description": "audit", "state": "notApplicable"},
+            {"context": {"name": "gates"}, "state": "error", "targetUrl": "https://dev.azure.com/g/1"},
+        ]
+        brief = self.mod.brief_from_azure(pr, statuses=statuses)
+        self.assertEqual(len(brief.checks), 3)
+        self.assertEqual(brief.checks[0].name, "ci")
+        self.assertEqual(brief.checks[0].status, "success")
+        self.assertEqual(brief.checks[0].details, "https://dev.azure.com/b/1")
+        self.assertEqual(brief.checks[1].name, "audit")
+        self.assertEqual(brief.checks[1].status, "skipped")
+        self.assertIsNone(brief.checks[1].details)
+        self.assertEqual(brief.checks[2].name, "gates")
+        self.assertEqual(brief.checks[2].status, "error")
+        self.assertEqual(brief.checks[2].details, "https://dev.azure.com/g/1")
+
+
+class ForgeEndingSummariesAndRenderingTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_mod()
+
+    def test_gitlab_cancellation_ending_and_render(self):
+        for status_spelling in ("canceled", "cancelled"):
+            with self.subTest(spelling=status_spelling):
+                mr = {
+                    "iid": 1,
+                    "title": "Fix something",
+                    "state": "opened",
+                    "head_pipeline": {"status": status_spelling, "web_url": "https://gitlab.com/ci/1"},
+                }
+                brief = self.mod.brief_from_gitlab(mr)
+                self.assertEqual(self.mod.ending_text(brief), "Failing checks: pipeline")
+                text = self.mod.render(brief)
+                self.assertIn("- pipeline: canceled — https://gitlab.com/ci/1", text)
+                self.assertIn("## Ending\nFailing checks: pipeline", text)
+
+    def test_bitbucket_stopped_ending_and_render(self):
+        pr = {
+            "id": 1,
+            "title": "Fix something",
+            "state": "OPEN",
+            "links": {"html": {"href": "https://bitbucket.org/w/r/pull-requests/1"}},
+        }
+        statuses = [
+            {"name": "build", "state": "STOPPED", "url": "https://ci.example.com/build/1"}
+        ]
+        brief = self.mod.brief_from_bitbucket(pr, statuses=statuses)
+        self.assertEqual(self.mod.ending_text(brief), "Failing checks: build")
+        text = self.mod.render(brief)
+        self.assertIn("- build: canceled — https://ci.example.com/build/1", text)
+        self.assertIn("## Ending\nFailing checks: build", text)
+
+    def test_azure_cancellation_ending_and_render(self):
+        for status_spelling in ("canceled", "cancelled"):
+            with self.subTest(spelling=status_spelling):
+                pr = {
+                    "pullRequestId": 1,
+                    "title": "Fix something",
+                    "status": "active",
+                }
+                statuses = [
+                    {"context": {"name": "ci"}, "state": status_spelling, "targetUrl": "https://dev.azure.com/b/1"}
+                ]
+                brief = self.mod.brief_from_azure(pr, statuses=statuses)
+                self.assertEqual(self.mod.ending_text(brief), "Failing checks: ci")
+                text = self.mod.render(brief)
+                self.assertIn("- ci: canceled — https://dev.azure.com/b/1", text)
+                self.assertIn("## Ending\nFailing checks: ci", text)
+
+    def test_review_precedence_preserved_over_failing_checks(self):
+        # When reviewDecision is CHANGES_REQUESTED, review decision wins over failing check.
+        data = {
+            "title": "T",
+            "number": 1,
+            "reviewDecision": "CHANGES_REQUESTED",
+            "reviews": [
+                {
+                    "body": "Need changes",
+                    "state": "CHANGES_REQUESTED",
+                    "author": {"login": "reviewer"},
+                }
+            ],
+            "statusCheckRollup": [
+                {"name": "ci", "conclusion": "FAILURE"}
+            ],
+        }
+        brief = self.mod.brief_from_github_view(data)
+        ending = self.mod.ending_text(brief)
+        self.assertTrue(ending.startswith("Changes Requested"))
+        self.assertNotIn("Failing checks", ending)
+
+        # When reviewDecision is APPROVED, review decision wins over failing/stopped check.
+        data_approved = {
+            "title": "T",
+            "number": 2,
+            "reviewDecision": "APPROVED",
+            "statusCheckRollup": [
+                {"name": "ci", "conclusion": "CANCELLED"}
+            ],
+        }
+        brief_approved = self.mod.brief_from_github_view(data_approved)
+        self.assertEqual(self.mod.ending_text(brief_approved), "Approved")
+
+    def test_action_required_included_in_failing_checks(self):
+        data = {
+            "title": "T",
+            "number": 1,
+            "statusCheckRollup": [
+                {"name": "cla-check", "conclusion": "ACTION_REQUIRED"}
+            ],
+        }
+        brief = self.mod.brief_from_github_view(data)
+        self.assertEqual(self.mod.ending_text(brief), "Failing checks: cla-check")
 
 
 if __name__ == "__main__":
