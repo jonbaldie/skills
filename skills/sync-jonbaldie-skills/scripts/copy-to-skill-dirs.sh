@@ -46,17 +46,56 @@ requested_path() {
   fi
 }
 
+# Resolve existing directories physically, but model missing components without
+# creating them. Resolve each component before processing '..': collapsing the
+# whole path lexically would give the wrong parent for a directory symlink.
+resolve_requested_directory() {
+  local remaining component candidate
+  local resolved=/
+
+  remaining="$(requested_path "$1")"
+  while [[ -n "${remaining}" ]]; do
+    component="${remaining%%/*}"
+    if [[ "${remaining}" == */* ]]; then
+      remaining="${remaining#*/}"
+    else
+      remaining=
+    fi
+    case "${component}" in
+      ''|.) continue ;;
+      ..) resolved="${resolved%/*}"; resolved="${resolved:-/}" ;;
+      *)
+        candidate="${resolved%/}/${component}"
+        if [[ -d "${candidate}" ]]; then
+          resolved="$(cd "${candidate}" && pwd -P)" ||
+            die "cannot resolve skill directory: $1"
+        elif [[ -e "${candidate}" || -L "${candidate}" ]]; then
+          die "not a directory in skill directory: $1"
+        else
+          resolved="${candidate}"
+        fi
+        ;;
+    esac
+  done
+  printf '%s\n' "${resolved}"
+}
+
+reject_project_ancestor() {
+  local resolved="$1"
+  local requested_directory="$2"
+
+  if [[ "${project_root}" == "${resolved}" || "${project_root}" == "${resolved%/}/"* ]]; then
+    die "skill directory must not be the project root or one of its ancestors: ${requested_directory}"
+  fi
+}
+
 validate_requested_directory() {
   local requested_directory="$1"
   local resolved
 
   [[ -n "${requested_directory}" ]] || die "skill directory must not be empty"
-  resolved="$(requested_path "${requested_directory}")"
-  [[ -d "${resolved}" ]] || return 0
-  resolved="$(cd "${resolved}" && pwd -P)"
-  if [[ "${project_root}" == "${resolved}" || "${project_root}" == "${resolved%/}/"* ]]; then
-    die "skill directory must not be the project root or one of its ancestors: ${requested_directory}"
-  fi
+  resolved="$(resolve_requested_directory "${requested_directory}")" || exit 1
+  reject_project_ancestor "${resolved}" "${requested_directory}"
 }
 
 copy_to_directory() {
@@ -69,6 +108,7 @@ copy_to_directory() {
 
   mkdir -p "${destination}"
   destination="$(cd "${destination}" && pwd -P)"
+  reject_project_ancestor "${destination}" "${requested_directory}"
 
   if [[ "${destination}" == "${canonical_skills_dir}" ]]; then
     printf 'Already canonical: %s\n' "${destination}"
