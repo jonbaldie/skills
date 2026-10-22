@@ -24,8 +24,8 @@ def default_db_path() -> Path:
 def connect(db_path: Path) -> sqlite3.Connection:
     if not db_path.is_file():
         raise SystemExit(f"No OpenCode database at {db_path}")
-    # Read-only URI so a live OpenCode process can keep the DB open.
-    uri = f"file:{db_path}?mode=ro"
+    # Encode filesystem characters before adding SQLite's URI options.
+    uri = db_path.resolve().as_uri() + "?mode=ro"
     conn = sqlite3.connect(uri, uri=True, timeout=15.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 15000")
