@@ -230,7 +230,8 @@ def parse_json_maybe(raw: Any) -> Any:
 def open_sqlite_ro(path: Path) -> sqlite3.Connection:
     if not path.is_file():
         raise FileNotFoundError(str(path))
-    uri = f"file:{path}?mode=ro"
+    # Encode filesystem characters before adding SQLite's URI options.
+    uri = path.resolve().as_uri() + "?mode=ro"
     conn = sqlite3.connect(uri, uri=True, timeout=15.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 15000")
