@@ -1,0 +1,36 @@
+cwd: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/1/apps/web-api
+HOME: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/1/home
+command: ['/opt/homebrew/opt/python@3.14/bin/python3.14', PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/1/project/.agents/skills/resume-from-agent/scripts/extract-session.py'), '--agent', 'pi', '--path', PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/1/home/.pi/agent/sessions/--Users-jonathanbaldie-Code-2-github.com-jonbaldie-skills-.fleet-exploratory-2026-10-24-fixtures-1-apps-web-api--/2026-10-24T00-00-00_22222222-2222-4222-8222-222222222222.jsonl')]
+exit: 0
+
+STDOUT
+# pi session brief
+agent: pi
+session_id: 2026-10-24T00-00-00_22222222-2222-4222-8222-222222222222
+path: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/1/home/.pi/agent/sessions/--Users-jonathanbaldie-Code-2-github.com-jonbaldie-skills-.fleet-exploratory-2026-10-24-fixtures-1-apps-web-api--/2026-10-24T00-00-00_22222222-2222-4222-8222-222222222222.jsonl
+mtime: 2027-02-23T00:00:00
+last_prompt: Fix the web-api invoice endpoint.
+
+## Discovery notes
+- Parsed with generic JSONL fallback.
+
+## Opening goal
+
+### User
+Fix the web-api invoice endpoint.
+
+## Recent turns
+
+### User
+Fix the web-api invoice endpoint.
+
+### Assistant
+I will continue the requested change.
+
+## Ending
+I will continue the requested change.
+
+## Resume instruction
+Continue the interrupted work from this brief. Do not summarise and wait. Ground against the live workspace, then act.
+
+STDERR

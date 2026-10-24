@@ -1,0 +1,23 @@
+cwd: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/1/project
+HOME: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/1/home
+command: ['/opt/homebrew/opt/python@3.14/bin/python3.14', PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/1/project/.agents/skills/resume-from-agent/scripts/extract-session.py'), '--cwd', PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/1/project'), 'codex']
+exit: 0
+
+STDOUT
+# codex session brief
+agent: codex
+session_id: 11111111-1111-4111-8111-111111111111
+path: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/1/home/.codex/sessions/2026/10/24/rollout-2026-10-24T00-00-00-11111111-1111-4111-8111-111111111111.jsonl
+mtime: 2027-02-23T00:00:00
+cwd: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/1/project
+
+## Discovery notes
+- Parsed with generic JSONL fallback.
+
+## Ending
+(no clear ending text — session may have stopped mid-tool)
+
+## Resume instruction
+Continue the interrupted work from this brief. Do not summarise and wait. Ground against the live workspace, then act.
+
+STDERR

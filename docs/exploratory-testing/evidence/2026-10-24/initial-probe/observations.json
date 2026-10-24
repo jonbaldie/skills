@@ -1,0 +1,38 @@
+[
+  {
+    "attempt": 1,
+    "codex": {
+      "discovered_goal": false,
+      "explicit_goal": false,
+      "with_sibling_goal": true,
+      "discovery_exit": 0
+    },
+    "pi": {
+      "wrong_session_selected": true,
+      "router_wrong_session_selected": true,
+      "pinned_correct": true,
+      "explicit_correct_goal": true,
+      "missing_id_exit": 1,
+      "list_exit": 0,
+      "ordinary_correct": true
+    }
+  },
+  {
+    "attempt": 2,
+    "codex": {
+      "discovered_goal": false,
+      "explicit_goal": false,
+      "with_sibling_goal": true,
+      "discovery_exit": 0
+    },
+    "pi": {
+      "wrong_session_selected": true,
+      "router_wrong_session_selected": true,
+      "pinned_correct": true,
+      "explicit_correct_goal": true,
+      "missing_id_exit": 1,
+      "list_exit": 0,
+      "ordinary_correct": true
+    }
+  }
+]

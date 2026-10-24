@@ -1,0 +1,48 @@
+[
+  {
+    "attempt": 1,
+    "codex": {
+      "discovered_goal": false,
+      "explicit_goal": true,
+      "with_sibling_goal": true,
+      "discovery_exit": 0
+    },
+    "pi": {
+      "wrong_session_selected": true,
+      "router_wrong_session_selected": true,
+      "pinned_correct": true,
+      "explicit_correct_goal": true,
+      "missing_id_exit": 1,
+      "list_exit": 0,
+      "ordinary_correct": true,
+      "missing_path_exit": 1,
+      "explicit_uuid_preserved": false,
+      "explicit_cwd_preserved": false,
+      "sibling_uuid_preserved": true,
+      "sibling_cwd_preserved": true
+    }
+  },
+  {
+    "attempt": 2,
+    "codex": {
+      "discovered_goal": false,
+      "explicit_goal": true,
+      "with_sibling_goal": true,
+      "discovery_exit": 0
+    },
+    "pi": {
+      "wrong_session_selected": true,
+      "router_wrong_session_selected": true,
+      "pinned_correct": true,
+      "explicit_correct_goal": true,
+      "missing_id_exit": 1,
+      "list_exit": 0,
+      "ordinary_correct": true,
+      "missing_path_exit": 1,
+      "explicit_uuid_preserved": false,
+      "explicit_cwd_preserved": false,
+      "sibling_uuid_preserved": true,
+      "sibling_cwd_preserved": true
+    }
+  }
+]

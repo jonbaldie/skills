@@ -1,0 +1,38 @@
+cwd: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/2/apps/web-api
+HOME: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/2/home
+command: ['/opt/homebrew/opt/python@3.14/bin/python3.14', PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/2/project/.agents/skills/resume-from-agent/scripts/extract-session.py'), '--cwd', PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/2/apps/web-api'), 'pi']
+exit: 0
+
+STDOUT
+# pi session brief
+agent: pi
+session_id: 33333333-3333-4333-8333-333333333333
+path: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/2/home/.pi/agent/sessions/--Users-jonathanbaldie-Code-2-github.com-jonbaldie-skills-.fleet-exploratory-2026-10-24-fixtures-2-apps-web-api--/2026-10-24T00-01-00_33333333-3333-4333-8333-333333333333.jsonl
+mtime: 2026-10-24T01:01:00
+cwd: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/2/apps/web-api
+last_prompt: Migrate the OTHER project database.
+
+## Discovery notes
+- Selected pi over 1 other match(es).
+- Parsed with generic JSONL fallback.
+
+## Opening goal
+
+### User
+Migrate the OTHER project database.
+
+## Recent turns
+
+### User
+Migrate the OTHER project database.
+
+### Assistant
+I will continue the requested change.
+
+## Ending
+I will continue the requested change.
+
+## Resume instruction
+Continue the interrupted work from this brief. Do not summarise and wait. Ground against the live workspace, then act.
+
+STDERR

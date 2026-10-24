@@ -1,0 +1,12 @@
+cwd: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/2/project
+HOME: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/2/home
+command: [PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/install.sh'), '--agent', 'pi', '--without-prereqs', '--skill', 'resume-from-pi']
+exit: 0
+
+STDOUT
+Installing to: Pi
+Installing jonbaldie/skills...
+  installed resume-from-pi
+Done. Skills installed for this project.
+
+STDERR

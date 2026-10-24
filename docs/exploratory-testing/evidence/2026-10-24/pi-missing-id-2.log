@@ -1,0 +1,9 @@
+cwd: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/2/apps/web-api
+HOME: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/2/home
+command: ['/opt/homebrew/opt/python@3.14/bin/python3.14', PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/skills/resume-from-pi/scripts/extract-session.py'), '--cwd', PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/2/apps/web-api'), 'deadbeef']
+exit: 1
+
+STDOUT
+
+STDERR
+No Pi session JSONL found for id: deadbeef
