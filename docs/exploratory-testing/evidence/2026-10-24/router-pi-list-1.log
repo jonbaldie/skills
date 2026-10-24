@@ -1,0 +1,12 @@
+cwd: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/1/apps/web-api
+HOME: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/1/home
+command: ['/opt/homebrew/opt/python@3.14/bin/python3.14', PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/1/project/.agents/skills/resume-from-agent/scripts/extract-session.py'), '--cwd', PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/1/apps/web-api'), '--agent', 'pi', '--list']
+exit: 0
+
+STDOUT
+# Session candidates (best match first, then newest)
+
+1. pi  id=33333333-3333-4333-8333-333333333333  mtime=2026-10-24T01:01:00 cwd=/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/1/apps/web-api path=/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/1/home/.pi/agent/sessions/--Users-jonathanbaldie-Code-2-github.com-jonbaldie-skills-.fleet-exploratory-2026-10-24-fixtures-1-apps-web-api--/2026-10-24T00-01-00_33333333-3333-4333-8333-333333333333.jsonl
+2. pi  id=22222222-2222-4222-8222-222222222222  mtime=2026-10-24T01:00:00 cwd=/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/1/apps/web-api path=/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/1/home/.pi/agent/sessions/--Users-jonathanbaldie-Code-2-github.com-jonbaldie-skills-.fleet-exploratory-2026-10-24-fixtures-1-apps-web-api--/2026-10-24T00-00-00_22222222-2222-4222-8222-222222222222.jsonl
+
+STDERR

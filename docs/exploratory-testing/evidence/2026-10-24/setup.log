@@ -1,0 +1,31 @@
+Run date: 2026-10-24 UTC
+Baseline: fe61c415b65782f1fbbdf0ae2bef90b09b7361a7 (origin/main at setup)
+macOS 26.6.2 (25G83), arm64
+GNU Bash 3.2.57
+Python 3.14.5
+Workspace: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills
+TMPDIR: /Users/jonathanbaldie/.fleet/events/scratch/504bc64bcf1e8a1edd6627a66c572911c42408f6509d9bf3709a0890bcdd1395
+
+No project lockfile or dependency installation required. Used existing Bash,
+Python standard library, and pytest. No mutable dependencies or build outputs
+were written through symlinks into another checkout. Installed skill symlinks
+pointed only into the isolated fixture project. The public installer used the
+supplied TMPDIR for transient manifests and removed them on exit.
+
+All extractor subprocesses received isolated HOME, with CODEX_HOME,
+CLAUDE_CONFIG_DIR, OPENCODE_DB, XDG_DATA_HOME, PI_CODING_AGENT_DIR, and
+PI_CODING_AGENT_SESSION_DIR unset. No real user sessions or credentials copied.
+Fixtures are disclosed synthetic Codex and Pi JSONL records, not CLI-generated
+sessions or an LLM/TUI run. Product interface driven: actual installer and
+installed Python extractor CLIs.
+
+Docker was available; only inventories were read. No run-created Docker
+containers, images, or volumes. Deprecated ship-spec was outside scope and
+explicitly skipped by RUN_ALL_SKIP=install-ship-spec.sh.
+
+Harness diagnostics: an exact-edit call failed because its oldText occurred
+twice; no change was applied. Retried with unique surrounding text. GitHub's
+legacy branch-protection endpoint returned 404 'Branch not protected'; the
+rules endpoint returned an active PR rule (zero approvals required), deletion
+protection, and non-fast-forward protection. These are setup/driver observations,
+not product failures.

@@ -1,0 +1,62 @@
+install-router-1: exit 0
+codex-discovery-alone-1: exit 0
+codex-path-alone-1: exit 0
+install-codex-sibling-1: exit 0
+codex-discovery-sibling-1: exit 0
+pi-cwd-collision-1: exit 0
+router-pi-cwd-collision-1: exit 0
+router-pi-list-1: exit 0
+pi-pinned-control-1: exit 0
+pi-explicit-path-1: exit 0
+pi-missing-id-1: exit 1
+pi-no-collision-control-1: exit 0
+install-router-2: exit 0
+codex-discovery-alone-2: exit 0
+codex-path-alone-2: exit 0
+install-codex-sibling-2: exit 0
+codex-discovery-sibling-2: exit 0
+pi-cwd-collision-2: exit 0
+router-pi-cwd-collision-2: exit 0
+router-pi-list-2: exit 0
+pi-pinned-control-2: exit 0
+pi-explicit-path-2: exit 0
+pi-missing-id-2: exit 1
+pi-no-collision-control-2: exit 0
+[
+  {
+    "attempt": 1,
+    "codex": {
+      "discovered_goal": false,
+      "explicit_goal": false,
+      "with_sibling_goal": true,
+      "discovery_exit": 0
+    },
+    "pi": {
+      "wrong_session_selected": true,
+      "router_wrong_session_selected": true,
+      "pinned_correct": true,
+      "explicit_correct_goal": true,
+      "missing_id_exit": 1,
+      "list_exit": 0,
+      "ordinary_correct": true
+    }
+  },
+  {
+    "attempt": 2,
+    "codex": {
+      "discovered_goal": false,
+      "explicit_goal": false,
+      "with_sibling_goal": true,
+      "discovery_exit": 0
+    },
+    "pi": {
+      "wrong_session_selected": true,
+      "router_wrong_session_selected": true,
+      "pinned_correct": true,
+      "explicit_correct_goal": true,
+      "missing_id_exit": 1,
+      "list_exit": 0,
+      "ordinary_correct": true
+    }
+  }
+]

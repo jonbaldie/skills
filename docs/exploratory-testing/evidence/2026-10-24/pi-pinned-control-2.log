@@ -1,0 +1,33 @@
+cwd: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/2/apps/web-api
+HOME: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/2/home
+command: ['/opt/homebrew/opt/python@3.14/bin/python3.14', PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/skills/resume-from-pi/scripts/extract-session.py'), '--cwd', PosixPath('/Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/2/apps/web-api'), '22222222']
+exit: 0
+
+STDOUT
+# Pi session brief
+session_id: 22222222-2222-4222-8222-222222222222
+path: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/2/home/.pi/agent/sessions/--Users-jonathanbaldie-Code-2-github.com-jonbaldie-skills-.fleet-exploratory-2026-10-24-fixtures-2-apps-web-api--/2026-10-24T00-00-00_22222222-2222-4222-8222-222222222222.jsonl
+mtime: 2026-10-24T01:00:00
+cwd: /Users/jonathanbaldie/Code-2/github.com/jonbaldie/skills/.fleet/exploratory-2026-10-24/fixtures/2/apps/web-api
+last_prompt: Fix the web-api invoice endpoint.
+
+## Opening goal
+
+### User
+Fix the web-api invoice endpoint.
+
+## Recent turns
+
+### User
+Fix the web-api invoice endpoint.
+
+### Assistant
+I will continue the requested change.
+
+## Ending
+I will continue the requested change.
+
+## Resume instruction
+Continue the interrupted work from this brief. Do not summarise and wait. Ground against the live workspace, then act.
+
+STDERR

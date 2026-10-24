@@ -1,0 +1,6 @@
+Removed run-owned fixtures: PASS
+Docker resources created by run: containers=0 images=0 volumes=0
+Only Docker list commands were used; ship-spec suite explicitly skipped.
+Pre-existing Docker resources left untouched.
+Live HOME stores never used by extractor subprocesses.
+Original untracked .claude/, .coverage, .serena/ left untouched.
