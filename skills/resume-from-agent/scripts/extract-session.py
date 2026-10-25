@@ -1996,7 +1996,7 @@ def extract_codex_or_sibling(cand: Candidate) -> Brief:
     text = run_sibling_path_extractor("codex", path)
     if text:
         return _brief_from_preformatted(text, agent="codex", cand=cand)
-    return _generic_jsonl_brief(path, agent="codex", session_id=cand.session_id, cwd=cand.cwd)
+    return _codex_rollout_brief(path, session_id=cand.session_id)
 
 
 def discover_opencode(cwd: str, session_id: str | None) -> list[Candidate]:
