@@ -1086,6 +1086,97 @@ class ExtractSessionTests(unittest.TestCase):
         self.assertIn("id=7f3a99b2 ", rows[1])
         self.assertIn(f"path={decoy}", rows[1])
 
+    def _write_pi_colliding_projects(self, tmp: Path):
+        """Sessions for two cwds that encode to one Pi directory (#215)."""
+        home = tmp / "home"
+        mine = tmp / "apps" / "web-api"
+        other = tmp / "apps-web" / "api"
+        mine.mkdir(parents=True)
+        other.mkdir(parents=True)
+        key = self.mod.encode_pi_cwd(str(mine))
+        self.assertEqual(key, self.mod.encode_pi_cwd(str(other)))
+        sess = home / ".pi" / "agent" / "sessions" / key
+        sess.mkdir(parents=True)
+        own = sess / "2026-01-01T12-00-00-000Z_2222.jsonl"
+        foreign = sess / "2026-01-01T13-00-00-000Z_3333.jsonl"
+        for path, session_id, cwd, prompt in (
+            (own, "2222", mine, "own project goal"),
+            (foreign, "3333", other, "other project goal"),
+        ):
+            path.write_text(
+                json.dumps(
+                    {"type": "session", "version": 3, "id": session_id, "cwd": str(cwd)}
+                )
+                + "\n"
+                + json.dumps(
+                    {"type": "message", "message": {"role": "user", "content": prompt}}
+                )
+                + "\n"
+            )
+        os.utime(own, (1_700_000_000, 1_700_000_000))
+        os.utime(foreign, (1_700_003_600, 1_700_003_600))
+        return home, mine, other, own, foreign
+
+    def test_pi_colliding_cwd_selects_own_session_with_or_without_sibling(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home, mine, other, own, foreign = self._write_pi_colliding_projects(
+                Path(tmp)
+            )
+            sibling = self.mod.find_sibling_extractor
+            self.assertIsNotNone(sibling("pi"))
+            for label, finder in (
+                ("sibling", sibling),
+                ("standalone", lambda agent: None),
+            ):
+                with self.subTest(label), patch.dict(
+                    os.environ, {"HOME": str(home)}
+                ), patch.object(self.mod, "find_sibling_extractor", finder):
+                    code, out = self._main_output(["--cwd", str(mine), "pi"])
+                    self.assertEqual(code, 0)
+                    self.assertIn("session_id: 2222\n", out)
+                    self.assertIn(f"cwd: {mine}\n", out)
+                    self.assertIn("own project goal", out)
+                    self.assertNotIn("other project goal", out)
+
+                    code, out = self._main_output(
+                        ["--cwd", str(mine), "--list", "pi"]
+                    )
+                    self.assertEqual(code, 0)
+                    self.assertIn(f"path={own}", out)
+                    self.assertNotIn(str(foreign), out)
+
+                    # A pinned id may cross projects but reports its own cwd.
+                    code, out = self._main_output(
+                        ["--cwd", str(mine), "pi", "3333"]
+                    )
+                    self.assertEqual(code, 0)
+                    self.assertIn("session_id: 3333\n", out)
+                    self.assertIn(f"cwd: {other}\n", out)
+                    self.assertNotIn(f"cwd: {mine}\n", out)
+                    self.assertIn("other project goal", out)
+
+    def test_pi_colliding_cwd_never_emits_only_other_project_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home, mine, other, own, foreign = self._write_pi_colliding_projects(
+                Path(tmp)
+            )
+            own.unlink()
+            for label, finder in (
+                ("sibling", self.mod.find_sibling_extractor),
+                ("standalone", lambda agent: None),
+            ):
+                with self.subTest(label), patch.dict(
+                    os.environ, {"HOME": str(home)}
+                ), patch.object(self.mod, "find_sibling_extractor", finder):
+                    code, out = self._main_output(["--cwd", str(mine), "pi"])
+                    self.assertIsInstance(code, SystemExit)
+                    self.assertNotIn("other project goal", out)
+                    code, out = self._main_output(
+                        ["--cwd", str(mine), "--list", "pi"]
+                    )
+                    self.assertEqual(code, 1)
+                    self.assertNotIn(str(foreign), out)
+
     def test_rank_candidates_orders_by_match_tier_then_recency(self):
         C = self.mod.Candidate
 
