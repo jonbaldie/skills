@@ -2327,6 +2327,14 @@ def _generic_jsonl_brief(
                 continue
             if not isinstance(obj, dict):
                 continue
+            if agent == "pi" and obj.get("type") == "session":
+                # Recorded identity takes precedence over explicit-path defaults.
+                recorded_id = obj.get("id")
+                recorded_cwd = obj.get("cwd")
+                if isinstance(recorded_id, str) and recorded_id:
+                    session_id = recorded_id
+                if isinstance(recorded_cwd, str) and recorded_cwd:
+                    cwd = recorded_cwd
             message = obj.get("message") if isinstance(obj.get("message"), dict) else obj
             # Pi wraps turns as {"type": "message", "message": {"role": ...}} (#177).
             role = message.get("role") or obj.get("role") or obj.get("type")
