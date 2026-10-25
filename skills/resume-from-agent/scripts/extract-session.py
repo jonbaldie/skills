@@ -1818,6 +1818,24 @@ def pi_session_id(path: Path) -> str:
     return stem.split("_", 1)[1] if "_" in stem else stem
 
 
+def pi_header_cwd(path: Path) -> str | None:
+    """Return the cwd recorded in a Pi session's header line, if any."""
+    try:
+        with path.open() as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                obj = parse_json_maybe(line)
+                if isinstance(obj, dict) and obj.get("type") == "session":
+                    cwd = obj.get("cwd")
+                    return cwd if isinstance(cwd, str) and cwd else None
+                return None
+    except (OSError, UnicodeDecodeError):
+        return None
+    return None
+
+
 def discover_pi(cwd: str, session_id: str | None) -> list[Candidate]:
     root = home() / ".pi" / "agent" / "sessions"
     if not root.is_dir():
@@ -1831,7 +1849,7 @@ def discover_pi(cwd: str, session_id: str | None) -> list[Candidate]:
                 Candidate(
                     agent="pi",
                     session_id=real_id,
-                    cwd=None,
+                    cwd=pi_header_cwd(path),
                     mtime=path.stat().st_mtime,
                     path=str(path),
                     match=match_session_id(sid, real_id, path.stem),
@@ -1843,11 +1861,16 @@ def discover_pi(cwd: str, session_id: str | None) -> list[Candidate]:
         if not project.is_dir():
             continue
         for path in project.glob("*.jsonl"):
+            # Distinct cwds can encode to one directory (a/b-c and a-b/c), so
+            # the directory only narrows the search; the header decides.
+            recorded = pi_header_cwd(path)
+            if recorded is not None and not same_cwd(recorded, cwd):
+                continue
             out.append(
                 Candidate(
                     agent="pi",
                     session_id=pi_session_id(path),
-                    cwd=cwd,
+                    cwd=recorded or cwd,
                     mtime=path.stat().st_mtime,
                     path=str(path),
                 )

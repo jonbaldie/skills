@@ -160,6 +160,67 @@ class ResolveSessionTests(unittest.TestCase):
             self.assertIn("newer physical prompt", output.getvalue())
             self.assertNotIn("pi-logical-session", output.getvalue())
 
+    def _colliding_cwds(self, home: Path) -> tuple[Path, Path, Path]:
+        """Two real workspaces whose cwd encodes to one Pi directory (#215)."""
+        mine = home / "apps" / "web-api"
+        other = home / "apps-web" / "api"
+        mine.mkdir(parents=True)
+        other.mkdir(parents=True)
+        session_dir = self._project_session_dir(home, mine)
+        self.assertEqual(session_dir, self._project_session_dir(home, other))
+        return mine, other, session_dir
+
+    def test_colliding_cwd_ignores_newer_other_project_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = self._home(tmp)
+            mine, other, session_dir = self._colliding_cwds(home)
+            own = self._write_project_session(
+                session_dir, "pi-own-session", "own project goal", mine
+            )
+            foreign = session_dir / "20260101T130000_pi-other-session.jsonl"
+            foreign.write_text(
+                json.dumps(
+                    {"type": "session", "id": "pi-other-session", "cwd": str(other)}
+                )
+                + "\n"
+                + json.dumps(
+                    {
+                        "type": "message",
+                        "message": {"role": "user", "content": "other project goal"},
+                    }
+                )
+                + "\n"
+            )
+            os.utime(own, (1_700_000_000, 1_700_000_000))
+            os.utime(foreign, (1_700_003_600, 1_700_003_600))
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                code = self.mod.main(["--cwd", str(mine)])
+
+            self.assertEqual(code, 0)
+            self.assertIn("session_id: pi-own-session\n", output.getvalue())
+            self.assertIn(f"cwd: {mine}\n", output.getvalue())
+            self.assertIn("own project goal", output.getvalue())
+            self.assertNotIn("other project goal", output.getvalue())
+
+            # Only the unrelated session left: no-id discovery must not emit it.
+            own.unlink()
+            output = io.StringIO()
+            with redirect_stdout(output), self.assertRaises(SystemExit) as raised:
+                self.mod.main(["--cwd", str(mine)])
+            self.assertIn(str(other), str(raised.exception))
+            self.assertNotIn("other project goal", output.getvalue())
+
+            # Pinning the other project's id stays available and truthful.
+            output = io.StringIO()
+            with redirect_stdout(output):
+                code = self.mod.main(["--cwd", str(mine), "pi-other-session"])
+            self.assertEqual(code, 0)
+            self.assertIn("session_id: pi-other-session\n", output.getvalue())
+            self.assertIn(f"cwd: {other}\n", output.getvalue())
+            self.assertIn("other project goal", output.getvalue())
+
     def test_explicit_jsonl_lookup_remains_available(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = self._home(tmp)

@@ -21,6 +21,34 @@ def sessions_root() -> Path:
     return Path.home() / ".pi" / "agent" / "sessions"
 
 
+def header_cwd(path: Path) -> str | None:
+    """Return the cwd recorded in a session's header line, if any."""
+    try:
+        with path.open() as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    return None
+                if isinstance(obj, dict) and obj.get("type") == "session":
+                    cwd = obj.get("cwd")
+                    return cwd if isinstance(cwd, str) and cwd else None
+                return None
+    except (OSError, UnicodeDecodeError):
+        return None
+    return None
+
+
+def physical_path(path: str) -> str:
+    try:
+        return str(Path(path).expanduser().resolve())
+    except OSError:
+        return str(Path(path).expanduser())
+
+
 def resolve_session(cwd: str, session_id: str | None) -> Path:
     root = sessions_root()
     if session_id:
@@ -62,7 +90,23 @@ def resolve_session(cwd: str, session_id: str | None) -> Path:
     if not files:
         project_list = ", ".join(str(project) for project in existing_projects)
         raise SystemExit(f"No Pi session JSONL files in {project_list}")
-    return max(files, key=lambda p: p.stat().st_mtime)
+    # Distinct cwds can encode to one directory (a/b-c and a-b/c), so the
+    # directory only narrows the search; the header says whose session it is.
+    wanted = physical_path(cwd)
+    owned = []
+    foreign: set[str] = set()
+    for session in files:
+        recorded = header_cwd(session)
+        if recorded is None or physical_path(recorded) == wanted:
+            owned.append(session)
+        else:
+            foreign.add(recorded)
+    if not owned:
+        raise SystemExit(
+            f"No Pi session JSONL for cwd {cwd!r}; sessions in the same "
+            f"directory belong to: {', '.join(sorted(foreign))}"
+        )
+    return max(owned, key=lambda p: p.stat().st_mtime)
 
 
 def extract_text(content) -> str:
