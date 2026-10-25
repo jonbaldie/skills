@@ -13,6 +13,60 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class StandaloneInstallTests(unittest.TestCase):
+    def test_pi_explicit_path_preserves_header_with_and_without_sibling(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            caller = Path(tmp) / "caller"
+            requested = Path(tmp) / "requested"
+            recorded = Path(tmp) / "recorded"
+            for directory in (home, caller, requested, recorded):
+                directory.mkdir()
+            env = dict(os.environ, HOME=str(home), PYTHONDONTWRITEBYTECODE="1")
+
+            def run(*args, expected=0):
+                result = subprocess.run(
+                    [str(arg) for arg in args], cwd=caller, env=env,
+                    capture_output=True, text=True, timeout=30,
+                )
+                self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+                return result.stdout
+
+            def install(skill):
+                run(ROOT / "install.sh", "--agent", "pi", "--without-prereqs",
+                    "--skill", skill)
+
+            install("resume-from-agent")
+            skills = caller / ".agents" / "skills"
+            self.assertFalse((skills / "resume-from-pi").exists())
+            self.assertFalse((home / ".agents" / "skills").exists())
+            router = skills / "resume-from-agent" / "scripts" / "extract-session.py"
+            sid = "22222222-2222-4222-8222-222222222222"
+            transcript = Path(tmp) / f"2026-10-24T00-00-00_{sid}.jsonl"
+            goal = "Fix invoice rounding at the boundary."
+            reply = "I will add the boundary regression next."
+            rows = [
+                {"type": "session", "version": 3, "id": sid, "cwd": str(recorded)},
+                {"type": "message", "message": {"role": "user", "content": goal}},
+                {"type": "message", "message": {"role": "assistant",
+                    "content": [{"type": "text", "text": reply}]}},
+            ]
+            transcript.write_text("".join(json.dumps(row) + "\n" for row in rows))
+
+            for sibling in (False, True):
+                if sibling:
+                    install("resume-from-pi")
+                for agent_args in ([], ["--agent", "pi"]):
+                    with self.subTest(sibling=sibling, agent_args=agent_args):
+                        text = run(sys.executable, router, "--cwd", requested,
+                                   *agent_args, "--path", transcript)
+                        self.assertIn(f"session_id: {sid}\n", text)
+                        self.assertIn(f"cwd: {recorded}\n", text)
+                        self.assertIn("agent: pi\n", text)
+                        self.assertIn(goal, text)
+                        self.assertIn(reply, text)
+                        run(sys.executable, router, *agent_args, "--path",
+                            Path(tmp) / "missing.jsonl", expected=1)
+
     def test_codex_discovery_preserves_rollout_without_sibling(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "home"
