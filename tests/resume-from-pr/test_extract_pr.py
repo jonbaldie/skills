@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import email.message
 import http.client
 import importlib.util
@@ -1582,6 +1583,13 @@ class CollectionPagingTests(unittest.TestCase):
         self.assertEqual([p.get("limit") for p in pages], ["100"] * 3)
         self.assertEqual([p.get("start") for p in pages], [None, "2", "4"])
         self.assertEqual(brief.notes, [])
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(self.mod.main([target.url]), 0)
+        self.assertIn(
+            "## Linked issues\n- KEY/slug#12\n- other/repo#34\n",
+            output.getvalue(),
+        )
 
     def test_azure_collects_every_page(self):
         root = (
