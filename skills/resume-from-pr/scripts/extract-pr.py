@@ -883,35 +883,100 @@ def env_token(*names: str) -> str | None:
     return None
 
 
+class _ScopedRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def __init__(self, reader: "ForgeReader"):
+        self.reader = reader
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # Validate before urllib constructs a redirected Request with copied headers.
+        try:
+            newurl = self.reader.resolve(newurl, req.full_url)
+        except FetchError:
+            fp.close()
+            raise
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+class ForgeReader:
+    """JSON transport with credentials bound to a selected API origin.
+
+    Follow-up links may choose a path, never the credential trust boundary.
+    Each provider fetch shares this capability across all of its reads.
+    """
+
+    def __init__(self, api_url: str, headers: dict[str, str] | None = None):
+        self.api_url = api_url
+        self.current_url = api_url
+        self.origin = self._origin(api_url)
+        self.headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+        self.headers.update(headers or {})
+        self.opener = urllib.request.build_opener(_ScopedRedirectHandler(self))
+
+    @staticmethod
+    def _origin(url: str) -> tuple[str, str, int]:
+        try:
+            parts = urllib.parse.urlsplit(url)
+            if (
+                parts.scheme not in {"http", "https"}
+                or not parts.hostname
+                or parts.username is not None
+                or parts.password is not None
+            ):
+                raise ValueError("not an HTTP API URL")
+            port = parts.port
+            if port is None:
+                port = 443 if parts.scheme == "https" else 80
+            return parts.scheme, parts.hostname.lower(), port
+        except ValueError as exc:
+            raise FetchError("unsafe forge URL: invalid origin") from exc
+
+    def resolve(self, url: str, current_url: str | None = None) -> str:
+        try:
+            resolved = urllib.parse.urljoin(current_url or self.api_url, url)
+            origin = self._origin(resolved)
+        except (TypeError, ValueError) as exc:
+            raise FetchError("unsafe forge URL: invalid link") from exc
+        if origin != self.origin:
+            raise FetchError("unsafe forge URL: outside trusted API origin")
+        return resolved
+
+    def page(self, url: str, timeout: int = 30) -> tuple[Any, dict[str, str]]:
+        url = self.resolve(url)
+        request = urllib.request.Request(url, headers=self.headers)
+        try:
+            with self.opener.open(request, timeout=timeout) as response:
+                raw = response.read().decode("utf-8")
+                response_headers = {k.lower(): v for k, v in dict(response.headers).items()}
+                # Relative links use the final (validated) response URL.
+                self.current_url = response.geturl()
+        except urllib.error.HTTPError as exc:
+            try:
+                body = exc.read().decode("utf-8", errors="replace")
+            finally:
+                exc.close()
+            raise FetchError(f"HTTP {exc.code} for {url}: {truncate(body, 240)}") from exc
+        except urllib.error.URLError as exc:
+            raise Skip(f"network error for {url}: {exc.reason}") from exc
+        except ConnectionError as exc:
+            raise Skip(f"network error for {url}: {exc}") from exc
+        if not raw.strip():
+            return None, response_headers
+        try:
+            return json.loads(raw), response_headers
+        except json.JSONDecodeError as exc:
+            raise FetchError(f"Non-JSON response from {url}") from exc
+
+    def json(self, url: str, timeout: int = 30) -> Any:
+        return self.page(url, timeout)[0]
+
+
 def http_page(
     url: str,
     headers: dict[str, str] | None = None,
     timeout: int = 30,
 ) -> tuple[Any, dict[str, str]]:
-    """GET url; return the decoded JSON body and the lower-cased response headers."""
-    req_headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
-    if headers:
-        req_headers.update(headers)
-    request = urllib.request.Request(url, headers=req_headers)
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            raw = response.read().decode("utf-8")
-            response_headers = {k.lower(): v for k, v in dict(response.headers).items()}
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise FetchError(f"HTTP {exc.code} for {url}: {truncate(body, 240)}") from exc
-    except urllib.error.URLError as exc:
-        raise Skip(f"network error for {url}: {exc.reason}") from exc
-    except ConnectionError as exc:
-        # urlopen wraps send failures in URLError but not a reset or close while
-        # awaiting the response (http.client.RemoteDisconnected is one).
-        raise Skip(f"network error for {url}: {exc}") from exc
-    if not raw.strip():
-        return None, response_headers
-    try:
-        return json.loads(raw), response_headers
-    except json.JSONDecodeError as exc:
-        raise FetchError(f"Non-JSON response from {url}") from exc
+    """One trusted entry-point read; linked reads must reuse a ForgeReader."""
+    return ForgeReader(url, headers).page(url, timeout)
 
 
 def http_json(
@@ -986,7 +1051,7 @@ class Collection:
 
 def http_collection(
     url: str,
-    headers: dict[str, str],
+    reader: ForgeReader,
     paging: Paging,
     name: str,
 ) -> Collection:
@@ -1004,7 +1069,7 @@ def http_collection(
             )
             break
         try:
-            body, response_headers = http_page(next_url, headers=headers)
+            body, response_headers = reader.page(next_url)
         except (FetchError, Skip) as exc:
             collection.note = (
                 f"{name}: fetch failed after {len(collection.items)} items — {exc}"
@@ -1014,19 +1079,26 @@ def http_collection(
         items = body.get(paging.items) if paging.items and isinstance(body, dict) else body
         if isinstance(items, list):
             collection.items.extend(items)
-        next_url = paging.next_page(next_url, body, response_headers)
+        link = paging.next_page(next_url, body, response_headers)
+        try:
+            next_url = reader.resolve(link, reader.current_url) if link else None
+        except FetchError as exc:
+            collection.note = (
+                f"{name}: fetch failed after {len(collection.items)} items — {exc}"
+            )
+            break
     return collection
 
 
 def collect(
     notes: list[str],
     url: str,
-    headers: dict[str, str],
+    reader: ForgeReader,
     paging: Paging,
     name: str,
 ) -> list[Any]:
     """http_collection's items, recording its note (if any) in notes."""
-    collection = http_collection(url, headers, paging, name)
+    collection = http_collection(url, reader, paging, name)
     if collection.note:
         notes.append(collection.note)
     return collection.items
@@ -1371,22 +1443,22 @@ def fetch_github_api(target: Target, cwd: str | None = None) -> Brief:
         raise Skip("no owner/repo for GitHub API")
     root = github_api_root(target.host or "github.com")
     base = f"{root}/repos/{target.slug}/pulls/{target.number}"
-    headers = github_headers()
-    pr = http_json(base, headers=headers)
+    reader = ForgeReader(root, github_headers())
+    pr = reader.json(base)
     if not isinstance(pr, dict):
         raise FetchError(f"No GitHub pull request {target.slug}#{target.number}")
 
     notes: list[str] = []
-    files = collect(notes, f"{base}/files", headers, GITHUB_PAGING, "files")
+    files = collect(notes, f"{base}/files", reader, GITHUB_PAGING, "files")
     review_comments = collect(
-        notes, f"{base}/comments", headers, GITHUB_PAGING, "review comments"
+        notes, f"{base}/comments", reader, GITHUB_PAGING, "review comments"
     )
-    reviews = collect(notes, f"{base}/reviews", headers, GITHUB_PAGING, "reviews")
-    commits = collect(notes, f"{base}/commits", headers, GITHUB_PAGING, "commits")
+    reviews = collect(notes, f"{base}/reviews", reader, GITHUB_PAGING, "reviews")
+    commits = collect(notes, f"{base}/commits", reader, GITHUB_PAGING, "commits")
     issue_comments = collect(
         notes,
         f"{root}/repos/{target.slug}/issues/{target.number}/comments",
-        headers,
+        reader,
         GITHUB_PAGING,
         "issue comments",
     )
@@ -1397,14 +1469,14 @@ def fetch_github_api(target: Target, cwd: str | None = None) -> Brief:
         statuses = collect(
             notes,
             f"{root}/repos/{target.slug}/commits/{sha}/status",
-            headers,
+            reader,
             replace(GITHUB_PAGING, items="statuses"),
             "statuses",
         )
         check_runs = collect(
             notes,
             f"{root}/repos/{target.slug}/commits/{sha}/check-runs",
-            headers,
+            reader,
             replace(GITHUB_PAGING, items="check_runs"),
             "check runs",
         )
@@ -1549,18 +1621,18 @@ def fetch_gitlab_api(target: Target, cwd: str | None = None) -> Brief:
         raise Skip("no GitLab project path")
     host = target.host or "gitlab.com"
     root = f"https://{host}/api/v4/projects/{project}/merge_requests/{target.number}"
-    headers = gitlab_headers()
-    mr = http_json(root, headers=headers)
+    reader = ForgeReader(root, gitlab_headers())
+    mr = reader.json(root)
     if not isinstance(mr, dict):
         raise FetchError(f"No GitLab merge request {target.slug}!{target.number}")
 
     notes: list[str] = []
     # /diffs is the paged replacement for the deprecated, capped /changes.
-    changes = collect(notes, f"{root}/diffs", headers, GITLAB_PAGING, "diffs")
+    changes = collect(notes, f"{root}/diffs", reader, GITLAB_PAGING, "diffs")
     discussions = collect(
-        notes, f"{root}/discussions", headers, GITLAB_PAGING, "discussions"
+        notes, f"{root}/discussions", reader, GITLAB_PAGING, "discussions"
     )
-    commits = collect(notes, f"{root}/commits", headers, GITLAB_PAGING, "commits")
+    commits = collect(notes, f"{root}/commits", reader, GITLAB_PAGING, "commits")
     brief = brief_from_gitlab(
         mr,
         changes=changes,
@@ -1595,7 +1667,7 @@ def bitbucket_headers() -> dict[str, str]:
 _FULL_COMMIT_ID = re.compile(r"[0-9a-fA-F]{40}\Z")
 
 
-def bitbucket_cloud_head_sha(pr: dict[str, Any], headers: dict[str, str]) -> str | None:
+def bitbucket_cloud_head_sha(pr: dict[str, Any], reader: ForgeReader) -> str | None:
     """Commit id git can fetch, or None when the payload has no head hash.
 
     A 40-character id is already fetchable and is not requested again. A shorter
@@ -1614,7 +1686,7 @@ def bitbucket_cloud_head_sha(pr: dict[str, Any], headers: dict[str, str]) -> str
     href = self_link.get("href") if isinstance(self_link, dict) else None
     if not isinstance(href, str) or not href:
         raise FetchError(f"Bitbucket abbreviated head {digest} has no commit link")
-    data = http_json(href, headers=headers)
+    data = reader.json(reader.resolve(href, reader.current_url))
     resolved = data.get("hash") if isinstance(data, dict) else None
     if not isinstance(resolved, str) or not _FULL_COMMIT_ID.fullmatch(resolved):
         raise FetchError(f"Bitbucket commit {href} did not return a full hash")
@@ -1706,16 +1778,16 @@ def fetch_bitbucket_api(target: Target, cwd: str | None = None) -> Brief:
         root = f"https://api.bitbucket.org/2.0/repositories/{target.slug}/pullrequests/{target.number}"
     else:
         raise Skip("Bitbucket Server uses a different API path")
-    headers = bitbucket_headers()
-    pr = http_json(root, headers=headers)
+    reader = ForgeReader(root, bitbucket_headers())
+    pr = reader.json(root)
     if not isinstance(pr, dict):
         raise FetchError(f"No Bitbucket pull request {target.slug}#{target.number}")
-    head_sha = bitbucket_cloud_head_sha(pr, headers)
+    head_sha = bitbucket_cloud_head_sha(pr, reader)
 
     notes: list[str] = []
-    comments = collect(notes, f"{root}/comments", headers, BITBUCKET_PAGING, "comments")
-    diffstat = collect(notes, f"{root}/diffstat", headers, BITBUCKET_PAGING, "diffstat")
-    statuses = collect(notes, f"{root}/statuses", headers, BITBUCKET_PAGING, "statuses")
+    comments = collect(notes, f"{root}/comments", reader, BITBUCKET_PAGING, "comments")
+    diffstat = collect(notes, f"{root}/diffstat", reader, BITBUCKET_PAGING, "diffstat")
+    statuses = collect(notes, f"{root}/statuses", reader, BITBUCKET_PAGING, "statuses")
     brief = brief_from_bitbucket(
         pr,
         comments=comments,
@@ -1736,8 +1808,8 @@ def fetch_bitbucket_server_api(target: Target, cwd: str | None = None) -> Brief:
         f"https://{target.host}/rest/api/1.0/projects/{target.owner}"
         f"/repos/{target.repo}/pull-requests/{target.number}"
     )
-    headers = bitbucket_headers()
-    pr = http_json(root, headers=headers)
+    reader = ForgeReader(root, bitbucket_headers())
+    pr = reader.json(root)
     if not isinstance(pr, dict):
         raise FetchError(f"No Bitbucket Server pull request {target.number}")
     from_ref = pr.get("fromRef") or {}
@@ -1745,14 +1817,14 @@ def fetch_bitbucket_server_api(target: Target, cwd: str | None = None) -> Brief:
     notes: list[str] = []
     files: list[FileChange] = []
     for item in collect(
-        notes, f"{root}/changes", headers, BITBUCKET_SERVER_PAGING, "changes"
+        notes, f"{root}/changes", reader, BITBUCKET_SERVER_PAGING, "changes"
     ):
         path = ((item.get("path") or {}).get("toString")) or ""
         if path:
             files.append(FileChange(path=path, change_type=item.get("type")))
     comments: list[Comment] = []
     for item in collect(
-        notes, f"{root}/activities", headers, BITBUCKET_SERVER_PAGING, "activities"
+        notes, f"{root}/activities", reader, BITBUCKET_SERVER_PAGING, "activities"
     ):
         comment = item.get("comment") or {}
         body = (comment.get("text") or "").strip()
@@ -1804,18 +1876,18 @@ def fetch_gitea_api(target: Target, cwd: str | None = None) -> Brief:
         raise Skip("no owner/repo for Gitea API")
     host = target.host
     root = f"https://{host}/api/v1/repos/{target.slug}/pulls/{target.number}"
-    headers = gitea_headers()
-    pr = http_json(root, headers=headers)
+    reader = ForgeReader(root, gitea_headers())
+    pr = reader.json(root)
     if not isinstance(pr, dict):
         raise FetchError(f"No Gitea pull request {target.slug}#{target.number}")
 
     notes: list[str] = []
-    files = collect(notes, f"{root}/files", headers, GITEA_PAGING, "files")
-    reviews = collect(notes, f"{root}/reviews", headers, GITEA_PAGING, "reviews")
+    files = collect(notes, f"{root}/files", reader, GITEA_PAGING, "files")
+    reviews = collect(notes, f"{root}/reviews", reader, GITEA_PAGING, "reviews")
     issue_comments = collect(
         notes,
         f"https://{host}/api/v1/repos/{target.slug}/issues/{target.number}/comments",
-        headers,
+        reader,
         GITEA_PAGING,
         "issue comments",
     )
@@ -1931,16 +2003,16 @@ def fetch_azure_api(target: Target, cwd: str | None = None) -> Brief:
         f"https://dev.azure.com/{org}/{project}/_apis/git/repositories/{repo}"
         f"/pullrequests/{target.number}"
     )
-    headers = azure_headers()
-    pr = http_json(f"{root}?api-version=7.1", headers=headers)
+    reader = ForgeReader(root, azure_headers())
+    pr = reader.json(f"{root}?api-version=7.1")
     if not isinstance(pr, dict):
         raise FetchError(f"No Azure DevOps pull request {target.number}")
     notes: list[str] = []
     threads = collect(
-        notes, f"{root}/threads?api-version=7.1", headers, AZURE_PAGING, "threads"
+        notes, f"{root}/threads?api-version=7.1", reader, AZURE_PAGING, "threads"
     )
     statuses = collect(
-        notes, f"{root}/statuses?api-version=7.1", headers, AZURE_PAGING, "statuses"
+        notes, f"{root}/statuses?api-version=7.1", reader, AZURE_PAGING, "statuses"
     )
     brief = brief_from_azure(
         pr, threads=threads, statuses=statuses, source="api", target=target
@@ -2278,7 +2350,9 @@ def gitea_branch_target(remote: Target, branch: str) -> Target:
     root = f"https://{host}/api/v1/repos/{remote.slug}/pulls?state=open"
     # Gitea cannot filter /pulls by head branch, so read every page before
     # deciding the branch has no open pull request.
-    listing = http_collection(root, gitea_headers(), GITEA_PAGING, "open pull requests")
+    listing = http_collection(
+        root, ForgeReader(root, gitea_headers()), GITEA_PAGING, "open pull requests"
+    )
     same_repo = fork = None
     for pr in listing.items:
         if not isinstance(pr, dict):
