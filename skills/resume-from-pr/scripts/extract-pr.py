@@ -678,6 +678,26 @@ class Brief:
     notes: list[str] = field(default_factory=list)  # collections fetched only partly
 
 
+CLOSING_REFERENCE = re.compile(
+    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b:?\s+"
+    r"([\w.-]+/[\w.-]+)?#(\d+)\b",
+    re.IGNORECASE,
+)
+
+
+def parse_linked_issues(text: str, default_repo: str | None = None) -> list[str]:
+    """Return unique closing-keyword references in encounter order."""
+    refs: list[str] = []
+    seen: set[str] = set()
+    for repo, number in CLOSING_REFERENCE.findall(text or ""):
+        target_repo = repo or default_repo
+        reference = f"{target_repo}#{number}" if target_repo else f"#{number}"
+        if reference not in seen:
+            seen.add(reference)
+            refs.append(reference)
+    return refs
+
+
 def login_of(obj: Any, *keys: str) -> str:
     if isinstance(obj, str):
         return obj
@@ -1288,32 +1308,9 @@ def brief_from_github_view(
         checks=checks,
         commits=commits,
         labels=labels,
-        linked_issues=linked,
+        linked_issues=linked or parse_linked_issues(data.get("body") or ""),
         fork=bool(data.get("isCrossRepository")),
     )
-
-
-# GitHub's closing keywords; REST has no closingIssuesReferences, so read the body.
-CLOSING_REFERENCE = re.compile(
-    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b:?\s+"
-    r"([\w.-]+/[\w.-]+)?#(\d+)\b",
-    re.IGNORECASE,
-)
-
-
-def closing_references(body: str) -> list[dict[str, Any]]:
-    """Issues the PR body closes, shaped like gh's closingIssuesReferences."""
-    refs: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for repo, number in CLOSING_REFERENCE.findall(body):
-        key = f"{repo}#{number}"
-        if key not in seen:
-            seen.add(key)
-            ref: dict[str, Any] = {"number": int(number)}
-            if repo:
-                ref["repository"] = {"nameWithOwner": repo}
-            refs.append(ref)
-    return refs
 
 
 def brief_from_github_rest(
@@ -1405,7 +1402,6 @@ def brief_from_github_rest(
             }
             for r in check_runs or []
         ],
-        "closingIssuesReferences": closing_references(body or ""),
     }
     return brief_from_github_view(
         data, inline=review_comments or [], source=source, host=host
@@ -1579,6 +1575,7 @@ def brief_from_gitlab(
         )
     labels = [str(x) for x in (mr.get("labels") or [])]
     diff_refs = mr.get("diff_refs") if isinstance(mr.get("diff_refs"), dict) else {}
+    repo = gitlab_project_path(mr)
     return Brief(
         provider="gitlab",
         url=mr.get("web_url") or mr.get("url") or "",
@@ -1591,7 +1588,8 @@ def brief_from_gitlab(
         base=mr.get("target_branch"),
         head=mr.get("source_branch"),
         head_sha=mr.get("sha") or diff_refs.get("head_sha"),
-        repo=gitlab_project_path(mr),
+        repo=repo,
+        linked_issues=parse_linked_issues(mr.get("description") or "", default_repo=repo),
         host=host,
         source=source,
         files=files,
@@ -1749,6 +1747,8 @@ def brief_from_bitbucket(
         )
     links = pr.get("links") or {}
     html = (links.get("html") or {}).get("href") or pr.get("url") or ""
+    repository = dest.get("repository")
+    repo = repository.get("full_name") if isinstance(repository, dict) else None
     return Brief(
         provider="bitbucket",
         url=html,
@@ -1761,7 +1761,8 @@ def brief_from_bitbucket(
         base=(dest.get("branch") or {}).get("name"),
         head=(src.get("branch") or {}).get("name"),
         head_sha=(src.get("commit") or {}).get("hash"),
-        repo=f"{(pr.get('destination') or {}).get('repository', {}).get('full_name')}" if isinstance((pr.get("destination") or {}).get("repository"), dict) else None,
+        repo=repo,
+        linked_issues=parse_linked_issues(pr.get("description") or "", default_repo=repo),
         host=host,
         source=source,
         files=files,
@@ -1851,6 +1852,9 @@ def fetch_bitbucket_server_api(target: Target, cwd: str | None = None) -> Brief:
         head=from_ref.get("displayId"),
         head_sha=from_ref.get("latestCommit"),
         repo=f"{target.owner}/{target.repo}",
+        linked_issues=parse_linked_issues(
+            pr.get("description") or "", default_repo=f"{target.owner}/{target.repo}"
+        ),
         host=target.host,
         source="api",
         files=files,
@@ -1986,6 +1990,7 @@ def brief_from_azure(
         head_sha=(pr.get("lastMergeSourceCommit") or {}).get("commitId")
         or (pr.get("lastMergeCommit") or {}).get("commitId"),
         repo=repo,
+        linked_issues=parse_linked_issues(pr.get("description") or "", default_repo=repo),
         host=target.host if target else None,
         source=source,
         comments=comments,
@@ -2118,6 +2123,7 @@ def brief_from_git(
         repo=target.slug,
         host=target.host,
         source="git",
+        linked_issues=parse_linked_issues(message or "", default_repo=target.slug),
         files=parse_git_numstat(numstat or ""),
         commits=commits,
     )
