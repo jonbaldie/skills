@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import email.message
 import http.client
 import importlib.util
 import io
@@ -14,6 +15,9 @@ import threading
 import unittest
 import urllib.error
 import urllib.parse
+import urllib.request
+import urllib.response
+from types import SimpleNamespace
 from pathlib import Path
 
 
@@ -874,16 +878,19 @@ class BareNumberResolutionTests(unittest.TestCase):
 
 
 
-class FakeForge:
-    """Serve canned JSON through urlopen, paging the way the real host does."""
+class FakeForge(urllib.request.BaseHandler):
+    """Offline HTTP transport; retain the real opener and redirect machinery."""
+
+    handler_order = 100  # before urllib's network HTTP(S) handlers
 
     def __init__(self, testcase, mod):
         self.mod = mod
         self.routes = {}
         self.requests = []
-        original = mod.urllib.request.urlopen
-        mod.urllib.request.urlopen = self.urlopen
-        testcase.addCleanup(setattr, mod.urllib.request, "urlopen", original)
+        self.request_objects = []
+        original = mod.urllib.request.build_opener
+        mod.urllib.request.build_opener = lambda *handlers: original(*handlers, self)
+        testcase.addCleanup(setattr, mod.urllib.request, "build_opener", original)
 
     def route(self, url, handler):
         self.routes[url] = handler
@@ -899,6 +906,7 @@ class FakeForge:
     def urlopen(self, request, timeout=30):
         url = request.full_url
         self.requests.append(url)
+        self.request_objects.append(request)
         parts = urllib.parse.urlsplit(url)
         key = f"{parts.scheme}://{parts.netloc}{parts.path}"
         handler = self.routes.get(key)
@@ -910,23 +918,19 @@ class FakeForge:
             raise urllib.error.HTTPError(
                 url, result, "error", {}, io.BytesIO(b'{"message": "denied"}')
             )
-        body, headers = result
-        return _FakeResponse(json.dumps(body), headers)
+        body, headers = result[:2]
+        code = result[2] if len(result) > 2 else 200
+        message = email.message.Message()
+        for key, value in headers.items():
+            message[key] = value
+        response = urllib.response.addinfourl(
+            io.BytesIO(json.dumps(body).encode()), message, url, code
+        )
+        response.msg = "fixture"
+        return response
 
-
-class _FakeResponse:
-    def __init__(self, text, headers):
-        self._text = text
-        self.headers = headers
-
-    def read(self):
-        return self._text.encode("utf-8")
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
+    http_open = urlopen
+    https_open = urlopen
 
 
 def single(body):
@@ -1005,6 +1009,128 @@ def stamp(n):
     return f"2026-01-01T{n // 60:02d}:{n % 60:02d}:00Z"
 
 
+class ForgeReaderScopeTests(unittest.TestCase):
+    """Observe real Requests at an offline opener's HTTP(S) transport boundary."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_mod()
+
+    def setUp(self):
+        self.forge = FakeForge(self, self.mod)
+        self.url = "https://forge.invalid/api/items"
+        self.headers = {
+            "Authorization": "Bearer SYNTHETIC",
+            "Private-token": "SYNTHETIC",
+        }
+        self.reader = self.mod.ForgeReader(self.url, self.headers)
+
+    def assert_credentials(self, request):
+        headers = {k.lower(): v for k, v in request.header_items()}
+        for key, value in self.headers.items():
+            self.assertEqual(headers[key.lower()], value)
+
+    def test_normal_reads_and_default_ports_keep_credentials(self):
+        for trusted, destination in (
+            (self.url, self.url),
+            (self.url, "https://forge.invalid:443/api/items"),
+            ("https://forge.invalid:443/api/items", self.url),
+            ("http://forge.invalid/api/items", "http://forge.invalid:80/api/items"),
+        ):
+            with self.subTest(trusted=trusted, destination=destination):
+                self.forge.route(destination, single({"ok": True}))
+                reader = self.mod.ForgeReader(trusted, self.headers)
+                self.assertEqual(reader.json(destination), {"ok": True})
+                self.assert_credentials(self.forge.request_objects[-1])
+
+    def test_unsafe_reads_are_rejected_before_request_construction(self):
+        original = self.mod.urllib.request.Request
+        constructed = []
+
+        def record(*args, **kwargs):
+            constructed.append(args[0])
+            return original(*args, **kwargs)
+
+        self.mod.urllib.request.Request = record
+        self.addCleanup(setattr, self.mod.urllib.request, "Request", original)
+        for url in (
+            "https://outside.invalid/next", "//outside.invalid/next",
+            "https://forge.invalid:444/next", "http://forge.invalid/next",
+            "https://user:pass@forge.invalid/next", "file:///tmp/next",
+            "https://forge.invalid:bad/next", "https://[invalid/next",
+        ):
+            with self.subTest(url=url):
+                with self.assertRaises(self.mod.FetchError):
+                    self.reader.json(url)
+        self.assertEqual(constructed, [])
+        self.assertEqual(self.forge.request_objects, [])
+
+    def test_both_paging_policies_reject_origin_changes(self):
+        for paging in (self.mod.GITHUB_PAGING, self.mod.BITBUCKET_PAGING):
+            for link in ("https://outside.invalid/next", "https://forge.invalid:444/next",
+                         "http://forge.invalid/next"):
+                with self.subTest(paging=paging, link=link):
+                    self.forge.request_objects.clear()
+                    body = [1] if paging.items is None else {"values": [1], "next": link}
+                    headers = {"Link": f'<{link}>; rel="next"'}
+                    self.forge.route(self.url, lambda key, query: (body, headers))
+                    result = self.mod.http_collection(self.url, self.reader, paging, "items")
+                    self.assertEqual(result.items, [1])
+                    self.assertIn("unsafe", result.note)
+                    self.assertEqual(len(self.forge.request_objects), 1)
+                    self.assert_credentials(self.forge.request_objects[0])
+
+    def test_relative_pagination_keeps_credentials(self):
+        for paging in (self.mod.GITHUB_PAGING, self.mod.BITBUCKET_PAGING):
+            with self.subTest(paging=paging):
+                self.forge.request_objects.clear()
+                first = [1] if paging.items is None else {"values": [1], "next": "?page=2"}
+                last = [2] if paging.items is None else {"values": [2]}
+                self.forge.route(self.url, lambda key, query: (
+                    (last, {}) if query.get("page") == "2" else
+                    (first, {"Link": '<?page=2>; rel="next"'})
+                ))
+                result = self.mod.http_collection(self.url, self.reader, paging, "items")
+                self.assertEqual(result.items, [1, 2])
+                self.assertIsNone(result.note)
+                self.assertEqual(len(self.forge.request_objects), 2)
+                for request in self.forge.request_objects:
+                    self.assert_credentials(request)
+
+    def test_redirect_origin_changes_never_reach_transport(self):
+        for code in (301, 302, 303, 307, 308):
+            for destination in ("https://outside.invalid/next", "//outside.invalid/next",
+                                "https://forge.invalid:444/next", "http://forge.invalid/next"):
+                with self.subTest(code=code, destination=destination):
+                    self.forge.request_objects.clear()
+                    self.forge.route(self.url, lambda key, query: (
+                        {}, {"Location": destination}, code
+                    ))
+                    with self.assertRaisesRegex(self.mod.FetchError, "unsafe"):
+                        self.reader.json(self.url)
+                    self.assertEqual(len(self.forge.request_objects), 1)
+                    self.assert_credentials(self.forge.request_objects[0])
+
+    def test_same_origin_redirects_and_relative_followups_remain_usable(self):
+        for destination in ("/moved/items", "https://forge.invalid:443/moved/items"):
+            with self.subTest(destination=destination):
+                self.forge.request_objects.clear()
+                self.forge.route(self.url, lambda key, query: (
+                    {}, {"Location": destination}, 302
+                ))
+                moved = urllib.parse.urljoin(self.url, destination)
+                self.forge.route(moved, single({"values": [1], "next": "next"}))
+                self.forge.route(urllib.parse.urljoin(moved, "next"), single({"values": [2]}))
+                result = self.mod.http_collection(
+                    self.url, self.reader, self.mod.BITBUCKET_PAGING, "items"
+                )
+                self.assertEqual(result.items, [1, 2])
+                self.assertIsNone(result.note)
+                self.assertEqual(len(self.forge.request_objects), 3)
+                for request in self.forge.request_objects:
+                    self.assert_credentials(request)
+
+
 class CollectionPagingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -1062,6 +1188,33 @@ class CollectionPagingTests(unittest.TestCase):
             }
             for n in range(1, count + 1)
         ]
+
+    def test_unsafe_link_pagination_preserves_items_and_renders_gap(self):
+        target = self.github_forge(comments=[])
+        url = "https://api.github.com/repos/acme/app/issues/9/comments"
+        self.forge.route(url, lambda key, query: (
+            self.numbered_comments(1),
+            {"Link": '<https://outside.invalid/next>; rel="next"'},
+        ))
+        original = self.mod.github_headers
+        self.mod.github_headers = lambda: {"Authorization": "Bearer SYNTHETIC"}
+        self.addCleanup(setattr, self.mod, "github_headers", original)
+        brief = self.mod.fetch_github_api(target)
+        self.assertEqual([c.body for c in brief.comments], ["comment 1"])
+        outside = [r for r in self.forge.request_objects if "outside.invalid" in r.full_url]
+        self.assertEqual(outside, [], "untrusted request reached transport with credentials")
+        self.assertIn("## Gaps", self.mod.render(brief))
+        self.assertIn("unsafe", self.mod.render(brief).lower())
+
+    def test_unsafe_body_pagination_never_reaches_transport(self):
+        url = "https://api.bitbucket.org/2.0/items"
+        self.forge.route(url, single({"values": [1], "next": "https://outside.invalid/next"}))
+        reader = self.mod.ForgeReader(url, {"Authorization": "Bearer SYNTHETIC"})
+        result = self.mod.http_collection(url, reader, self.mod.BITBUCKET_PAGING, "comments")
+        self.assertEqual(result.items, [1])
+        self.assertEqual(len(self.forge.request_objects), 1,
+                         "untrusted request reached transport with credentials")
+        self.assertIn("unsafe", result.note.lower())
 
     def test_github_ending_reports_the_last_of_45_comments(self):
         target = self.github_forge(comments=self.numbered_comments(45))
@@ -1624,6 +1777,37 @@ class BitbucketHeadShaTests(unittest.TestCase):
         self.assertIn("head: docs\n", text)
         self.assertIn(link, self.forge.requests)
 
+    def test_unsafe_commit_links_fail_without_publishing_an_abbreviation(self):
+        original = self.mod.bitbucket_headers
+        self.mod.bitbucket_headers = lambda: {"Authorization": "Bearer SYNTHETIC"}
+        self.addCleanup(setattr, self.mod, "bitbucket_headers", original)
+        for link in ("https://outside.invalid/commit", "https://api.bitbucket.org:444/commit",
+                     "http://api.bitbucket.org/commit"):
+            with self.subTest(link=link):
+                self.forge.request_objects.clear()
+                target = self.route_cloud(
+                    self.cloud_pr(BITBUCKET_SHORT, link=link),
+                    commit_body={"hash": BITBUCKET_FULL},
+                )
+                with self.assertRaisesRegex(self.mod.FetchError, "unsafe"):
+                    self.mod.fetch_bitbucket_api(target)
+                self.assertEqual(len(self.forge.request_objects), 1)
+                self.assertEqual(self.forge.request_objects[0].get_header("Authorization"),
+                                 "Bearer SYNTHETIC")
+
+    def test_relative_commit_link_uses_the_pr_url_and_keeps_credentials(self):
+        original = self.mod.bitbucket_headers
+        self.mod.bitbucket_headers = lambda: {"Authorization": "Bearer SYNTHETIC"}
+        self.addCleanup(setattr, self.mod, "bitbucket_headers", original)
+        link = "../commit/" + BITBUCKET_SHORT
+        target = self.route_cloud(self.cloud_pr(BITBUCKET_SHORT, link=link))
+        absolute = "https://api.bitbucket.org/2.0/repositories/ws/repo/commit/" + BITBUCKET_SHORT
+        self.forge.route(absolute, single({"hash": BITBUCKET_FULL}))
+        brief = self.mod.fetch_bitbucket_api(target)
+        self.assertEqual(brief.head_sha, BITBUCKET_FULL)
+        request = next(r for r in self.forge.request_objects if r.full_url == absolute)
+        self.assertEqual(request.get_header("Authorization"), "Bearer SYNTHETIC")
+
     def test_full_hash_is_unchanged_and_does_not_request_the_commit(self):
         link = "https://api.bitbucket.org/2.0/repositories/ws/repo/commit/" + BITBUCKET_FULL
         target = self.route_cloud(self.cloud_pr(BITBUCKET_FULL, link=link))
@@ -1778,9 +1962,9 @@ class DroppedConnectionTests(unittest.TestCase):
         def no_git(argv, cwd=None, timeout=45):
             raise mod.Skip("git unavailable")
 
-        original_urlopen = mod.urllib.request.urlopen
-        mod.urllib.request.urlopen = dropped
-        self.addCleanup(setattr, mod.urllib.request, "urlopen", original_urlopen)
+        original_opener = mod.urllib.request.build_opener
+        mod.urllib.request.build_opener = lambda *handlers: SimpleNamespace(open=dropped)
+        self.addCleanup(setattr, mod.urllib.request, "build_opener", original_opener)
         original_run_cmd = mod.run_cmd
         mod.run_cmd = no_git
         self.addCleanup(setattr, mod, "run_cmd", original_run_cmd)
