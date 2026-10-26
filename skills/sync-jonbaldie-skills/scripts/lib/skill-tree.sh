@@ -103,6 +103,44 @@ skill_name_from_dir() {
   printf '%s\n' "${name}"
 }
 
+# Prints a directory's physical path, preserving the input if resolution fails.
+physical_dir() {
+  (cd -P "$1" 2>/dev/null && pwd -P) || printf '%s' "$1"
+}
+
+# Records an already-resolved name and its physical source as one TSV row.
+append_skill_source() {
+  local registry="$1" name="$2" skill_dir="$3"
+  printf '%s\t%s\n' "${name}" "$(physical_dir "${skill_dir}")" >>"${registry}"
+}
+
+# Reports names shared by distinct physical sources on stdout; fails if any exist.
+# Repeated rows (including aliases of the same source) are not collisions.
+assert_unique_skill_sources() {
+  sort -u "$1" | awk -F'\t' '
+    {
+      name = $1
+      dir = $2
+      if (!(name in count)) {
+        names[++num_names] = name
+      }
+      dirs[name] = dirs[name] ? dirs[name] "\n  " dir : dir
+      count[name]++
+    }
+    END {
+      has_collision = 0
+      for (i = 1; i <= num_names; i++) {
+        n = names[i]
+        if (count[n] > 1) {
+          has_collision = 1
+          printf "normalized skill name '\''%s'\'' collides across multiple source directories:\n  %s\n", n, dirs[n]
+        }
+      }
+      if (has_collision) exit 1
+    }
+  '
+}
+
 # Removes everything matching SKILL_TREE_EXCLUDES below <target>.
 prune_build_artifacts() {
   local target="$1"
