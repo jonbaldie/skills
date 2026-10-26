@@ -100,6 +100,18 @@ if MATTPOCOCK_SKILLS_REPO="${matt_repository}" \
    "${sync_script}" "${project}" >"${test_root}/collision.log" 2>&1; then
   fail "expected sync-skills.sh to fail on collision"
 fi
-grep -q "shared" "${test_root}/collision.log" || fail "expected collision error to mention 'shared'"
+grep -q "normalized skill name 'shared' collides across multiple source directories:" \
+  "${test_root}/collision.log" || fail "expected the shared collision report"
+assert_content 'jon shared' "${project}/.agents/skills/shared/content.txt"
+
+# Preflight must also leave a fresh destination completely untouched.
+fresh_project="${test_root}/fresh project"
+mkdir -p "${fresh_project}"
+if MATTPOCOCK_SKILLS_REPO="${matt_repository}" \
+   JONBALDIE_SKILLS_REPO="${jon_repository}" \
+   "${sync_script}" "${fresh_project}" >"${test_root}/fresh-collision.log" 2>&1; then
+  fail "expected collision failure for a fresh project"
+fi
+assert_missing "${fresh_project}/.agents"
 
 pass 'deterministic sync and optional copies'

@@ -78,6 +78,42 @@ for invalid in '' -lead .hidden _private Upper 'has space' ../escape; do
   fi
 done
 
+# --- physical_dir ---
+
+mkdir -p "${test_root}/physical/source"
+ln -s "${test_root}/physical/source" "${test_root}/source-alias"
+expected_source="$(cd "${test_root}" && pwd -P)/physical/source"
+[[ "$(physical_dir "${test_root}/source-alias")" == "${expected_source}" ]] ||
+  fail "physical_dir did not resolve a directory symlink"
+[[ "$(physical_dir "${test_root}/missing")" == "${test_root}/missing" ]] ||
+  fail "physical_dir did not preserve an unresolvable path"
+
+# --- source registry: aliases of one source are not collisions ---
+
+registry="${test_root}/sources.tsv"
+append_skill_source "${registry}" chosen-name "${test_root}/source-alias"
+append_skill_source "${registry}" chosen-name "${test_root}/physical/source"
+expected_row="$(printf 'chosen-name\t%s' "${expected_source}")"
+[[ "$(head -n 1 "${registry}")" == "${expected_row}" ]] ||
+  fail "append_skill_source did not retain the chosen name and physical source"
+report="$(assert_unique_skill_sources "${registry}")" ||
+  fail "aliases of one source were rejected"
+[[ -z "${report}" ]] || fail "aliases of one source produced a collision report"
+
+# Distinct sources fail with the complete shared report on stdout.
+mkdir -p "${test_root}/physical/other"
+append_skill_source "${registry}" chosen-name "${test_root}/physical/other"
+if report="$(assert_unique_skill_sources "${registry}")"; then
+  fail "distinct sources with the same chosen name were accepted"
+fi
+expected_report="normalized skill name 'chosen-name' collides across multiple source directories:
+  ${expected_source%/source}/other
+  ${expected_source}"
+[[ "${report}" == "${expected_report}" ]] ||
+  fail "unexpected collision report: ${report}"
+: >"${registry}"
+assert_unique_skill_sources "${registry}" || fail "empty registry was rejected"
+
 # --- copy_skill_tree ---
 
 copy_source="${test_root}/copy-source/fixture"
