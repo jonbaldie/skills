@@ -400,6 +400,105 @@ class ProviderTableTests(unittest.TestCase):
             mod.PROVIDERS = original
 
 
+class LinkedIssueTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_mod()
+
+    def test_closing_keyword_variants(self):
+        for keyword in (
+            "close", "closes", "closed", "fix", "fixes", "fixed",
+            "resolve", "resolves", "resolved",
+        ):
+            with self.subTest(keyword=keyword):
+                self.assertEqual(
+                    self.mod.parse_linked_issues(f"{keyword.upper()}: #12"),
+                    ["#12"],
+                )
+
+    def test_qualifies_then_deduplicates_in_encounter_order(self):
+        self.assertEqual(
+            self.mod.parse_linked_issues(
+                "Closes #12. Fixes other/repo#34. Resolved acme/app#12. "
+                "Closed #56. Fixes other/repo#34.",
+                default_repo="acme/app",
+            ),
+            ["acme/app#12", "other/repo#34", "acme/app#56"],
+        )
+
+    def test_empty_text_and_non_closing_mentions(self):
+        for text in ("", "See #12 and other/repo#34. Fix the bug in #56."):
+            with self.subTest(text=text):
+                self.assertEqual(self.mod.parse_linked_issues(text), [])
+        self.assertEqual(
+            self.mod.parse_linked_issues("Closes #12. See #34. Fixes #12."),
+            ["#12"],
+        )
+
+    def test_native_github_references_keep_titles_without_parsed_duplicates(self):
+        brief = self.mod.brief_from_github_view({
+            "body": "Closes #12. Fixes other/repo#34.",
+            "closingIssuesReferences": [
+                {"number": 12, "title": "Local issue"},
+                {"number": 34, "title": "Remote issue",
+                 "repository": {"nameWithOwner": "other/repo"}},
+            ],
+        })
+        self.assertEqual(brief.linked_issues, ["#12 Local issue", "other/repo#34 Remote issue"])
+        self.assertIn(
+            "## Linked issues\n- #12 Local issue\n- other/repo#34 Remote issue\n",
+            self.mod.render(brief),
+        )
+
+    def test_github_falls_back_when_native_references_are_empty(self):
+        for native in (None, []):
+            with self.subTest(native=native):
+                brief = self.mod.brief_from_github_view({
+                    "body": "Closes #12. Fixes #12.",
+                    "closingIssuesReferences": native,
+                })
+                self.assertEqual(brief.linked_issues, ["#12"])
+
+    def test_provider_descriptions_render_linked_issues(self):
+        mod = self.mod
+        body = "Closes #12. Fixes other/repo#34. Closes #12."
+        briefs = [
+            ("github-cli", mod.brief_from_github_view({"body": body}), "#12"),
+            ("github-rest", mod.brief_from_github_rest({"body": body}), "#12"),
+            ("gitlab", mod.brief_from_gitlab({
+                "description": body, "web_url": "https://gitlab.com/acme/app/-/merge_requests/7",
+            }), "acme/app#12"),
+            ("bitbucket", mod.brief_from_bitbucket({
+                "description": body,
+                "destination": {"repository": {"full_name": "acme/app"}},
+            }), "acme/app#12"),
+            ("azure", mod.brief_from_azure({
+                "description": body, "repository": {"name": "app"},
+            }), "app#12"),
+            ("git", mod.brief_from_git(
+                mod.Target(provider="github", host="github.com", number="7", owner="acme", repo="app"),
+                sha="abc1234", ref="refs/pull/7/head", remote_url="origin", message=body,
+            ), "acme/app#12"),
+        ]
+        for provider, brief, local in briefs:
+            with self.subTest(provider=provider):
+                self.assertEqual(brief.linked_issues, [local, "other/repo#34"])
+                self.assertIn(
+                    f"## Linked issues\n- {local}\n- other/repo#34\n",
+                    mod.render(brief),
+                )
+
+    def test_missing_repository_keeps_references_unqualified(self):
+        for normalize in (
+            self.mod.brief_from_gitlab,
+            self.mod.brief_from_bitbucket,
+            self.mod.brief_from_azure,
+        ):
+            with self.subTest(provider=normalize.__name__):
+                brief = normalize({"description": "Closes #12."})
+                self.assertEqual(brief.linked_issues, ["#12"])
+
+
 class BriefRenderTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -1349,7 +1448,10 @@ class CollectionPagingTests(unittest.TestCase):
         root = "https://gitea.com/api/v1/repos/gitea/tea/pulls/1126"
         self.forge.route(
             root,
-            single({"number": 1126, "title": "PR", "state": "open", "user": {"login": "ada"}}),
+            single({
+                "number": 1126, "title": "PR", "state": "open", "user": {"login": "ada"},
+                "body": "Closes #12. Fixes other/repo#34.",
+            }),
         )
         for path in ("files", "reviews"):
             self.forge.route(f"{root}/{path}", link_pager([], "limit", 30, 1))
@@ -1361,6 +1463,7 @@ class CollectionPagingTests(unittest.TestCase):
         text = self.mod.render(self.mod.fetch_gitea_api(target))
         self.assertIn("provider: gitea\n", text)
         self.assertIn("host: gitea.com\n", text)
+        self.assertIn("## Linked issues\n- #12\n- other/repo#34\n", text)
 
     def gitea_open_prs(self, prs, fail_page=None):
         pulls = "https://codeberg.org/api/v1/repos/owner/repo/pulls"
@@ -1452,7 +1555,10 @@ class CollectionPagingTests(unittest.TestCase):
         )
         self.forge.route(
             root,
-            single({"id": 4, "title": "PR", "state": "OPEN", "author": {"user": {"name": "ada"}}}),
+            single({
+                "id": 4, "title": "PR", "state": "OPEN", "author": {"user": {"name": "ada"}},
+                "description": "Closes #12. Fixes other/repo#34.",
+            }),
         )
         changes = [{"path": {"toString": f"f{n}"}, "type": "MODIFY"} for n in range(5)]
         activities = [
@@ -1465,6 +1571,11 @@ class CollectionPagingTests(unittest.TestCase):
             "https://git.example.com/projects/KEY/repos/slug/pull-requests/4"
         )
         brief = self.mod.fetch_bitbucket_server_api(target)
+        self.assertEqual(brief.linked_issues, ["KEY/slug#12", "other/repo#34"])
+        self.assertIn(
+            "## Linked issues\n- KEY/slug#12\n- other/repo#34\n",
+            self.mod.render(brief),
+        )
         self.assertEqual(len(brief.files), 5)
         self.assertEqual(len(brief.comments), 5)
         pages = self.forge.requested(f"{root}/activities")
