@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 import io
 import json
 import os
@@ -14,21 +13,12 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "skills" / "resume-from-pi" / "scripts" / "extract-session.py"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from harness import isolated_env, load_skill_script, make_workspace_symlink_pair, run_cli
 
 CWD = "/Users/x/proj"
 SID = "aaaaaaaa-bbbb-cccc"
 DECOY = SID + "zz"
-
-
-def load_mod():
-    spec = importlib.util.spec_from_file_location("extract_session_rfp", SCRIPT)
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["extract_session_rfp"] = mod
-    spec.loader.exec_module(mod)
-    return mod
 
 
 def write_jsonl(path: Path, session_id: str, prompt: str) -> None:
@@ -48,32 +38,19 @@ def write_jsonl(path: Path, session_id: str, prompt: str) -> None:
 class ResolveSessionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.mod = load_mod()
+        cls.mod = load_skill_script("resume-from-pi", "extract-session.py")
 
     def _home(self, tmp: str) -> Path:
         home = Path(tmp)
-        old = os.environ.get("HOME")
-        os.environ["HOME"] = str(home)
-        self.addCleanup(self._restore_home, old)
+        self.enterContext(isolated_env(HOME=str(home)))
         return home
-
-    def _restore_home(self, old: str | None) -> None:
-        if old is None:
-            os.environ.pop("HOME", None)
-        else:
-            os.environ["HOME"] = old
 
     def _sess_dir(self, home: Path) -> Path:
         path = home / ".pi" / "agent" / "sessions" / self.mod.encode_cwd(CWD)
         path.mkdir(parents=True)
         return path
 
-    def _cwd_pair(self, home: Path) -> tuple[Path, Path]:
-        physical_cwd = home / "workspace" / "project"
-        physical_cwd.mkdir(parents=True)
-        symlink_cwd = home / "workspace" / "project-link"
-        symlink_cwd.symlink_to(physical_cwd, target_is_directory=True)
-        return physical_cwd, symlink_cwd
+    _cwd_pair = staticmethod(make_workspace_symlink_pair)
 
     def _project_session_dir(self, home: Path, cwd: Path) -> Path:
         return home / ".pi" / "agent" / "sessions" / self.mod.encode_cwd(str(cwd))
@@ -107,12 +84,10 @@ class ResolveSessionTests(unittest.TestCase):
                 physical_cwd.resolve(),
             )
 
-            output = io.StringIO()
-            with redirect_stdout(output):
-                self.mod.main(["--cwd", str(symlink_cwd)])
+            output = run_cli(self.mod.main, ["--cwd", str(symlink_cwd)])
 
-            self.assertIn("session_id: pi-physical-session", output.getvalue())
-            self.assertIn("pi physical prompt", output.getvalue())
+            self.assertIn("session_id: pi-physical-session", output)
+            self.assertIn("pi physical prompt", output)
 
     def test_physical_cwd_still_finds_its_session(self):
         with tempfile.TemporaryDirectory() as tmp:

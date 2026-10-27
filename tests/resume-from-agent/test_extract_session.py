@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 import sqlite3
@@ -14,23 +13,14 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "skills" / "resume-from-agent" / "scripts" / "extract-session.py"
-
-
-def load_mod():
-    spec = importlib.util.spec_from_file_location("extract_session", SCRIPT)
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["extract_session"] = mod
-    spec.loader.exec_module(mod)
-    return mod
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from harness import load_skill_script
 
 
 class ExtractSessionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.mod = load_mod()
+        cls.mod = load_skill_script("resume-from-agent", "extract-session.py")
 
     def test_clean_skill_injections_strips_and_labels(self):
         text, skills = self.mod.clean_skill_injections(

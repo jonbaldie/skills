@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-import importlib.util
+from functools import partial
 import json
 import os
 import sys
@@ -12,17 +12,10 @@ import unittest
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "skills" / "resume-from-codex" / "scripts" / "extract-session.py"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from harness import isolated_env, load_skill_script
 
-
-def load_mod():
-    spec = importlib.util.spec_from_file_location("extract_session_rfcx", SCRIPT)
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["extract_session_rfcx"] = mod
-    spec.loader.exec_module(mod)
-    return mod
+load_mod = partial(load_skill_script, "resume-from-codex", "extract-session.py")
 
 
 def record(kind: str, payload: dict) -> dict:
@@ -208,19 +201,12 @@ class CustomCodexHomeTests(unittest.TestCase):
     def test_sessions_root_and_index_path_honor_codex_home(self):
         with tempfile.TemporaryDirectory() as tmp:
             custom_dir = Path(tmp) / "custom_codex"
-            old_codex_home = os.environ.get("CODEX_HOME")
-            try:
-                os.environ["CODEX_HOME"] = str(custom_dir)
+            with isolated_env(CODEX_HOME=str(custom_dir)):
                 self.assertEqual(self.mod.sessions_root(), custom_dir / "sessions")
                 self.assertEqual(
                     self.mod.session_index_path(),
                     custom_dir / "session_index.jsonl",
                 )
-            finally:
-                if old_codex_home is None:
-                    os.environ.pop("CODEX_HOME", None)
-                else:
-                    os.environ["CODEX_HOME"] = old_codex_home
 
     def test_resolve_session_with_codex_home(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -243,9 +229,7 @@ class CustomCodexHomeTests(unittest.TestCase):
                 + "\n"
             )
 
-            old_codex_home = os.environ.get("CODEX_HOME")
-            try:
-                os.environ["CODEX_HOME"] = str(custom_dir)
+            with isolated_env(CODEX_HOME=str(custom_dir)):
                 resolved = self.mod.resolve_session("/ws", None)
                 self.assertEqual(resolved, rollout)
 
@@ -253,16 +237,9 @@ class CustomCodexHomeTests(unittest.TestCase):
                     "/ws", "Custom Feature"
                 )
                 self.assertEqual(resolved_by_thread, rollout)
-            finally:
-                if old_codex_home is None:
-                    os.environ.pop("CODEX_HOME", None)
-                else:
-                    os.environ["CODEX_HOME"] = old_codex_home
 
     def test_codex_home_unset_or_empty_falls_back_to_home(self):
-        old_codex_home = os.environ.get("CODEX_HOME")
-        try:
-            os.environ.pop("CODEX_HOME", None)
+        with isolated_env(CODEX_HOME=None):
             self.assertEqual(
                 self.mod.sessions_root(), Path.home() / ".codex" / "sessions"
             )
@@ -279,11 +256,6 @@ class CustomCodexHomeTests(unittest.TestCase):
                 self.mod.session_index_path(),
                 Path.home() / ".codex" / "session_index.jsonl",
             )
-        finally:
-            if old_codex_home is None:
-                os.environ.pop("CODEX_HOME", None)
-            else:
-                os.environ["CODEX_HOME"] = old_codex_home
 
 
 if __name__ == "__main__":
