@@ -198,18 +198,11 @@ class ResolveSessionTests(unittest.TestCase):
             )
             os.utime(stale_session, (1_800_000_000, 1_800_000_000))
 
-            old_config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
-            try:
-                os.environ["CLAUDE_CONFIG_DIR"] = str(custom_claude)
+            with isolated_env(CLAUDE_CONFIG_DIR=str(custom_claude)):
                 output = self._render(["--cwd", str(physical_cwd)])
                 self.assertIn("session_id: custom-claude-session", output)
                 self.assertIn("custom config dir prompt", output)
                 self.assertNotIn("stale default prompt", output)
-            finally:
-                if old_config_dir is None:
-                    os.environ.pop("CLAUDE_CONFIG_DIR", None)
-                else:
-                    os.environ["CLAUDE_CONFIG_DIR"] = old_config_dir
 
     def test_claude_config_dir_empty_or_unset_falls_back_to_home(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -222,20 +215,13 @@ class ResolveSessionTests(unittest.TestCase):
                 physical_cwd,
             )
 
-            old_config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
-            try:
-                os.environ.pop("CLAUDE_CONFIG_DIR", None)
+            with isolated_env(CLAUDE_CONFIG_DIR=None):
                 output = self._render(["--cwd", str(physical_cwd)])
                 self.assertIn("default-claude-session", output)
 
                 os.environ["CLAUDE_CONFIG_DIR"] = ""
                 output2 = self._render(["--cwd", str(physical_cwd)])
                 self.assertIn("default-claude-session", output2)
-            finally:
-                if old_config_dir is None:
-                    os.environ.pop("CLAUDE_CONFIG_DIR", None)
-                else:
-                    os.environ["CLAUDE_CONFIG_DIR"] = old_config_dir
 
 
 

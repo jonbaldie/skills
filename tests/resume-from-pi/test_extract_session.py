@@ -127,13 +127,11 @@ class ResolveSessionTests(unittest.TestCase):
             os.utime(logical_session, (1_700_000_000, 1_700_000_000))
             os.utime(physical_session, (1_700_003_600, 1_700_003_600))
 
-            output = io.StringIO()
-            with redirect_stdout(output):
-                self.mod.main(["--cwd", str(symlink_cwd)])
+            output = run_cli(self.mod.main, ["--cwd", str(symlink_cwd)])
 
-            self.assertIn("session_id: pi-physical-session", output.getvalue())
-            self.assertIn("newer physical prompt", output.getvalue())
-            self.assertNotIn("pi-logical-session", output.getvalue())
+            self.assertIn("session_id: pi-physical-session", output)
+            self.assertIn("newer physical prompt", output)
+            self.assertNotIn("pi-logical-session", output)
 
     def _colliding_cwds(self, home: Path) -> tuple[Path, Path, Path]:
         """Two real workspaces whose cwd encodes to one Pi directory (#215)."""
