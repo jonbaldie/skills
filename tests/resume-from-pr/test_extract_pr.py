@@ -20,6 +20,8 @@ import urllib.request
 import urllib.response
 from types import SimpleNamespace
 from pathlib import Path
+from dataclasses import asdict, FrozenInstanceError
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -266,6 +268,108 @@ class ParseUrlTests(unittest.TestCase):
     def test_unknown_url_errors(self):
         with self.assertRaises(self.mod.FetchError):
             self.parse("https://example.com/not-a-pr")
+
+
+REMOTE_CASES = (
+    ("https://www.github.com/acme/app.git",
+     ("github", "github.com", "acme", "app", None, None),
+     "https://github.com/acme/app/pull/5"),
+    ("git@github.com:acme/app.git",
+     ("github", "github.com", "acme", "app", None, None),
+     "https://github.com/acme/app/pull/5"),
+    ("ssh://git@gitlab.example.com/group/sub/app.git",
+     ("gitlab", "gitlab.example.com", "group/sub", "app", "group/sub/app", None),
+     "https://gitlab.example.com/group/sub/app/-/merge_requests/5"),
+    ("https://gitlab.com/group/sub/app.git",
+     ("gitlab", "gitlab.com", "group/sub", "app", "group/sub/app", None),
+     "https://gitlab.com/group/sub/app/-/merge_requests/5"),
+    ("https://www.bitbucket.org/workspace/app.git",
+     ("bitbucket", "bitbucket.org", "workspace", "app", None, None),
+     "https://bitbucket.org/workspace/app/pull-requests/5"),
+    ("git@bitbucket.org:workspace/app.git",
+     ("bitbucket", "bitbucket.org", "workspace", "app", None, None),
+     "https://bitbucket.org/workspace/app/pull-requests/5"),
+    ("https://git.example.com/projects/KEY/repos/app.git",
+     ("bitbucket-server", "git.example.com", "KEY", "app", None, None),
+     "https://git.example.com/projects/KEY/repos/app/pull-requests/5"),
+    ("ssh://git@git.example.com:7999/scm/KEY/app.git",
+     ("bitbucket-server", "git.example.com", "KEY", "app", None, None),
+     "https://git.example.com/projects/KEY/repos/app/pull-requests/5"),
+    ("https://codeberg.org/acme/app.git",
+     ("gitea", "codeberg.org", "acme", "app", None, None),
+     "https://codeberg.org/acme/app/pulls/5"),
+    ("git@git.forgejo.dev:acme/app.git",
+     ("gitea", "git.forgejo.dev", "acme", "app", None, None),
+     "https://git.forgejo.dev/acme/app/pulls/5"),
+    ("https://org@dev.azure.com/my%20org/my%20project/_git/my%20repo",
+     ("azure", "dev.azure.com", "my org", "my repo", "my project", "my org"),
+     "https://dev.azure.com/my%20org/my%20project/_git/my%20repo/pullrequest/5"),
+    ("https://dev.azure.com/org/_git/app",
+     ("azure", "dev.azure.com", "org", "app", "org", "org"),
+     "https://dev.azure.com/org/org/_git/app/pullrequest/5"),
+    ("https://contoso.visualstudio.com/DefaultCollection/my%20project/_git/app",
+     ("azure", "contoso.visualstudio.com", "contoso", "app", "my project", "contoso"),
+     "https://dev.azure.com/contoso/my%20project/_git/app/pullrequest/5"),
+    ("https://contoso.visualstudio.com/_git/app",
+     ("azure", "contoso.visualstudio.com", "contoso", "app", "contoso", "contoso"),
+     "https://dev.azure.com/contoso/contoso/_git/app/pullrequest/5"),
+    ("git@ssh.dev.azure.com:v3/org/project/app",
+     ("azure", "ssh.dev.azure.com", "org", "app", "project", "org"),
+     "https://dev.azure.com/org/project/_git/app/pullrequest/5"),
+    ("https://ghe.example.com/acme/app.git",
+     ("unknown", "ghe.example.com", "acme", "app", None, None), None),
+)
+
+
+class RemoteContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_mod()
+
+    def test_numbered_remote_targets_preserve_identity_and_urls(self):
+        for remote_url, identity, url in REMOTE_CASES:
+            with self.subTest(remote=remote_url):
+                target = self.mod.target_from_remote("5", remote_url)
+                self.assertEqual(asdict(target), dict(
+                    zip(("provider", "host", "owner", "repo", "project", "org"), identity),
+                    number="5", url=url, original=None,
+                ))
+                self.assertEqual(target.slug, identity[4] or f"{identity[2]}/{identity[3]}")
+
+    def test_invalid_remote_does_not_resolve_a_target(self):
+        for remote in ("not a remote", "https://dev.azure.com/not-a-repository"):
+            with self.subTest(remote=remote):
+                self.assertIsNone(self.mod.target_from_remote("5", remote))
+        self.assertEqual(
+            self.mod.target_from_remote("5", "git@github.com:acme/app.git").url,
+            "https://github.com/acme/app/pull/5",
+        )
+
+    def test_bare_number_remote_precedence_and_errors(self):
+        cases = (
+            ([("origin", "https://unknown.example/acme/app.git"),
+              ("upstream", "git@github.com:upstream/app.git")],
+             ("github", "github.com", "https://github.com/upstream/app/pull/5")),
+            ([("origin", "https://unknown.example/acme/app.git"),
+              ("upstream", "https://other.example/team/app.git")],
+             ("unknown", "unknown.example", None)),
+            ([("origin", "not a remote"),
+              ("upstream", "git@codeberg.org:acme/app.git")],
+             ("gitea", "codeberg.org", "https://codeberg.org/acme/app/pulls/5")),
+        )
+        for remotes, expected in cases:
+            with self.subTest(remotes=remotes), patch.object(self.mod, "git_remotes", return_value=remotes):
+                target = self.mod.resolve_number("5", "workspace")
+                self.assertEqual((target.provider, target.host, target.url), expected)
+                self.assertEqual(target.number, "5")
+        for remotes, message in (
+            ([], "Number 5 needs a git remote"),
+            ([("origin", "not a remote"), ("upstream", "https://other.example/acme/app.git")],
+             "Could not resolve pull/merge request 5 from git remotes"),
+        ):
+            with self.subTest(remotes=remotes), patch.object(self.mod, "git_remotes", return_value=remotes):
+                with self.assertRaisesRegex(self.mod.FetchError, message):
+                    self.mod.resolve_number("5", "workspace")
 
 
 class RemoteAndApiRootTests(unittest.TestCase):
