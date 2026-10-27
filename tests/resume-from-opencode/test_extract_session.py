@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 import io
 import json
 import os
@@ -15,21 +14,10 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "skills" / "resume-from-opencode" / "scripts" / "extract-session.py"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from harness import isolated_env, load_skill_script
 
 CWD = "/tmp/no-such-resume-cwd-141"
-
-
-def load_mod():
-    spec = importlib.util.spec_from_file_location(
-        "extract_session_opencode", SCRIPT
-    )
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["extract_session_opencode"] = mod
-    spec.loader.exec_module(mod)
-    return mod
 
 
 def empty_db(path: Path) -> None:
@@ -122,22 +110,10 @@ def session_db(path: Path, cwd: str, session_id: str, prompt: str) -> None:
 class NoSessionDatabasePathTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.mod = load_mod()
+        cls.mod = load_skill_script("resume-from-opencode", "extract-session.py")
 
     def setUp(self):
-        self._old_home = os.environ.get("HOME")
-        self._old_db = os.environ.get("OPENCODE_DB")
-        os.environ.pop("OPENCODE_DB", None)
-
-    def tearDown(self):
-        if self._old_home is None:
-            os.environ.pop("HOME", None)
-        else:
-            os.environ["HOME"] = self._old_home
-        if self._old_db is None:
-            os.environ.pop("OPENCODE_DB", None)
-        else:
-            os.environ["OPENCODE_DB"] = self._old_db
+        self.enterContext(isolated_env(HOME=os.environ.get("HOME"), OPENCODE_DB=None))
 
     def _no_session(self, argv: list[str]) -> str:
         with self.assertRaises(SystemExit) as caught:

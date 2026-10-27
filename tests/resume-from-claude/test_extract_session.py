@@ -3,28 +3,19 @@
 
 from __future__ import annotations
 
-import importlib.util
-import io
+from functools import partial
 import json
 import os
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "skills" / "resume-from-claude" / "scripts" / "extract-session.py"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from harness import isolated_env, load_skill_script, make_workspace_symlink_pair, run_cli
 
-
-def load_mod():
-    spec = importlib.util.spec_from_file_location("extract_session_rfc", SCRIPT)
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["extract_session_rfc"] = mod
-    spec.loader.exec_module(mod)
-    return mod
+load_mod = partial(load_skill_script, "resume-from-claude", "extract-session.py")
 
 
 class EncodeCwdTests(unittest.TestCase):
@@ -65,17 +56,10 @@ class ResolveSessionTests(unittest.TestCase):
 
     def _home(self, tmp: str) -> Path:
         home = Path(tmp)
-        old_home = os.environ.get("HOME")
-        os.environ["HOME"] = str(home)
-        self.addCleanup(self._restore_home, old_home)
+        self.enterContext(isolated_env(HOME=str(home)))
         return home
 
-    def _cwd_pair(self, home: Path) -> tuple[Path, Path]:
-        physical_cwd = home / "workspace" / "project"
-        physical_cwd.mkdir(parents=True)
-        symlink_cwd = home / "workspace" / "project-link"
-        symlink_cwd.symlink_to(physical_cwd, target_is_directory=True)
-        return physical_cwd, symlink_cwd
+    _cwd_pair = staticmethod(make_workspace_symlink_pair)
 
     def _project(self, home: Path, cwd: Path) -> Path:
         return home / ".claude" / "projects" / self.mod.encode_cwd(str(cwd))
@@ -99,10 +83,7 @@ class ResolveSessionTests(unittest.TestCase):
         return session
 
     def _render(self, args: list[str]) -> str:
-        output = io.StringIO()
-        with redirect_stdout(output):
-            self.mod.main(args)
-        return output.getvalue()
+        return run_cli(self.mod.main, args)
 
     def test_symlinked_cwd_finds_session_under_physical_path(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -217,18 +198,11 @@ class ResolveSessionTests(unittest.TestCase):
             )
             os.utime(stale_session, (1_800_000_000, 1_800_000_000))
 
-            old_config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
-            try:
-                os.environ["CLAUDE_CONFIG_DIR"] = str(custom_claude)
+            with isolated_env(CLAUDE_CONFIG_DIR=str(custom_claude)):
                 output = self._render(["--cwd", str(physical_cwd)])
                 self.assertIn("session_id: custom-claude-session", output)
                 self.assertIn("custom config dir prompt", output)
                 self.assertNotIn("stale default prompt", output)
-            finally:
-                if old_config_dir is None:
-                    os.environ.pop("CLAUDE_CONFIG_DIR", None)
-                else:
-                    os.environ["CLAUDE_CONFIG_DIR"] = old_config_dir
 
     def test_claude_config_dir_empty_or_unset_falls_back_to_home(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -241,26 +215,14 @@ class ResolveSessionTests(unittest.TestCase):
                 physical_cwd,
             )
 
-            old_config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
-            try:
-                os.environ.pop("CLAUDE_CONFIG_DIR", None)
+            with isolated_env(CLAUDE_CONFIG_DIR=None):
                 output = self._render(["--cwd", str(physical_cwd)])
                 self.assertIn("default-claude-session", output)
 
                 os.environ["CLAUDE_CONFIG_DIR"] = ""
                 output2 = self._render(["--cwd", str(physical_cwd)])
                 self.assertIn("default-claude-session", output2)
-            finally:
-                if old_config_dir is None:
-                    os.environ.pop("CLAUDE_CONFIG_DIR", None)
-                else:
-                    os.environ["CLAUDE_CONFIG_DIR"] = old_config_dir
 
-    def _restore_home(self, old_home: str | None) -> None:
-        if old_home is None:
-            os.environ.pop("HOME", None)
-        else:
-            os.environ["HOME"] = old_home
 
 
 if __name__ == "__main__":

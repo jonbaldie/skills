@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 import sqlite3
@@ -14,23 +13,14 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "skills" / "resume-from-agent" / "scripts" / "extract-session.py"
-
-
-def load_mod():
-    spec = importlib.util.spec_from_file_location("extract_session", SCRIPT)
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["extract_session"] = mod
-    spec.loader.exec_module(mod)
-    return mod
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from harness import isolated_env, load_skill_script
 
 
 class ExtractSessionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.mod = load_mod()
+        cls.mod = load_skill_script("resume-from-agent", "extract-session.py")
 
     def test_clean_skill_injections_strips_and_labels(self):
         text, skills = self.mod.clean_skill_injections(
@@ -887,9 +877,7 @@ class ExtractSessionTests(unittest.TestCase):
             )
             conn.close()
 
-            old_env = os.environ.get("OPENCODE_DB")
-            os.environ["OPENCODE_DB"] = str(db_path)
-            try:
+            with isolated_env(OPENCODE_DB=str(db_path)):
                 # 1. By exact slug
                 by_slug = self.mod.discover_opencode(cwd, "clever-canyon")
                 self.assertEqual(len(by_slug), 1)
@@ -909,11 +897,6 @@ class ExtractSessionTests(unittest.TestCase):
                 by_id = self.mod.discover_opencode(cwd, "ses_beta")
                 self.assertEqual(len(by_id), 1)
                 self.assertEqual(by_id[0].session_id, "ses_beta")
-            finally:
-                if old_env is None:
-                    os.environ.pop("OPENCODE_DB", None)
-                else:
-                    os.environ["OPENCODE_DB"] = old_env
 
     def test_discover_opencode_legacy_schema_resilience(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -933,9 +916,7 @@ class ExtractSessionTests(unittest.TestCase):
             )
             conn.close()
 
-            old_env = os.environ.get("OPENCODE_DB")
-            os.environ["OPENCODE_DB"] = str(db_path)
-            try:
+            with isolated_env(OPENCODE_DB=str(db_path)):
                 # Querying by id still works on legacy schemas lacking slug/title columns
                 res = self.mod.discover_opencode(cwd, "ses_legacy")
                 self.assertEqual(len(res), 1)
@@ -944,11 +925,6 @@ class ExtractSessionTests(unittest.TestCase):
                 # Querying by nonexistent slug/title returns empty instead of crashing
                 res_slug = self.mod.discover_opencode(cwd, "nonexistent-slug")
                 self.assertEqual(len(res_slug), 0)
-            finally:
-                if old_env is None:
-                    os.environ.pop("OPENCODE_DB", None)
-                else:
-                    os.environ["OPENCODE_DB"] = old_env
 
     def test_pi_sibling_prefers_exact_id_over_newer_prefix_decoy(self):
         sid = "aaaaaaaa-bbbb-cccc"
@@ -989,17 +965,10 @@ class ExtractSessionTests(unittest.TestCase):
             os.utime(exact, (1_700_000_000, 1_700_000_000))
             os.utime(decoy_path, (1_700_003_600, 1_700_003_600))
 
-            old_home = os.environ.get("HOME")
-            os.environ["HOME"] = str(home)
-            try:
+            with isolated_env(HOME=str(home)):
                 code, out = self._main_output(
                     ["--cwd", cwd, "--agent", "pi", sid]
                 )
-            finally:
-                if old_home is None:
-                    os.environ.pop("HOME", None)
-                else:
-                    os.environ["HOME"] = old_home
 
             self.assertEqual(code, 0)
             self.assertIn(f"session_id: {sid}", out)
@@ -1230,9 +1199,7 @@ class ExtractSessionTests(unittest.TestCase):
                 + "\n"
             )
 
-            old_codex = os.environ.get("CODEX_HOME")
-            try:
-                os.environ["CODEX_HOME"] = str(custom_codex)
+            with isolated_env(CODEX_HOME=str(custom_codex)):
                 candidates = self.mod.discover_codex("/ws", "Custom Thread")
                 self.assertEqual(len(candidates), 1)
                 self.assertEqual(candidates[0].agent, "codex")
@@ -1241,11 +1208,6 @@ class ExtractSessionTests(unittest.TestCase):
                 candidates_all = self.mod.discover_codex("/ws", None)
                 self.assertEqual(len(candidates_all), 1)
                 self.assertEqual(candidates_all[0].path, str(rollout))
-            finally:
-                if old_codex is None:
-                    os.environ.pop("CODEX_HOME", None)
-                else:
-                    os.environ["CODEX_HOME"] = old_codex
 
     def test_discover_claude_honors_claude_config_dir(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1266,9 +1228,7 @@ class ExtractSessionTests(unittest.TestCase):
                 + "\n"
             )
 
-            old_claude = os.environ.get("CLAUDE_CONFIG_DIR")
-            try:
-                os.environ["CLAUDE_CONFIG_DIR"] = str(custom_claude)
+            with isolated_env(CLAUDE_CONFIG_DIR=str(custom_claude)):
                 candidates = self.mod.discover_claude("/ws", None)
                 self.assertEqual(len(candidates), 1)
                 self.assertEqual(candidates[0].agent, "claude")
@@ -1277,11 +1237,6 @@ class ExtractSessionTests(unittest.TestCase):
                 candidates_by_id = self.mod.discover_claude("/ws", "custom-session")
                 self.assertEqual(len(candidates_by_id), 1)
                 self.assertEqual(candidates_by_id[0].path, str(session_file))
-            finally:
-                if old_claude is None:
-                    os.environ.pop("CLAUDE_CONFIG_DIR", None)
-                else:
-                    os.environ["CLAUDE_CONFIG_DIR"] = old_claude
 
     def test_probed_roots_honors_custom_locations(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1289,12 +1244,7 @@ class ExtractSessionTests(unittest.TestCase):
             custom_codex = tmp_path / "custom_codex"
             custom_claude = tmp_path / "custom_claude"
 
-            old_codex = os.environ.get("CODEX_HOME")
-            old_claude = os.environ.get("CLAUDE_CONFIG_DIR")
-            try:
-                os.environ["CODEX_HOME"] = str(custom_codex)
-                os.environ["CLAUDE_CONFIG_DIR"] = str(custom_claude)
-
+            with isolated_env(CODEX_HOME=str(custom_codex), CLAUDE_CONFIG_DIR=str(custom_claude)):
                 code, out = self._main_output(
                     ["--cwd", "/nonexistent", "--agent", "codex", "--list"]
                 )
@@ -1304,15 +1254,6 @@ class ExtractSessionTests(unittest.TestCase):
                     ["--cwd", "/nonexistent", "--agent", "claude", "--list"]
                 )
                 self.assertIn(f"Probed: {custom_claude}/projects", out)
-            finally:
-                if old_codex is None:
-                    os.environ.pop("CODEX_HOME", None)
-                else:
-                    os.environ["CODEX_HOME"] = old_codex
-                if old_claude is None:
-                    os.environ.pop("CLAUDE_CONFIG_DIR", None)
-                else:
-                    os.environ["CLAUDE_CONFIG_DIR"] = old_claude
 
 
 if __name__ == "__main__":

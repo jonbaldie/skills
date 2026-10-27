@@ -6,7 +6,7 @@ from __future__ import annotations
 import contextlib
 import email.message
 import http.client
-import importlib.util
+from functools import partial
 import io
 import json
 import socket
@@ -24,17 +24,10 @@ from dataclasses import asdict, FrozenInstanceError
 from unittest.mock import patch
 
 
-ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "skills" / "resume-from-pr" / "scripts" / "extract-pr.py"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from harness import load_skill_script, run_cli
 
-
-def load_mod():
-    spec = importlib.util.spec_from_file_location("extract_pr", SCRIPT)
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["extract_pr"] = mod
-    spec.loader.exec_module(mod)
-    return mod
+load_mod = partial(load_skill_script, "resume-from-pr", "extract-pr.py")
 
 
 class ParseUrlTests(unittest.TestCase):
@@ -2247,12 +2240,7 @@ class BitbucketHeadShaTests(unittest.TestCase):
         self.addCleanup(setattr, mod, "run_cmd", original)
 
     def render_main(self, argv):
-        buf = io.StringIO()
-        original = self.mod.sys.stdout
-        self.mod.sys.stdout = buf
-        self.addCleanup(setattr, self.mod.sys, "stdout", original)
-        self.mod.main(argv)
-        return buf.getvalue()
+        return run_cli(self.mod.main, argv)
 
     def cloud_pr(self, digest, *, link=None):
         commit = {"hash": digest}
