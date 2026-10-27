@@ -336,6 +336,26 @@ class RemoteContractTests(unittest.TestCase):
                 ))
                 self.assertEqual(target.slug, identity[4] or f"{identity[2]}/{identity[3]}")
 
+    def test_remote_parsing_returns_immutable_repository_identity(self):
+        for remote_url, identity, url in REMOTE_CASES:
+            with self.subTest(remote=remote_url):
+                repo = self.mod.repo_from_remote(remote_url)
+                self.assertEqual(asdict(repo), dict(
+                    zip(("provider", "host", "owner", "repo", "project", "org"), identity)
+                ))
+                self.assertFalse(hasattr(repo, "number"))
+                self.assertFalse(hasattr(repo, "url"))
+                self.assertEqual(repo.slug, identity[4] or f"{identity[2]}/{identity[3]}")
+                with self.assertRaises(FrozenInstanceError):
+                    repo.host = "changed.example"
+                target = self.mod.target_from_repo(repo, "5")
+                self.assertEqual(asdict(target), dict(
+                    zip(("provider", "host", "owner", "repo", "project", "org"), identity),
+                    number="5", url=url, original=None,
+                ))
+        self.assertIsNone(self.mod.repo_from_remote("not a remote"))
+        self.assertIsNone(self.mod.repo_from_remote("https://dev.azure.com/not-a-repository"))
+
     def test_invalid_remote_does_not_resolve_a_target(self):
         for remote in ("not a remote", "https://dev.azure.com/not-a-repository"):
             with self.subTest(remote=remote):
@@ -487,8 +507,11 @@ class ProviderTableTests(unittest.TestCase):
                     r"/(?P<repo>[^/]+)/change/(?P<num>\d+)",
                 ),
             ),
-            from_remote=lambda host, path, number: mod.Target(
-                provider="example-forge", host=host, number=number
+            from_remote=lambda host, path: mod.Repo(
+                provider="example-forge", host=host, project=path
+            ),
+            target_url=lambda repo, number: (
+                f"https://{repo.host}/{repo.slug}/change/{number}"
             ),
         )
         original = mod.PROVIDERS
@@ -499,8 +522,18 @@ class ProviderTableTests(unittest.TestCase):
             self.assertEqual(t.provider, "example-forge")
             self.assertEqual(t.slug, "acme/app")
             self.assertEqual(t.number, "4")
-            t = mod.target_from_remote("4", "git@forge.example:acme/app.git")
+            repo = mod.repo_from_remote("git@forge.example:acme/app.git")
+            self.assertEqual(asdict(repo), {
+                "provider": "example-forge", "host": "forge.example",
+                "owner": None, "repo": None, "project": "acme/app", "org": None,
+            })
+            t = mod.target_from_repo(repo, "4")
             self.assertEqual(t.provider, "example-forge")
+            self.assertEqual(t.number, "4")
+            self.assertEqual(t.url, "https://forge.example/acme/app/change/4")
+            self.assertEqual(
+                mod.target_from_remote("4", "git@forge.example:acme/app.git"), t
+            )
         finally:
             mod.PROVIDERS = original
 
@@ -961,6 +994,58 @@ class BareNumberResolutionTests(unittest.TestCase):
         t = self.mod.resolve_number("9", "workspace")
         self.assertEqual(t.provider, "unknown")
         self.assertEqual(t.host, "ghe.example.com")
+
+    def test_current_branch_lookups_receive_repository_identity(self):
+        cases = (
+            ("git@github.com:acme/app.git", "github",
+             "https://api.github.com/repos/acme/app/pulls",
+             [{"number": 42, "html_url": "https://github.com/acme/app/pull/42"}],
+             "https://github.com/acme/app/pull/42"),
+            ("git@gitlab.com:acme/app.git", "gitlab",
+             "https://gitlab.com/api/v4/projects/acme%2Fapp/merge_requests",
+             [{"iid": 42, "web_url": "https://gitlab.com/acme/app/-/merge_requests/42"}],
+             "https://gitlab.com/acme/app/-/merge_requests/42"),
+            ("git@bitbucket.org:acme/app.git", "bitbucket",
+             "https://api.bitbucket.org/2.0/repositories/acme/app/pullrequests",
+             {"values": [{"id": 42, "links": {"html": {"href": "https://bitbucket.org/acme/app/pull-requests/42"}}}]},
+             "https://bitbucket.org/acme/app/pull-requests/42"),
+            ("https://git.example.com/scm/KEY/app.git", "bitbucket-server",
+             "https://git.example.com/rest/api/1.0/projects/KEY/repos/app/pull-requests",
+             {"values": [{"id": 42}]},
+             "https://git.example.com/projects/KEY/repos/app/pull-requests/42"),
+            ("git@codeberg.org:acme/app.git", "gitea",
+             "https://codeberg.org/api/v1/repos/acme/app/pulls",
+             [{"number": 42, "html_url": "https://codeberg.org/acme/app/pulls/42",
+               "head": {"ref": "feature/x", "repo": {"full_name": "acme/app"}}}],
+             "https://codeberg.org/acme/app/pulls/42"),
+            ("git@ssh.dev.azure.com:v3/org/project/app", "azure",
+             "https://dev.azure.com/org/project/_apis/git/repositories/app/pullrequests",
+             {"value": [{"pullRequestId": 42}]},
+             "https://dev.azure.com/org/project/_git/app/pullrequest/42"),
+        )
+        for remote_url, provider, api_root, response, expected_url in cases:
+            with self.subTest(provider=provider):
+                self.patch_run_cmd(f"origin\t{remote_url} (fetch)\n", branch="feature/x")
+                forge = FakeForge(self, self.mod)
+                forge.route(api_root, single(response))
+                lookup = self.mod.BRANCH_LOOKUPS[provider]
+                received = []
+
+                def checked_lookup(repo, branch):
+                    self.assertIsInstance(repo, self.mod.Repo)
+                    self.assertFalse(hasattr(repo, "number"))
+                    self.assertFalse(hasattr(repo, "url"))
+                    received.append((repo.provider, repo.slug, branch))
+                    return lookup(repo, branch)
+
+                with patch.dict(self.mod.BRANCH_LOOKUPS, {provider: checked_lookup}):
+                    target = self.mod.resolve_current_branch("workspace")
+                self.assertEqual(target.number, "42")
+                self.assertEqual(target.url, expected_url)
+                expected_slug = "project" if provider == "azure" else (
+                    "KEY/app" if provider == "bitbucket-server" else "acme/app"
+                )
+                self.assertEqual(received, [(provider, expected_slug, "feature/x")])
 
     def test_current_branch_azure_resolves(self):
         self.patch_run_cmd(
@@ -1580,7 +1665,7 @@ class CollectionPagingTests(unittest.TestCase):
             return pager(key, query)
 
         self.forge.route(pulls, handler)
-        remote = self.mod.target_from_remote("0", "https://codeberg.org/owner/repo.git")
+        remote = self.mod.repo_from_remote("https://codeberg.org/owner/repo.git")
         return pulls, remote
 
     @staticmethod
