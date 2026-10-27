@@ -588,6 +588,11 @@ class Comment:
     path: str | None = None
     line: int | None = None
     kind: str = "discussion"  # discussion | review | inline
+    state: str | None = None
+
+    @property
+    def display_text(self) -> str:
+        return f"{self.state}\n{self.body}".strip() if self.state else self.body
 
 
 @dataclass
@@ -848,7 +853,7 @@ def render(brief: Brief) -> str:
             lines.append("")
             kind = "Review" if comment.kind == "review" else "Comment"
             lines.append(f"### {kind} — {comment.author}")
-            lines.append(truncate(comment.body, 1500))
+            lines.append(truncate(comment.display_text, 1500))
 
     if brief.checks:
         lines.append("")
@@ -876,29 +881,29 @@ def ending_text(brief: Brief) -> str:
     requested = [
         c
         for c in events
-        if c.kind == "review" and "CHANGES_REQUESTED" in (c.body or "").upper()
+        if c.kind == "review" and (c.state or "").upper() == "CHANGES_REQUESTED"
     ]
     if brief.review_decision:
         decision = brief.review_decision.replace("_", " ").title()
         if requested:
             return truncate(
-                f"{decision}. {requested[-1].author}: {requested[-1].body}", 800
+                f"{decision}. {requested[-1].author}: {requested[-1].display_text}", 800
             )
         return decision
     failing = [
         c
         for c in brief.checks
-        if normalize_check_status(c.status) in {"failure", "canceled", "error", "action_required"}
+        if c.status in {"failure", "canceled", "error", "action_required"}
     ]
     if failing:
         names = ", ".join(c.name for c in failing[:5])
         return f"Failing checks: {names}"
     last = next(
-        (c for c in reversed(events) if (c.body or "").strip()),
+        (c for c in reversed(events) if c.display_text.strip()),
         None,
     )
     if last:
-        return truncate(f"{last.author}: {last.body}", 800)
+        return truncate(f"{last.author}: {last.display_text}", 800)
     if brief.draft:
         return "Draft — work still in flight."
     if brief.commits:
@@ -1236,16 +1241,16 @@ def brief_from_github_view(
     comments: list[Comment] = []
     for review in data.get("reviews") or []:
         body = (review.get("body") or "").strip()
-        state = review.get("state") or ""
-        text = f"{state}\n{body}".strip() if state else body
-        if not text:
+        state = review.get("state") or None
+        if not state and not body:
             continue
         comments.append(
             Comment(
                 author=login_of(review.get("author") or review, "login", "name"),
-                body=text,
+                body=body,
                 created=review.get("submittedAt") or review.get("submitted_at"),
                 kind="review",
+                state=state,
             )
         )
     for comment in data.get("comments") or []:
@@ -1855,11 +1860,22 @@ def fetch_bitbucket_server_api(target: Target, cwd: str | None = None) -> Brief:
         body = (comment.get("text") or "").strip()
         if not body:
             continue
+        created_date = comment.get("createdDate")
+        if created_date is None:
+            created_date = item.get("createdDate")
+        created = None
+        if not isinstance(created_date, bool):
+            try:
+                created = datetime.fromtimestamp(
+                    float(created_date) / 1000, tz=timezone.utc
+                ).isoformat()
+            except (TypeError, ValueError, OverflowError, OSError):
+                pass
         comments.append(
             Comment(
                 author=login_of(comment.get("author"), "name", "displayName"),
                 body=body,
-                created=str(comment.get("createdDate") or ""),
+                created=created,
                 kind="discussion",
             )
         )

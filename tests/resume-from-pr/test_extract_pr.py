@@ -915,6 +915,151 @@ class BriefRenderTests(unittest.TestCase):
         self.assertIn(ctx.exception.code, (0, None))
 
 
+class ReviewStatePolicyTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_mod()
+
+    def test_github_normalizers_separate_state_and_preserve_review_text(self):
+        briefs = [
+            self.mod.brief_from_github_view({
+                "reviewDecision": "CHANGES_REQUESTED",
+                "reviews": [{"state": "CHANGES_REQUESTED", "body": "  Add a test.  ",
+                             "author": {"login": "reviewer"}}],
+            }),
+            self.mod.brief_from_github_rest(
+                {"reviewDecision": "CHANGES_REQUESTED"},
+                reviews=[{"state": "changes_requested", "body": "  Add a test.  ",
+                          "user": {"login": "reviewer"}}],
+            ),
+        ]
+        for brief, state in zip(briefs, ("CHANGES_REQUESTED", "changes_requested")):
+            with self.subTest(source=brief.source):
+                review = brief.comments[0]
+                self.assertEqual(review.body, "Add a test.")
+                self.assertEqual(review.state, state)
+                text = self.mod.render(brief)
+                self.assertIn(f"### Review — reviewer\n{state}\nAdd a test.\n", text)
+                self.assertEqual(
+                    self.mod.ending_text(brief),
+                    f"Changes Requested. reviewer: {state}\nAdd a test.",
+                )
+
+    def test_review_prose_does_not_supply_a_verdict(self):
+        for state in ("COMMENTED", "APPROVED", None):
+            with self.subTest(state=state):
+                brief = self.mod.brief_from_github_view({
+                    "reviewDecision": "CHANGES_REQUESTED",
+                    "reviews": [{"state": state, "body": "Document CHANGES_REQUESTED.",
+                                 "author": {"login": "reviewer"}}],
+                })
+                self.assertEqual(self.mod.ending_text(brief), "Changes Requested")
+                self.assertIn("Document CHANGES_REQUESTED.", self.mod.render(brief))
+
+    def test_provider_independent_state_supplies_review_context(self):
+        brief = self.mod.Brief(
+            provider="example", url="https://example.com/pull/1", number="1",
+            title="T", state="open", author="ada", review_decision="CHANGES_REQUESTED",
+            comments=[self.mod.Comment(author="reviewer", body="Add a test.",
+                                       kind="review", state="changes_requested")],
+        )
+        self.assertEqual(
+            self.mod.ending_text(brief),
+            "Changes Requested. reviewer: changes_requested\nAdd a test.",
+        )
+        self.assertIn(
+            "### Review — reviewer\nchanges_requested\nAdd a test.\n",
+            self.mod.render(brief),
+        )
+
+    def test_state_only_reviews_remain_visible_and_supply_the_ending(self):
+        brief = self.mod.brief_from_github_view({
+            "reviews": [
+                {"state": "APPROVED", "body": "  ", "author": {"login": "reviewer"}},
+                {"body": "  ", "author": {"login": "empty"}},
+            ],
+        })
+        self.assertEqual([(c.body, c.state) for c in brief.comments], [("", "APPROVED")])
+        self.assertIn("### Review — reviewer\nAPPROVED\n", self.mod.render(brief))
+        self.assertEqual(self.mod.ending_text(brief), "reviewer: APPROVED")
+        brief.review_decision = "APPROVED"
+        self.assertEqual(self.mod.ending_text(brief), "Approved")
+
+    def test_empty_changes_request_body_still_supplies_context(self):
+        brief = self.mod.brief_from_github_view({
+            "reviewDecision": "CHANGES_REQUESTED",
+            "reviews": [{"state": "CHANGES_REQUESTED", "body": "",
+                         "author": {"login": "reviewer"}}],
+        })
+        self.assertEqual(brief.comments[0].body, "")
+        self.assertEqual(
+            self.mod.ending_text(brief), "Changes Requested. reviewer: CHANGES_REQUESTED"
+        )
+
+    def test_review_truncation_includes_state_in_the_existing_limits(self):
+        brief = self.mod.brief_from_github_view({
+            "reviews": [{"state": "CHANGES_REQUESTED", "body": "x" * 1600,
+                         "author": {"login": "reviewer"}}],
+        })
+        text = self.mod.render(brief)
+        self.assertIn(
+            "### Review — reviewer\nCHANGES_REQUESTED\n" + "x" * 1481 + "…\n", text
+        )
+        self.assertEqual(
+            self.mod.ending_text(brief), "reviewer: CHANGES_REQUESTED\n" + "x" * 771 + "…"
+        )
+        brief.review_decision = "CHANGES_REQUESTED"
+        self.assertEqual(
+            self.mod.ending_text(brief),
+            "Changes Requested. reviewer: CHANGES_REQUESTED\n" + "x" * 752 + "…",
+        )
+
+    def test_providers_without_verdicts_keep_comment_kinds_and_text(self):
+        briefs = [
+            self.mod.brief_from_gitlab({}, discussions=[{"notes": [
+                {"body": "Discuss.", "author": {"username": "ada"}},
+                {"body": "Inline.", "position": {"new_path": "a.py", "new_line": 1}},
+            ]}]),
+            self.mod.brief_from_bitbucket({}, comments=[
+                {"content": {"raw": "Discuss."}, "user": {"display_name": "ada"}},
+                {"content": {"raw": "Inline."}, "inline": {"path": "a.py", "to": 1}},
+            ]),
+            self.mod.brief_from_azure({}, threads=[
+                {"comments": [{"content": "Discuss.", "author": {"displayName": "ada"}}]},
+                {"threadContext": {"filePath": "/a.py"},
+                 "comments": [{"content": "Inline."}]},
+            ]),
+        ]
+        for brief in briefs:
+            with self.subTest(provider=brief.provider):
+                self.assertEqual(
+                    [(c.kind, c.body, c.state) for c in brief.comments],
+                    [("discussion", "Discuss.", None), ("inline", "Inline.", None)],
+                )
+                self.assertIn("### Comment — ada\nDiscuss.\n", self.mod.render(brief))
+                self.assertEqual(self.mod.ending_text(brief), "ada: Discuss.")
+
+    def test_normalized_check_failures_drive_rendered_ending(self):
+        for raw, canonical in (
+            ("TIMED_OUT", "failure"), ("partiallySucceeded", "failure"),
+            ("STOPPED", "canceled"), ("ERROR", "error"),
+            ("actionRequired", "action_required"),
+        ):
+            with self.subTest(status=raw):
+                brief = self.mod.brief_from_github_view({
+                    "comments": [{"body": "Continue.", "author": {"login": "ada"}}],
+                    "statusCheckRollup": [{"name": "ci", "conclusion": raw}],
+                })
+                self.assertEqual(brief.checks[0].status, canonical)
+                self.assertIn(f"- ci: {canonical}\n", self.mod.render(brief))
+                self.assertIn("## Ending\nFailing checks: ci\n", self.mod.render(brief))
+        brief = self.mod.brief_from_github_view({
+            "comments": [{"body": "Continue.", "author": {"login": "ada"}}],
+            "statusCheckRollup": [{"name": "ci", "conclusion": "SUCCESS"}],
+        })
+        self.assertIn("## Ending\nada: Continue.\n", self.mod.render(brief))
+
+
 class BareNumberResolutionTests(unittest.TestCase):
     """Bare-number lookup against the current git remote (issue #62)."""
 
@@ -1503,6 +1648,30 @@ class CollectionPagingTests(unittest.TestCase):
                          "untrusted request reached transport with credentials")
         self.assertIn("unsafe", result.note.lower())
 
+    def test_github_cli_uses_review_state_not_a_newer_prose_mention(self):
+        target = self.github_forge(comments=[], reviews=link_pager([
+            {"state": "changes_requested", "body": "Add a test.",
+             "user": {"login": "reviewer"}, "submitted_at": "2026-01-01T11:00:00Z"},
+            {"state": "commented", "body": "Document CHANGES_REQUESTED.",
+             "user": {"login": "ada"}, "submitted_at": "2026-01-01T12:00:00Z"},
+        ], "per_page", 30, 30))
+        self.forge.route("https://api.github.com/repos/acme/app/pulls/9", single({
+            "number": 9, "title": "T", "state": "open", "html_url": target.url,
+            "head": {"sha": "abc1234"}, "reviewDecision": "CHANGES_REQUESTED",
+        }))
+        self.enterContext(patch.dict(self.mod.os.environ, {"GH_TOKEN": "SYNTHETIC"}, clear=True))
+        self.enterContext(patch.object(self.mod, "run_cmd", side_effect=self.mod.Skip("offline")))
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(self.mod.main([target.url]), 0)
+        self.assertIn(
+            "### Review — ada\ncommented\nDocument CHANGES_REQUESTED.\n", output.getvalue()
+        )
+        self.assertIn(
+            "## Ending\nChanges Requested. reviewer: changes_requested\nAdd a test.\n",
+            output.getvalue(),
+        )
+
     def test_github_ending_reports_the_last_of_45_comments(self):
         target = self.github_forge(comments=self.numbered_comments(45))
         brief = self.mod.fetch_github_api(target)
@@ -1777,6 +1946,72 @@ class CollectionPagingTests(unittest.TestCase):
             "## Linked issues\n- KEY/slug#12\n- other/repo#34\n",
             output.getvalue(),
         )
+
+    def test_bitbucket_server_epoch_dates_order_with_iso_events_and_cli(self):
+        root = "https://git.example.com/rest/api/1.0/projects/KEY/repos/slug/pull-requests/4"
+        self.forge.route(root, single({"id": 4, "title": "PR", "state": "OPEN"}))
+        self.forge.route(f"{root}/changes", bitbucket_server_pager([], 2))
+        self.forge.route(f"{root}/activities", bitbucket_server_pager([
+            {"createdDate": 1767268800123,
+             "comment": {"text": "Latest.", "author": {"name": "ada"}}},
+            {"comment": {"text": "Earlier.", "author": {"name": "ada"},
+                         "createdDate": "1767265200000"}},
+            {"comment": {"text": "Epoch.", "author": {"name": "ada"}, "createdDate": 0}},
+        ], 2))
+        target = self.mod.parse_pr_url(
+            "https://git.example.com/projects/KEY/repos/slug/pull-requests/4"
+        )
+        self.enterContext(patch.dict(self.mod.os.environ, {"BITBUCKET_TOKEN": "SYNTHETIC"}, clear=True))
+        brief = self.mod.fetch_bitbucket_server_api(target)
+        self.assertEqual([c.created for c in brief.comments], [
+            "2026-01-01T12:00:00.123000+00:00", "2026-01-01T11:00:00+00:00",
+            "1970-01-01T00:00:00+00:00",
+        ])
+        self.assertEqual([(c.kind, c.state) for c in brief.comments], [("discussion", None)] * 3)
+        brief.comments.append(self.mod.Comment(
+            author="linus", body="ISO event.", created="2026-01-01T11:30:00Z"
+        ))
+        self.assertEqual(
+            [c.body for c in self.mod.chronological_events(brief.comments)],
+            ["Epoch.", "Earlier.", "ISO event.", "Latest."],
+        )
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(self.mod.main([target.url]), 0)
+        discussion = output.getvalue().split("## Discussion\n", 1)[1].split("## Ending\n", 1)[0]
+        self.assertEqual(
+            discussion,
+            "\n### Comment — ada\nEpoch.\n\n### Comment — ada\nEarlier.\n"
+            "\n### Comment — ada\nLatest.\n\n",
+        )
+        self.assertIn("## Ending\nada: Latest.\n", output.getvalue())
+
+    def test_bitbucket_server_malformed_epoch_dates_remain_undated(self):
+        root = "https://git.example.com/rest/api/1.0/projects/KEY/repos/slug/pull-requests/4"
+        self.forge.route(root, single({"id": 4, "title": "PR", "state": "OPEN"}))
+        self.forge.route(f"{root}/changes", bitbucket_server_pager([], 2))
+        invalid = [None, "", "not-a-date", {}, [], True, 1e100, "NaN", "Infinity"]
+        activities = [
+            {"comment": {"text": f"Undated {n}.", "createdDate": value}}
+            for n, value in enumerate(invalid)
+        ]
+        activities.append({"comment": {"text": "Missing."}})
+        activities.insert(0, {"comment": {
+            "text": "Dated.", "author": {"name": "ada"}, "createdDate": -1000,
+        }})
+        self.forge.route(f"{root}/activities", bitbucket_server_pager(activities, 2))
+        target = self.mod.parse_pr_url(
+            "https://git.example.com/projects/KEY/repos/slug/pull-requests/4"
+        )
+        self.enterContext(patch.dict(self.mod.os.environ, {"BITBUCKET_TOKEN": "SYNTHETIC"}, clear=True))
+        brief = self.mod.fetch_bitbucket_server_api(target)
+        self.assertEqual(brief.comments[0].created, "1969-12-31T23:59:59+00:00")
+        self.assertEqual([c.created for c in brief.comments[1:]], [None] * 10)
+        self.assertEqual(
+            [c.body for c in self.mod.chronological_events(brief.comments)],
+            [f"Undated {n}." for n in range(9)] + ["Missing.", "Dated."],
+        )
+        self.assertIn("## Ending\nada: Dated.\n", self.mod.render(brief))
 
     def test_azure_collects_every_page(self):
         root = (
