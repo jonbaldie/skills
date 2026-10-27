@@ -25,7 +25,7 @@ from unittest.mock import patch
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from harness import load_skill_script
+from harness import load_skill_script, run_cli
 
 load_mod = partial(load_skill_script, "resume-from-pr", "extract-pr.py")
 
@@ -2240,12 +2240,7 @@ class BitbucketHeadShaTests(unittest.TestCase):
         self.addCleanup(setattr, mod, "run_cmd", original)
 
     def render_main(self, argv):
-        buf = io.StringIO()
-        original = self.mod.sys.stdout
-        self.mod.sys.stdout = buf
-        self.addCleanup(setattr, self.mod.sys, "stdout", original)
-        self.mod.main(argv)
-        return buf.getvalue()
+        return run_cli(self.mod.main, argv)
 
     def cloud_pr(self, digest, *, link=None):
         commit = {"hash": digest}
