@@ -21,9 +21,16 @@ For a library, use its public API in a small, realistic consuming program.
 Internal calls can help observe a UI journey, but cannot substitute for driving it.
 
 Start with ordinary user configuration and isolated data or instances. Record the
-build, configuration, starting state, and evidence directory. Establish that the
-software is ready to use. If setup or access is blocked, report the
-concrete blocker and what was attempted.
+build, configuration, starting state, and evidence directory.
+
+Before starting resources, set up one cleanup harness or exit trap for the pass.
+Register every background process, browser, or container with that owner as it
+starts. Record its identifiers, ports, and teardown commands alongside the
+starting state. Use a pass-specific project identifier for container groups.
+Make teardown run on normal completion and early exit.
+
+Establish that the software is ready to use. If setup or access is blocked, report
+the concrete blocker and what was attempted.
 
 ## 2. Attempt complete journeys
 
@@ -89,8 +96,12 @@ File confirmed bugs in the project's issue tracker, following its conventions
 and including the replay steps and evidence. If filing is blocked, record the
 blocker and preserve ready-to-file bug reports.
 
-Clean up instances and scratch state created by the pass, preserving the report
-and evidence. Link the report in the final response.
+Run the registered teardown and remove scratch state created by the pass.
+Preserve the report and evidence. Check the recorded identifiers and ports to
+verify that zero processes, browser sessions, listening ports, or containers
+started by the pass remain active. Do not stop pre-existing resources. If cleanup
+fails, report each surviving resource with its identifier and the blocker.
+Link the report in the final response only after this check passes.
 
 Offer to preserve the report as exploratory feedback under `docs/`, naming a
 concrete destination. Reuse the project's existing feedback or testing report
