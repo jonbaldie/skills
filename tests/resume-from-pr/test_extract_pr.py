@@ -476,7 +476,7 @@ class ProviderTableTests(unittest.TestCase):
         for provider in self.mod.PROVIDERS:
             with self.subTest(provider=provider.name):
                 self.assertTrue(self.mod.PROVIDER_LABELS.get(provider.name))
-                self.assertTrue(self.mod.PROVIDER_TOKEN_HINTS.get(provider.name))
+                self.assertIn(provider.name, self.mod.PROVIDER_CREDENTIALS)
                 self.assertTrue(self.mod.FETCHERS.get(provider.name))
                 self.assertIn(provider.name, self.mod.BRANCH_LOOKUPS)
         wired = {provider.name for provider in self.mod.PROVIDERS}
@@ -497,7 +497,7 @@ class ProviderTableTests(unittest.TestCase):
         forge = mod.Provider(
             name="example-forge",
             label="Example Forge",
-            token_hint="set EXAMPLE_TOKEN",
+            credentials=(mod.Credential(("EXAMPLE_TOKEN",), "Bearer"),),
             host_pattern=r"forge\.example",
             host_precedence=5,
             url_shapes=(
@@ -1485,9 +1485,7 @@ class CollectionPagingTests(unittest.TestCase):
             self.numbered_comments(1),
             {"Link": '<https://outside.invalid/next>; rel="next"'},
         ))
-        original = self.mod.github_headers
-        self.mod.github_headers = lambda: {"Authorization": "Bearer SYNTHETIC"}
-        self.addCleanup(setattr, self.mod, "github_headers", original)
+        self.enterContext(patch.dict(self.mod.os.environ, {"GH_TOKEN": "SYNTHETIC"}, clear=True))
         brief = self.mod.fetch_github_api(target)
         self.assertEqual([c.body for c in brief.comments], ["comment 1"])
         outside = [r for r in self.forge.request_objects if "outside.invalid" in r.full_url]
@@ -2086,9 +2084,7 @@ class BitbucketHeadShaTests(unittest.TestCase):
         self.assertIn(link, self.forge.requests)
 
     def test_unsafe_commit_links_fail_without_publishing_an_abbreviation(self):
-        original = self.mod.bitbucket_headers
-        self.mod.bitbucket_headers = lambda: {"Authorization": "Bearer SYNTHETIC"}
-        self.addCleanup(setattr, self.mod, "bitbucket_headers", original)
+        self.enterContext(patch.dict(self.mod.os.environ, {"BITBUCKET_TOKEN": "SYNTHETIC"}, clear=True))
         for link in ("https://outside.invalid/commit", "https://api.bitbucket.org:444/commit",
                      "http://api.bitbucket.org/commit"):
             with self.subTest(link=link):
@@ -2104,9 +2100,7 @@ class BitbucketHeadShaTests(unittest.TestCase):
                                  "Bearer SYNTHETIC")
 
     def test_relative_commit_link_uses_the_pr_url_and_keeps_credentials(self):
-        original = self.mod.bitbucket_headers
-        self.mod.bitbucket_headers = lambda: {"Authorization": "Bearer SYNTHETIC"}
-        self.addCleanup(setattr, self.mod, "bitbucket_headers", original)
+        self.enterContext(patch.dict(self.mod.os.environ, {"BITBUCKET_TOKEN": "SYNTHETIC"}, clear=True))
         link = "../commit/" + BITBUCKET_SHORT
         target = self.route_cloud(self.cloud_pr(BITBUCKET_SHORT, link=link))
         absolute = "https://api.bitbucket.org/2.0/repositories/ws/repo/commit/" + BITBUCKET_SHORT
@@ -2587,6 +2581,156 @@ class ForgeEndingSummariesAndRenderingTests(unittest.TestCase):
         }
         brief = self.mod.brief_from_github_view(data)
         self.assertEqual(self.mod.ending_text(brief), "Failing checks: cla-check")
+
+
+class CredentialTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_mod()
+
+    def setUp(self):
+        self.enterContext(patch.dict(self.mod.os.environ, {}, clear=True))
+
+    def test_authentication_schemes_and_variable_precedence(self):
+        cases = (
+            ("github", ("GH_TOKEN", "GITHUB_TOKEN"),
+             {"Authorization": "Bearer secret"}),
+            ("gitlab", ("GITLAB_TOKEN", "GL_TOKEN", "PRIVATE_TOKEN"),
+             {"PRIVATE-TOKEN": "secret"}),
+            ("bitbucket", ("BITBUCKET_TOKEN", "BITBUCKET_ACCESS_TOKEN"),
+             {"Authorization": "Bearer secret"}),
+            ("bitbucket-server", ("BITBUCKET_TOKEN", "BITBUCKET_ACCESS_TOKEN"),
+             {"Authorization": "Bearer secret"}),
+            ("gitea", ("GITEA_TOKEN", "FORGEJO_TOKEN", "CODEBERG_TOKEN"),
+             {"Authorization": "token secret"}),
+            ("azure", ("AZURE_DEVOPS_TOKEN", "SYSTEM_ACCESSTOKEN", "AZURE_TOKEN"),
+             {"Authorization": "Basic OnNlY3JldA=="}),
+        )
+        for provider, names, expected in cases:
+            with self.subTest(provider=provider, credentials="absent"):
+                self.assertEqual(self.mod.auth_headers(provider), {})
+            for index, name in enumerate(names):
+                env = {key: "later" for key in names[index + 1:]}
+                env.update({key: "" for key in names[:index]})
+                env[name] = "secret"
+                with self.subTest(provider=provider, variable=name), patch.dict(
+                    self.mod.os.environ, env, clear=True
+                ):
+                    self.assertEqual(self.mod.auth_headers(provider), expected)
+                    self.assertIsNone(self.mod.credential_hint(provider))
+
+    def test_bitbucket_basic_requires_both_fields_and_prefers_tokens(self):
+        for name in ("BITBUCKET_APP_PASSWORD", "BITBUCKET_PASSWORD"):
+            with self.subTest(password=name):
+                for env, expected in (
+                    ({"BITBUCKET_USERNAME": "user"}, {}),
+                    ({name: "secret"}, {}),
+                    ({"BITBUCKET_USERNAME": "user", name: "secret"},
+                     {"Authorization": "Basic dXNlcjpzZWNyZXQ="}),
+                    ({"BITBUCKET_USERNAME": "user", name: "secret",
+                      "BITBUCKET_TOKEN": "token"},
+                     {"Authorization": "Bearer token"}),
+                ):
+                    with patch.dict(self.mod.os.environ, env, clear=True):
+                        for provider in ("bitbucket", "bitbucket-server"):
+                            self.assertEqual(self.mod.auth_headers(provider), expected)
+                            if expected:
+                                self.assertIsNone(self.mod.credential_hint(provider))
+                            else:
+                                self.assertIn("BITBUCKET_USERNAME with either BITBUCKET_APP_PASSWORD or BITBUCKET_PASSWORD",
+                                              self.mod.credential_hint(provider))
+        with patch.dict(self.mod.os.environ, {
+            "BITBUCKET_USERNAME": "user",
+            "BITBUCKET_APP_PASSWORD": "secret",
+            "BITBUCKET_PASSWORD": "later",
+        }):
+            for provider in ("bitbucket", "bitbucket-server"):
+                self.assertEqual(self.mod.auth_headers(provider),
+                                 {"Authorization": "Basic dXNlcjpzZWNyZXQ="})
+
+    def test_hints_name_every_variable_read_for_each_provider(self):
+        for provider in self.mod.PROVIDERS:
+            with self.subTest(provider=provider.name):
+                hint = self.mod.credential_hint(provider.name)
+                self.assertIn(provider.label, hint)
+                for credential in provider.credentials:
+                    for name in credential.variables:
+                        self.assertIn(name, hint)
+                    if credential.username_variable:
+                        self.assertIn(credential.username_variable, hint)
+        self.assertEqual(self.mod.auth_headers("unknown"), {})
+        self.assertIsNone(self.mod.credential_hint("unknown"))
+
+    def test_cli_url_and_branch_failures_for_every_provider(self):
+        cases = (
+            ("https://github.com/g/p/pull/3", "git@github.com:g/p.git", {"GH_TOKEN": "SYNTHETIC"}),
+            ("https://gitlab.com/g/p/-/merge_requests/3", "git@gitlab.com:g/p.git", {"GITLAB_TOKEN": "SYNTHETIC"}),
+            ("https://bitbucket.org/g/p/pull-requests/3", "git@bitbucket.org:g/p.git", {"BITBUCKET_TOKEN": "SYNTHETIC"}),
+            ("https://git.example.com/projects/KEY/repos/p/pull-requests/3", "https://git.example.com/scm/KEY/p.git",
+             {"BITBUCKET_USERNAME": "user", "BITBUCKET_PASSWORD": "SYNTHETIC"}),
+            ("https://codeberg.org/g/p/pulls/3", "git@codeberg.org:g/p.git", {"GITEA_TOKEN": "SYNTHETIC"}),
+            ("https://dev.azure.com/org/project/_git/p/pullrequest/3", "git@ssh.dev.azure.com:v3/org/project/p",
+             {"AZURE_DEVOPS_TOKEN": "SYNTHETIC"}),
+        )
+        FakeForge(self, self.mod)
+        for url, remote, credentials in cases:
+            provider = self.mod.parse_pr_url(url).provider
+            for env in ({}, credentials):
+                for args in ([url], []):
+                    with self.subTest(provider=provider, credentials=bool(env), url=bool(args)), patch.dict(
+                        self.mod.os.environ, env, clear=True
+                    ), patch.object(self.mod, "git_current_branch", return_value="feature/x"), patch.object(
+                        self.mod, "git_remotes", return_value=[("origin", remote)]
+                    ), patch.object(self.mod, "run_cmd", side_effect=self.mod.Skip("no CLI")):
+                        with self.assertRaises(SystemExit) as caught:
+                            self.mod.main(args)
+                        message = str(caught.exception)
+                        self.assertIn(self.mod.PROVIDER_LABELS[provider], message)
+                        self.assertIn("HTTP 404", message)
+                        self.assertNotIn("SYNTHETIC", message)
+                        if env:
+                            self.assertNotIn("for private", message)
+                        else:
+                            self.assertIn("for private", message)
+                            for name in credentials:
+                                self.assertIn(name, message)
+
+    def test_gitlab_url_failure_names_credentials_only_when_missing(self):
+        target = self.mod.parse_pr_url("https://gitlab.com/g/p/-/merge_requests/3")
+        FakeForge(self, self.mod).route(
+            "https://gitlab.com/api/v4/projects/g%2Fp/merge_requests/3", status(404)
+        )
+        for env in ({}, {"GITLAB_TOKEN": "SYNTHETIC"}):
+            with self.subTest(credentials=bool(env)), patch.dict(
+                self.mod.os.environ, env, clear=True
+            ), patch.object(self.mod, "run_cmd", side_effect=self.mod.Skip("no CLI")):
+                with self.assertRaises(self.mod.FetchError) as caught:
+                    self.mod.fetch_brief(target, None)
+                message = str(caught.exception)
+                self.assertIn("GitLab: failed to fetch", message)
+                self.assertIn("HTTP 404", message)
+                self.assertNotIn("SYNTHETIC", message)
+                if env:
+                    self.assertNotIn("GITLAB_TOKEN", message)
+                else:
+                    self.assertIn("GITLAB_TOKEN", message)
+
+    def test_branch_failure_names_credentials_only_when_missing(self):
+        remote = self.mod.Repo("gitlab", "gitlab.com", "g", "p", "g/p")
+        for env in ({}, {"GITLAB_TOKEN": "SYNTHETIC"}):
+            with self.subTest(credentials=bool(env)), patch.dict(
+                self.mod.os.environ, env, clear=True
+            ):
+                message = str(self.mod._branch_lookup_failure(
+                    "gitlab", remote, "feature/x", "HTTP 404: Not Found"
+                ))
+                self.assertIn("branch 'feature/x'", message)
+                self.assertIn("HTTP 404: Not Found", message)
+                self.assertNotIn("SYNTHETIC", message)
+                if env:
+                    self.assertNotIn("GITLAB_TOKEN", message)
+                else:
+                    self.assertIn("GITLAB_TOKEN", message)
 
 
 if __name__ == "__main__":

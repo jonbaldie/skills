@@ -21,7 +21,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 
 class Skip(Exception):
@@ -203,12 +203,27 @@ class UrlShape:
 
 
 @dataclass(frozen=True)
+class Credential:
+    variables: tuple[str, ...]
+    scheme: Literal["Bearer", "token", "PRIVATE-TOKEN", "Basic"]
+    username_variable: str | None = None
+
+
+_BITBUCKET_CREDENTIALS = (
+    Credential(("BITBUCKET_TOKEN", "BITBUCKET_ACCESS_TOKEN"), "Bearer"),
+    Credential(
+        ("BITBUCKET_APP_PASSWORD", "BITBUCKET_PASSWORD"), "Basic", "BITBUCKET_USERNAME"
+    ),
+)
+
+
+@dataclass(frozen=True)
 class Provider:
     """One forge: how to recognise its hosts, remotes, and PR/MR URLs."""
 
     name: str
     label: str
-    token_hint: str
+    credentials: tuple[Credential, ...]
     from_remote: Callable[[str, str], Repo | None]
     host_pattern: str | None = None  # full-matched case-insensitively
     host_precedence: int = 0  # lower is tried first, for hosts and remote paths
@@ -303,8 +318,9 @@ PROVIDERS: tuple[Provider, ...] = (
     Provider(
         name="azure",
         label="Azure DevOps",
-        token_hint="for private projects set AZURE_DEVOPS_TOKEN, SYSTEM_ACCESSTOKEN, "
-        "or AZURE_TOKEN",
+        credentials=(Credential(
+            ("AZURE_DEVOPS_TOKEN", "SYSTEM_ACCESSTOKEN", "AZURE_TOKEN"), "Basic"
+        ),),
         from_remote=_azure_remote,
         target_url=lambda repo, number: (
             f"https://dev.azure.com/{urllib.parse.quote(repo.org)}/"
@@ -326,7 +342,7 @@ PROVIDERS: tuple[Provider, ...] = (
     Provider(
         name="bitbucket-server",
         label="Bitbucket Server",
-        token_hint="for private servers set BITBUCKET_TOKEN or BITBUCKET_ACCESS_TOKEN",
+        credentials=_BITBUCKET_CREDENTIALS,
         from_remote=_bitbucket_server_remote,
         target_url=lambda repo, number: (
             f"https://{repo.host}/projects/{repo.owner}/repos/{repo.repo}"
@@ -346,7 +362,9 @@ PROVIDERS: tuple[Provider, ...] = (
     Provider(
         name="gitlab",
         label="GitLab",
-        token_hint="for private projects set GITLAB_TOKEN, GL_TOKEN, or PRIVATE_TOKEN",
+        credentials=(Credential(
+            ("GITLAB_TOKEN", "GL_TOKEN", "PRIVATE_TOKEN"), "PRIVATE-TOKEN"
+        ),),
         from_remote=_gitlab_remote,
         target_url=lambda repo, number: (
             f"https://{repo.host}/{repo.project}/-/merge_requests/{number}"
@@ -372,8 +390,7 @@ PROVIDERS: tuple[Provider, ...] = (
     Provider(
         name="bitbucket",
         label="Bitbucket",
-        token_hint="for private repositories set BITBUCKET_TOKEN, "
-        "BITBUCKET_ACCESS_TOKEN, or BITBUCKET_USERNAME with BITBUCKET_APP_PASSWORD",
+        credentials=_BITBUCKET_CREDENTIALS,
         from_remote=_bitbucket_remote,
         target_url=lambda repo, number: (
             f"https://bitbucket.org/{repo.owner}/{repo.repo}/pull-requests/{number}"
@@ -391,7 +408,7 @@ PROVIDERS: tuple[Provider, ...] = (
     Provider(
         name="github",
         label="GitHub",
-        token_hint="for private repositories set GH_TOKEN or GITHUB_TOKEN",
+        credentials=(Credential(("GH_TOKEN", "GITHUB_TOKEN"), "Bearer"),),
         from_remote=_github_remote,
         target_url=lambda repo, number: (
             f"https://github.com/{repo.owner}/{repo.repo}/pull/{number}"
@@ -415,8 +432,9 @@ PROVIDERS: tuple[Provider, ...] = (
     Provider(
         name="gitea",
         label="Gitea/Forgejo",
-        token_hint="for private instances set GITEA_TOKEN, FORGEJO_TOKEN, or "
-        "CODEBERG_TOKEN",
+        credentials=(Credential(
+            ("GITEA_TOKEN", "FORGEJO_TOKEN", "CODEBERG_TOKEN"), "token"
+        ),),
         from_remote=_gitea_remote,
         target_url=lambda repo, number: (
             f"https://{repo.host}/{repo.owner}/{repo.repo}/pulls/{number}"
@@ -434,7 +452,7 @@ PROVIDERS: tuple[Provider, ...] = (
 )
 
 PROVIDER_LABELS = {provider.name: provider.label for provider in PROVIDERS}
-PROVIDER_TOKEN_HINTS = {provider.name: provider.token_hint for provider in PROVIDERS}
+PROVIDER_CREDENTIALS = {provider.name: provider.credentials for provider in PROVIDERS}
 
 
 def identify(host: str) -> str:
@@ -903,6 +921,39 @@ def env_token(*names: str) -> str | None:
     return None
 
 
+def auth_headers(provider: str) -> dict[str, str]:
+    for credential in PROVIDER_CREDENTIALS.get(provider, ()):
+        token = env_token(*credential.variables)
+        if not token:
+            continue
+        username = ""
+        if credential.username_variable:
+            username = os.environ.get(credential.username_variable)
+            if not username:
+                continue
+        if credential.scheme == "Basic":
+            token = base64.b64encode(f"{username}:{token}".encode()).decode("ascii")
+        if credential.scheme == "PRIVATE-TOKEN":
+            return {"PRIVATE-TOKEN": token}
+        return {"Authorization": f"{credential.scheme} {token}"}
+    return {}
+
+
+def credential_hint(provider: str) -> str | None:
+    if auth_headers(provider):
+        return None
+    choices = []
+    for credential in PROVIDER_CREDENTIALS.get(provider, ()):
+        choice = " or ".join(credential.variables)
+        if credential.username_variable:
+            choice = f"{credential.username_variable} with either {choice}"
+        choices.append(choice)
+    if not choices:
+        return None
+    label = PROVIDER_LABELS[provider]
+    return f"for private {label} repositories set " + " or ".join(choices)
+
+
 class _ScopedRedirectHandler(urllib.request.HTTPRedirectHandler):
     def __init__(self, reader: "ForgeReader"):
         self.reader = reader
@@ -1163,13 +1214,6 @@ def github_api_root(host: str) -> str:
     if host.lower() in {"github.com", "www.github.com"}:
         return "https://api.github.com"
     return f"https://{host}/api/v3"
-
-
-def github_headers() -> dict[str, str]:
-    token = env_token("GH_TOKEN", "GITHUB_TOKEN")
-    if token:
-        return {"Authorization": f"Bearer {token}"}
-    return {}
 
 
 def brief_from_github_view(
@@ -1439,7 +1483,7 @@ def fetch_github_api(target: Target, cwd: str | None = None) -> Brief:
         raise Skip("no owner/repo for GitHub API")
     root = github_api_root(target.host or "github.com")
     base = f"{root}/repos/{target.slug}/pulls/{target.number}"
-    reader = ForgeReader(root, github_headers())
+    reader = ForgeReader(root, auth_headers("github"))
     pr = reader.json(base)
     if not isinstance(pr, dict):
         raise FetchError(f"No GitHub pull request {target.slug}#{target.number}")
@@ -1497,13 +1541,6 @@ def fetch_github_api(target: Target, cwd: str | None = None) -> Brief:
 # ---------------------------------------------------------------------------
 # GitLab
 # ---------------------------------------------------------------------------
-
-
-def gitlab_headers() -> dict[str, str]:
-    token = env_token("GITLAB_TOKEN", "GL_TOKEN", "PRIVATE_TOKEN")
-    if token:
-        return {"PRIVATE-TOKEN": token}
-    return {}
 
 
 def gitlab_project_id(target: Target | Repo) -> str:
@@ -1619,7 +1656,7 @@ def fetch_gitlab_api(target: Target, cwd: str | None = None) -> Brief:
         raise Skip("no GitLab project path")
     host = target.host or "gitlab.com"
     root = f"https://{host}/api/v4/projects/{project}/merge_requests/{target.number}"
-    reader = ForgeReader(root, gitlab_headers())
+    reader = ForgeReader(root, auth_headers("gitlab"))
     mr = reader.json(root)
     if not isinstance(mr, dict):
         raise FetchError(f"No GitLab merge request {target.slug}!{target.number}")
@@ -1646,19 +1683,6 @@ def fetch_gitlab_api(target: Target, cwd: str | None = None) -> Brief:
 # ---------------------------------------------------------------------------
 # Bitbucket
 # ---------------------------------------------------------------------------
-
-
-def bitbucket_headers() -> dict[str, str]:
-    token = env_token("BITBUCKET_TOKEN", "BITBUCKET_ACCESS_TOKEN")
-    if token:
-        return {"Authorization": f"Bearer {token}"}
-    user = os.environ.get("BITBUCKET_USERNAME")
-    password = env_token("BITBUCKET_APP_PASSWORD", "BITBUCKET_PASSWORD")
-    if user and password:
-        cred = f"{user}:{password}"
-        encoded = base64.b64encode(cred.encode()).decode("ascii")
-        return {"Authorization": f"Basic {encoded}"}
-    return {}
 
 
 # Bitbucket Cloud abbreviates source.commit.hash. git fetch needs the full id.
@@ -1779,7 +1803,7 @@ def fetch_bitbucket_api(target: Target, cwd: str | None = None) -> Brief:
         root = f"https://api.bitbucket.org/2.0/repositories/{target.slug}/pullrequests/{target.number}"
     else:
         raise Skip("Bitbucket Server uses a different API path")
-    reader = ForgeReader(root, bitbucket_headers())
+    reader = ForgeReader(root, auth_headers("bitbucket"))
     pr = reader.json(root)
     if not isinstance(pr, dict):
         raise FetchError(f"No Bitbucket pull request {target.slug}#{target.number}")
@@ -1809,7 +1833,7 @@ def fetch_bitbucket_server_api(target: Target, cwd: str | None = None) -> Brief:
         f"https://{target.host}/rest/api/1.0/projects/{target.owner}"
         f"/repos/{target.repo}/pull-requests/{target.number}"
     )
-    reader = ForgeReader(root, bitbucket_headers())
+    reader = ForgeReader(root, auth_headers("bitbucket-server"))
     pr = reader.json(root)
     if not isinstance(pr, dict):
         raise FetchError(f"No Bitbucket Server pull request {target.number}")
@@ -1868,19 +1892,12 @@ def fetch_bitbucket_server_api(target: Target, cwd: str | None = None) -> Brief:
 # ---------------------------------------------------------------------------
 
 
-def gitea_headers() -> dict[str, str]:
-    token = env_token("GITEA_TOKEN", "FORGEJO_TOKEN", "CODEBERG_TOKEN")
-    if token:
-        return {"Authorization": f"token {token}"}
-    return {}
-
-
 def fetch_gitea_api(target: Target, cwd: str | None = None) -> Brief:
     if not target.slug:
         raise Skip("no owner/repo for Gitea API")
     host = target.host
     root = f"https://{host}/api/v1/repos/{target.slug}/pulls/{target.number}"
-    reader = ForgeReader(root, gitea_headers())
+    reader = ForgeReader(root, auth_headers("gitea"))
     pr = reader.json(root)
     if not isinstance(pr, dict):
         raise FetchError(f"No Gitea pull request {target.slug}#{target.number}")
@@ -1912,14 +1929,6 @@ def fetch_gitea_api(target: Target, cwd: str | None = None) -> Brief:
 # ---------------------------------------------------------------------------
 # Azure DevOps
 # ---------------------------------------------------------------------------
-
-
-def azure_headers() -> dict[str, str]:
-    token = env_token("AZURE_DEVOPS_TOKEN", "SYSTEM_ACCESSTOKEN", "AZURE_TOKEN")
-    if not token:
-        return {}
-    encoded = base64.b64encode(f":{token}".encode()).decode("ascii")
-    return {"Authorization": f"Basic {encoded}"}
 
 
 def brief_from_azure(
@@ -2008,7 +2017,7 @@ def fetch_azure_api(target: Target, cwd: str | None = None) -> Brief:
         f"https://dev.azure.com/{org}/{project}/_apis/git/repositories/{repo}"
         f"/pullrequests/{target.number}"
     )
-    reader = ForgeReader(root, azure_headers())
+    reader = ForgeReader(root, auth_headers("azure"))
     pr = reader.json(f"{root}?api-version=7.1")
     if not isinstance(pr, dict):
         raise FetchError(f"No Azure DevOps pull request {target.number}")
@@ -2236,7 +2245,7 @@ def github_branch_target(remote: Repo, branch: str) -> Target:
     root = f"{github_api_root(remote.host or 'github.com')}/repos/{remote.slug}/pulls"
     query = f"?head={urllib.parse.quote(f'{remote.owner}:{branch}', safe='')}&state=open"
     try:
-        data = http_json(root + query, headers=github_headers())
+        data = http_json(root + query, headers=auth_headers("github"))
     except Skip as exc:
         raise _branch_lookup_failure("github", remote, branch, f"network error: {exc}") from exc
     except FetchError as exc:
@@ -2263,7 +2272,7 @@ def gitlab_branch_target(remote: Repo, branch: str) -> Target:
     query = f"?source_branch={urllib.parse.quote(branch, safe='')}&state=opened"
     root = f"https://{host}/api/v4/projects/{project}/merge_requests{query}"
     try:
-        data = http_json(root, headers=gitlab_headers())
+        data = http_json(root, headers=auth_headers("gitlab"))
     except Skip as exc:
         raise _branch_lookup_failure("gitlab", remote, branch, f"network error: {exc}") from exc
     except FetchError as exc:
@@ -2292,7 +2301,7 @@ def bitbucket_branch_target(remote: Repo, branch: str) -> Target:
         f"/pullrequests?q={urllib.parse.quote(q, safe='')}"
     )
     try:
-        data = http_json(root, headers=bitbucket_headers())
+        data = http_json(root, headers=auth_headers("bitbucket"))
     except Skip as exc:
         raise _branch_lookup_failure("bitbucket", remote, branch, f"network error: {exc}") from exc
     except FetchError as exc:
@@ -2324,7 +2333,7 @@ def bitbucket_server_branch_target(remote: Repo, branch: str) -> Target:
         f"/repos/{remote.repo}/pull-requests{query}"
     )
     try:
-        data = http_json(root, headers=bitbucket_headers())
+        data = http_json(root, headers=auth_headers("bitbucket-server"))
     except Skip as exc:
         raise _branch_lookup_failure(
             "bitbucket-server", remote, branch, f"network error: {exc}"
@@ -2357,7 +2366,7 @@ def gitea_branch_target(remote: Repo, branch: str) -> Target:
     # Gitea cannot filter /pulls by head branch, so read every page before
     # deciding the branch has no open pull request.
     listing = http_collection(
-        root, ForgeReader(root, gitea_headers()), GITEA_PAGING, "open pull requests"
+        root, ForgeReader(root, auth_headers("gitea")), GITEA_PAGING, "open pull requests"
     )
     same_repo = fork = None
     for pr in listing.items:
@@ -2411,7 +2420,7 @@ def azure_branch_target(remote: Repo, branch: str) -> Target:
         "&searchCriteria.status=active&api-version=7.1"
     )
     try:
-        data = http_json(root + query, headers=azure_headers())
+        data = http_json(root + query, headers=auth_headers("azure"))
     except Skip as exc:
         raise _branch_lookup_failure("azure", remote, branch, f"network error: {exc}") from exc
     except FetchError as exc:
@@ -2447,7 +2456,7 @@ def _branch_lookup_failure(
         f"{label}: could not look up the open pull request for branch "
         f"'{branch}' on {remote.host or label}: {detail}"
     )
-    hint = PROVIDER_TOKEN_HINTS.get(provider)
+    hint = credential_hint(provider)
     if hint:
         message += f" ({hint})"
     return FetchError(message)
@@ -2569,10 +2578,14 @@ def fetch_brief(target: Target, cwd: str | None) -> Brief:
             "Failed to fetch pull/merge request "
             f"{target.url or target.number}: " + "; ".join(errors)
         )
-    raise FetchError(
+    message = (
         f"{label}: failed to fetch pull/merge request "
         f"{target.url or target.number}: " + "; ".join(errors)
     )
+    hint = credential_hint(target.provider)
+    if hint:
+        message += f" ({hint})"
+    raise FetchError(message)
 
 
 def resolve_target(arg: str | None, cwd: str) -> Target:
