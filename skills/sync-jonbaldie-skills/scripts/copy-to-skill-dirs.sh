@@ -37,6 +37,8 @@ shift
 
 [[ -d "${canonical_skills_dir}" ]] || die "canonical skills directory is missing; run sync-skills.sh first"
 [[ -f "${canonical_manifest}" ]] || die "managed-skill manifest is missing; run sync-skills.sh first"
+canonical_location="$(cd "$(dirname "${canonical_skills_dir}")" && pwd -P)/$(basename "${canonical_skills_dir}")"
+readonly canonical_location
 canonical_skills_dir="$(cd "${canonical_skills_dir}" && pwd -P)"
 readonly canonical_skills_dir
 
@@ -91,6 +93,17 @@ reject_project_ancestor() {
   fi
 }
 
+reject_canonical_overlap() {
+  local resolved="$1" requested_directory="$2" tree
+
+  [[ "${resolved}" == "${canonical_skills_dir}" ]] && return 0
+  for tree in "${canonical_skills_dir}" "${canonical_location}"; do
+    if [[ "${resolved}" == "${tree}" || "${resolved}" == "${tree%/}/"* || "${tree}" == "${resolved%/}/"* ]]; then
+      die "skill directory overlaps the canonical skills tree: ${requested_directory}"
+    fi
+  done
+}
+
 validate_requested_directory() {
   local requested_directory="$1"
   local resolved
@@ -98,6 +111,7 @@ validate_requested_directory() {
   [[ -n "${requested_directory}" ]] || die "skill directory must not be empty"
   resolved="$(resolve_requested_directory "${requested_directory}")" || exit 1
   reject_project_ancestor "${resolved}" "${requested_directory}"
+  reject_canonical_overlap "${resolved}" "${requested_directory}"
 }
 
 temporary_root=""
@@ -121,6 +135,7 @@ copy_to_directory() {
 
   destination="$(resolve_requested_directory "${requested_directory}")" || return 1
   reject_project_ancestor "${destination}" "${requested_directory}"
+  reject_canonical_overlap "${destination}" "${requested_directory}"
 
   if [[ "${destination}" == "${canonical_skills_dir}" ]]; then
     printf 'Already canonical: %s\n' "${destination}"
@@ -131,6 +146,7 @@ copy_to_directory() {
   mkdir -p "${destination}"
   destination="$(cd "${destination}" && pwd -P)"
   reject_project_ancestor "${destination}" "${requested_directory}"
+  reject_canonical_overlap "${destination}" "${requested_directory}"
   destination_manifest="${destination}/.sync-jonbaldie-skills.manifest"
   retire_absent "${destination}" "${destination_manifest}" "${temporary_root}/names" || return 1
 
