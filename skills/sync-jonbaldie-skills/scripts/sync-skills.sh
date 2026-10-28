@@ -25,7 +25,9 @@ done
 
 # shellcheck source=/dev/null
 source "$(dirname "${BASH_SOURCE[0]}")/lib/skill-tree.sh"
-# shellcheck source=/dev/null
+# shellcheck source=skills/sync-jonbaldie-skills/scripts/lib/managed-manifest.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/managed-manifest.sh"
+# shellcheck source=skills/sync-jonbaldie-skills/scripts/lib/agent-destinations.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/agent-destinations.sh"
 
 [[ -d "$1" ]] || die "project directory does not exist: $1"
@@ -109,16 +111,10 @@ install_collection "${jonbaldie_sources}" "${temporary_root}/jonbaldie"
 
 sort -u "${names_file}" >"${sorted_names_file}"
 
-if [[ -f "${manifest}" ]]; then
-  while IFS= read -r old_name; do
-    [[ -n "${old_name}" && "${old_name}" != \#* ]] || continue
-    skill_name_is_valid "${old_name}" || continue
-    if ! grep -Fqx "${old_name}" "${sorted_names_file}"; then
-      rm -rf "${skills_dir:?}/${old_name}"
-      printf '  removed retired skill %s\n' "${old_name}"
-    fi
-  done <"${manifest}"
-fi
+report_retired() {
+  printf '  removed retired skill %s\n' "$1"
+}
+retire_absent "${skills_dir}" "${manifest}" "${sorted_names_file}" report_retired
 
 {
   printf '# mattpocock/skills %s\n' "${mattpocock_commit}"
@@ -127,8 +123,7 @@ fi
     printf '%s\n' "${managed_name}"
   done <"${sorted_names_file}"
 } >"${temporary_root}/manifest"
-cp "${temporary_root}/manifest" "${agent_root}/.sync-jonbaldie-skills.manifest.tmp"
-mv "${agent_root}/.sync-jonbaldie-skills.manifest.tmp" "${manifest}"
+publish_file "${manifest}" "${temporary_root}/manifest" "${agent_root}/.sync-jonbaldie-skills.manifest.tmp"
 
 printf 'mattpocock/skills commit: %s\n' "${mattpocock_commit}"
 printf 'jonbaldie/skills commit: %s\n' "${jonbaldie_commit}"
