@@ -56,7 +56,7 @@ collect_collection_skills() {
 
   : >"${registry}"
   while IFS= read -r skill_directory; do
-    name="$(skill_name_from_dir "${skill_directory}" --strict)" || exit 1
+    name="$(installed_skill_name "${skill_directory}")" || exit 1
     append_skill_source "${registry}" "${name}" "${skill_directory}"
   done < <(discover_skill_dirs "${repository_root}")
 }

@@ -103,6 +103,10 @@ skill_name_from_dir() {
   printf '%s\n' "${name}"
 }
 
+installed_skill_name() {
+  skill_name_from_dir "$1" --strict
+}
+
 # Prints a directory's physical path, preserving the input if resolution fails.
 physical_dir() {
   (cd -P "$1" 2>/dev/null && pwd -P) || printf '%s' "$1"
