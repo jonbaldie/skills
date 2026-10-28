@@ -27,10 +27,11 @@ make_project() {
 
 check_preserved() {
   local scenario="$1"
-  [[ -f "${canonical}/skills/SKILL.md" ]] &&
-    [[ -f "${canonical}/skills/sentinel" ]] &&
-    [[ "$(cat "${canonical}/skills/sentinel")" == 'canonical sentinel' ]] ||
+  if [[ ! -f "${canonical}/skills/SKILL.md" ]] ||
+    [[ ! -f "${canonical}/skills/sentinel" ]] ||
+    [[ "$(cat "${canonical}/skills/sentinel")" != 'canonical sentinel' ]]; then
     problem "${scenario}: canonical skill or sentinel changed"
+  fi
   cmp -s "${manifest}" "${test_root}/manifest.expected" ||
     problem "${scenario}: canonical manifest changed"
 }
