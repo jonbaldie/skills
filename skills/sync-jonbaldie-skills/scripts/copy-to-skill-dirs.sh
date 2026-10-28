@@ -16,13 +16,15 @@ die() {
   exit 2
 }
 
-for command_name in mkdir rm cp grep mv find dirname; do
+for command_name in mkdir rm cp grep mv find dirname mktemp; do
   command -v "${command_name}" >/dev/null 2>&1 || die "missing required command: ${command_name}"
 done
 
 # shellcheck source=/dev/null
 source "$(dirname "${BASH_SOURCE[0]}")/lib/skill-tree.sh"
-# shellcheck source=/dev/null
+# shellcheck source=skills/sync-jonbaldie-skills/scripts/lib/managed-manifest.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/managed-manifest.sh"
+# shellcheck source=skills/sync-jonbaldie-skills/scripts/lib/agent-destinations.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/agent-destinations.sh"
 
 [[ -d "$1" ]] || die "project directory does not exist: $1"
@@ -98,16 +100,26 @@ validate_requested_directory() {
   reject_project_ancestor "${resolved}" "${requested_directory}"
 }
 
+temporary_root=""
+cleanup() {
+  if [[ -n "${temporary_root}" ]]; then rm -rf "${temporary_root}"; fi
+}
+trap cleanup EXIT
+
+prepare_manifest() {
+  [[ -z "${temporary_root}" ]] || return 0
+  temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/copy-managed-skills.XXXXXX")" || return 1
+  cp "${canonical_manifest}" "${temporary_root}/manifest" || return 1
+  read_managed_names "${temporary_root}/manifest" --strict >"${temporary_root}/names" || return 1
+}
+
 copy_to_directory() {
   local requested_directory="$1"
   local destination
   local destination_manifest
   local name
 
-  destination="$(requested_path "${requested_directory}")"
-
-  mkdir -p "${destination}"
-  destination="$(cd "${destination}" && pwd -P)"
+  destination="$(resolve_requested_directory "${requested_directory}")" || return 1
   reject_project_ancestor "${destination}" "${requested_directory}"
 
   if [[ "${destination}" == "${canonical_skills_dir}" ]]; then
@@ -115,28 +127,20 @@ copy_to_directory() {
     return
   fi
 
+  prepare_manifest || return 1
+  mkdir -p "${destination}"
+  destination="$(cd "${destination}" && pwd -P)"
+  reject_project_ancestor "${destination}" "${requested_directory}"
   destination_manifest="${destination}/.sync-jonbaldie-skills.manifest"
-
-  if [[ -f "${destination_manifest}" ]]; then
-    while IFS= read -r name; do
-      [[ -n "${name}" && "${name}" != \#* ]] || continue
-      skill_name_is_valid "${name}" || continue
-      if ! grep -Fqx "${name}" "${canonical_manifest}"; then
-        rm -rf "${destination:?}/${name}"
-      fi
-    done <"${destination_manifest}"
-  fi
+  retire_absent "${destination}" "${destination_manifest}" "${temporary_root}/names" || return 1
 
   while IFS= read -r name; do
-    [[ -n "${name}" && "${name}" != \#* ]] || continue
-    skill_name_is_valid "${name}" || die "unsafe skill name in manifest: ${name}"
     [[ -d "${canonical_skills_dir}/${name}" ]] || die "managed skill is missing: ${canonical_skills_dir}/${name}"
     copy_skill_tree "${canonical_skills_dir}/${name}" "${destination:?}/${name}"
     printf '  copied %s -> %s\n' "${name}" "${destination}"
-  done <"${canonical_manifest}"
+  done <"${temporary_root}/names"
 
-  cp "${canonical_manifest}" "${destination}/.sync-jonbaldie-skills.manifest.tmp"
-  mv "${destination}/.sync-jonbaldie-skills.manifest.tmp" "${destination_manifest}"
+  publish_file "${destination_manifest}" "${temporary_root}/manifest" "${destination}/.sync-jonbaldie-skills.manifest.tmp" || return 1
   printf 'Additional destination: %s\n' "${destination}"
 }
 
