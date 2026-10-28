@@ -13,6 +13,8 @@ from collections import Counter, deque
 from datetime import datetime, timezone
 from pathlib import Path
 
+from tool_text_paths import paths_from_tool_text
+
 
 def default_db_path() -> Path:
     override = os.environ.get("OPENCODE_DB")
@@ -207,15 +209,6 @@ def resolve_session(
     )
 
 
-def paths_from_patch(patch_text: str, files: Counter[str]) -> None:
-    for match in re.finditer(
-        r"\*\*\* (?:Update|Add|Delete) File:\s*([^\n\r]+)", patch_text or ""
-    ):
-        path = match.group(1).strip().split("\\n")[0].strip()
-        if path and len(path) < 512:
-            files[path] += 1
-
-
 def extract_file_from_input(tool: str, inp: dict, files: Counter[str]) -> None:
     if not isinstance(inp, dict):
         return
@@ -235,7 +228,7 @@ def extract_file_from_input(tool: str, inp: dict, files: Counter[str]) -> None:
     if tool in {"apply_patch", "applyPatch"}:
         patch = inp.get("patchText") or inp.get("patch") or inp.get("diff") or ""
         if isinstance(patch, str):
-            paths_from_patch(patch, files)
+            files.update(paths_from_tool_text(patch))
 
 
 def parse_session(conn: sqlite3.Connection, session: sqlite3.Row) -> dict:
