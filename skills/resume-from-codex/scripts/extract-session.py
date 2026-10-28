@@ -12,6 +12,8 @@ from collections import Counter, deque
 from datetime import datetime
 from pathlib import Path
 
+from tool_text_paths import paths_from_tool_text
+
 
 def codex_home() -> Path:
     env = os.environ.get("CODEX_HOME")
@@ -205,32 +207,6 @@ def parse_tool_blob(raw) -> str:
     return raw or ""
 
 
-def clean_path(path: str) -> str | None:
-    path = path.strip().strip('"').strip("'")
-    # apply_patch blobs often continue with literal \n@@ markers
-    path = path.split("\\n")[0].split("\n")[0].strip()
-    if not path or len(path) > 512:
-        return None
-    if any(ch in path for ch in (" ", "\t", "{", "}")):
-        return None
-    return path
-
-
-def extract_paths_from_tool_blob(blob: str, files: Counter[str]) -> None:
-    for match in re.finditer(
-        r"\*\*\* (?:Update|Add|Delete) File:\s*(\S+)", blob
-    ):
-        path = clean_path(match.group(1))
-        if path:
-            files[path] += 1
-    for match in re.finditer(
-        r'"(?:path|file_path|filePath)"\s*:\s*"([^"]+)"', blob
-    ):
-        path = clean_path(match.group(1))
-        if path:
-            files[path] += 1
-
-
 def parse_session(path: Path) -> dict:
     meta = read_session_meta(path)
     if not meta.get("session_id"):
@@ -322,7 +298,7 @@ def parse_session(path: Path) -> dict:
                     if pt == "function_call"
                     else payload.get("input")
                 )
-                extract_paths_from_tool_blob(blob, files)
+                files.update(paths_from_tool_text(blob))
             elif pt == "message" and payload.get("role") == "user":
                 text = clean_user_text(
                     response_item_text(payload, {"input_text", "text"})

@@ -22,6 +22,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
 
+from tool_text_paths import paths_from_tool_text
+
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -661,10 +663,7 @@ def extract_hermes(cand: Candidate) -> Brief:
                         if path:
                             files[path] += 1
                     elif isinstance(args, str):
-                        for match in re.finditer(
-                            r'"(?:path|file_path|filePath)"\s*:\s*"([^"]+)"', args
-                        ):
-                            files[match.group(1)] += 1
+                        files.update(paths_from_tool_text(args))
         text = str(content or "").strip()
         if row["finish_reason"] and row["finish_reason"] not in {
             "stop",

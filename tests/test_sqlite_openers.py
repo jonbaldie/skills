@@ -26,16 +26,22 @@ class SQLiteOpenerTests(unittest.TestCase):
         self.root = Path(self.tmp.name).resolve()
 
     def load_opener(self, skill, name):
-        # Import a standalone installed copy, with no sibling scripts or helpers.
+        # Import the skill scripts from a standalone copy.
         installed = self.root / skill / "scripts" / "extract-session.py"
         installed.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / "skills" / skill / "scripts" / installed.name, installed)
+        shutil.copyfile(ROOT / "skills" / skill / "scripts/tool_text_paths.py",
+                        installed.parent / "tool_text_paths.py")
         module_name = "sqlite_contract_" + skill.replace("-", "_")
         spec = importlib.util.spec_from_file_location(module_name, installed)
         mod = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = mod
         self.addCleanup(sys.modules.pop, module_name, None)
-        spec.loader.exec_module(mod)
+        sys.path.insert(0, str(installed.parent))
+        try:
+            spec.loader.exec_module(mod)
+        finally:
+            sys.path.pop(0)
         return getattr(mod, name)
 
     def test_literal_paths_read_only_without_filesystem_changes(self):
