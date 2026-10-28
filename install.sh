@@ -411,6 +411,7 @@ validate_skill_collisions() {
       [[ -n "${skill_dir}" ]] || continue
       name="$(skill_name_from_dir "${skill_dir}" --slugify)"
       skill_selected "${name}" || continue
+      name="$(installed_skill_name "${skill_dir}")" || return 1
       append_skill_source "${registry}" "${name}" "${skill_dir}"
     done < <(discover_skill_dirs "${root}" | sort -u)
     cat "${registry}" >>"${manifest}"
