@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+
+# shellcheck source=tests/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 new_sandbox installed-skill-name
 
