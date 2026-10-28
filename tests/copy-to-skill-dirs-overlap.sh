@@ -41,6 +41,8 @@ reject_overlap() {
   if "${copy_script}" "${project}" "$@" >"${test_root}/copy.log" 2>&1; then
     problem "${scenario}: overlapping destination accepted"
   fi
+  grep -Fq 'error: skill directory overlaps the canonical skills tree:' "${test_root}/copy.log" ||
+    problem "${scenario}: missing overlap error"
   check_preserved "${scenario}"
 }
 
@@ -50,6 +52,16 @@ reject_overlap 'canonical parent reproducer' .agents
 make_project
 ln -s .agents "${project}/alias"
 reject_overlap 'symlink alias' alias
+
+make_project
+ln -s .agents/skills "${project}/tree-alias"
+reject_overlap 'symlink descendant' tree-alias/new
+
+make_project
+mv "${canonical}" "${project}/actual-skills"
+ln -s ../actual-skills "${canonical}"
+reject_overlap 'symlinked canonical location parent' .agents
+[[ -L "${canonical}" ]] || problem 'symlinked canonical location parent: canonical link changed'
 
 make_project
 reject_overlap 'missing descendant' .agents/skills/new/nested
@@ -76,11 +88,24 @@ fi
 check_preserved 'valid neighbor'
 
 make_project
+mkdir -p "${project}/outside"
+ln -s outside "${project}/outside-alias"
+if ! "${copy_script}" "${project}" outside-alias >"${test_root}/copy.log" 2>&1; then
+  problem "disjoint symlink rejected: $(<"${test_root}/copy.log")"
+else
+  cmp -s "${canonical}/skills/SKILL.md" "${project}/outside/skills/SKILL.md" ||
+    problem 'disjoint symlink: skill not copied'
+fi
+check_preserved 'disjoint symlink'
+
+make_project
 printf '%s\n' '../invalid' >"${manifest}"
 cp "${manifest}" "${test_root}/manifest.expected"
 if ! "${copy_script}" "${project}" .agents/skills >"${test_root}/copy.log" 2>&1; then
   problem "canonical no-op rejected: $(<"${test_root}/copy.log")"
 fi
+grep -Fxq "Already canonical: ${canonical}" "${test_root}/copy.log" ||
+  problem 'canonical no-op: output changed'
 check_preserved 'canonical no-op'
 [[ ! -e "${canonical}/.sync-jonbaldie-skills.manifest" ]] ||
   problem 'canonical no-op: destination manifest created'
