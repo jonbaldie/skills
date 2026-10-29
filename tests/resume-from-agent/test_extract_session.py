@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import json
+import io
 import os
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -668,14 +670,508 @@ class ExtractSessionTests(unittest.TestCase):
             self.assertIn("codex", message)
             self.assertIn(str(db_path), message)
 
-    def test_path_no_agent_unchanged(self):
+    def test_path_no_agent_identifies_hermes(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "state.db"
             self._write_hermes_db(db_path)
             code, out = self._main_output(["--path", str(db_path)])
             self.assertEqual(code, 0)
+            self.assertIn("agent: hermes", out)
+            self.assertIn("session_id: sess_abc", out)
+            self.assertIn("Implement resume-from-agent", out)
+
+    def test_malformed_database_schemas_report_missing_columns(self):
+        script = Path(self.mod.__file__)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for table, column in (("sessions", "end_reason"), ("messages", "finish_reason")):
+                db = root / f"hermes-{table}.db"
+                self._write_hermes_db(db)
+                with sqlite3.connect(db) as conn:
+                    conn.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
+                for agent_args in ([], ["--agent", "hermes"]):
+                    with self.subTest(table=table, agent_args=agent_args):
+                        proc = subprocess.run(
+                            [sys.executable, str(script), *agent_args, "--path", str(db)],
+                            capture_output=True, text=True,
+                        )
+                        self.assertNotEqual(proc.returncode, 0)
+                        self.assertEqual(proc.stdout, "")
+                        self.assertIn(str(db), proc.stderr)
+                        self.assertIn("hermes", proc.stderr.lower())
+                        self.assertIn(table, proc.stderr)
+                        self.assertIn(column, proc.stderr)
+                        self.assertNotIn("Traceback", proc.stderr)
+
+            db = root / "opencode.db"
+            with sqlite3.connect(db) as conn:
+                conn.executescript("""
+                    CREATE TABLE session (id TEXT, time_created INTEGER);
+                    INSERT INTO session VALUES ('s1', 1);
+                    CREATE TABLE message (id TEXT);
+                    CREATE TABLE part (id TEXT);
+                """)
+            for agent_args in ([], ["--agent", "opencode"]):
+                with self.subTest(agent_args=agent_args):
+                    proc = subprocess.run(
+                        [sys.executable, str(script), *agent_args, "--path", str(db)],
+                        capture_output=True, text=True,
+                    )
+                    self.assertNotEqual(proc.returncode, 0)
+                    self.assertEqual(proc.stdout, "")
+                    self.assertIn(str(db), proc.stderr)
+                    self.assertIn("opencode", proc.stderr.lower())
+                    self.assertIn("message", proc.stderr)
+                    self.assertIn("session_id", proc.stderr)
+                    self.assertNotIn("Traceback", proc.stderr)
+
+    def test_path_large_first_record(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            claude = root / "large.jsonl"
+            claude.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": "large goal", "image": "x" * 2_100_000}}))
+            for args in ([], ["--agent", "claude"]):
+                code, out = self._main_output([*args, "--path", str(claude)])
+                self.assertEqual(code, 0, str(code))
+                self.assertIn("large goal", out)
+
+    def test_path_headerless_gemini_jsonl(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            gemini = Path(tmp) / "gemini.jsonl"
+            gemini.write_text('\n'.join(map(json.dumps, [{"type": "user", "content": "gemini goal"}, {"type": "gemini", "content": "gemini answer"}])))
+            code, out = self._main_output(["--agent", "gemini", "--path", str(gemini)])
+            self.assertEqual(code, 0, str(code))
+            self.assertIn("gemini goal", out)
+
+    def test_path_malformed_probe_fields_do_not_mask_pi(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pi.jsonl"
+            path.write_text('\n'.join(map(json.dumps, [{"type": [], "role": {}}, {"type": "session", "id": "pi-id"}, {"type": "message", "message": {"role": "user", "content": "pi goal"}}])))
+            code, out = self._main_output(["--path", str(path)])
+            self.assertEqual(code, 0, str(code))
+            self.assertIn("pi goal", out)
+
+    def test_cli_symlink_reads_committed_wal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "state.db"
+            self._write_hermes_db(db)
+            writer = sqlite3.connect(db)
+            try:
+                writer.execute("PRAGMA journal_mode=WAL")
+                writer.execute("UPDATE messages SET content='committed WAL goal' WHERE role='user'")
+                writer.commit()
+                alias = Path(tmp) / "alias.db"
+                alias.symlink_to(db)
+                before = {p.name: p.read_bytes() for p in Path(tmp).iterdir()}
+                for args in ([], ["--agent", "hermes"]):
+                    result = self._run_cli(alias, args)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn("committed WAL goal", result.stdout)
+                    self.assertEqual(before, {p.name: p.read_bytes() for p in Path(tmp).iterdir()})
+            finally:
+                writer.close()
+
+    def test_cli_rejects_spilled_uncommitted_rollback_transaction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "state.db"
+            self._write_hermes_db(db)
+            writer = sqlite3.connect(db)
+            try:
+                writer.execute("PRAGMA journal_mode=DELETE")
+                writer.execute("PRAGMA cache_size=2")
+                writer.execute("CREATE TABLE padding(id INTEGER PRIMARY KEY, data BLOB)")
+                writer.executemany("INSERT INTO padding VALUES (?, ?)", [(i, b'A' * 4096) for i in range(100)])
+                writer.commit()
+                writer.execute("UPDATE messages SET content='UNCOMMITTED PHANTOM GOAL' WHERE role='user'")
+                writer.execute("UPDATE padding SET data=?", (b'B' * 4096,))
+                self.assertIn(b'UNCOMMITTED PHANTOM GOAL', db.read_bytes())
+                before = {p.name: p.read_bytes() for p in Path(tmp).iterdir()}
+                for args in ([], ["--agent", "hermes"]):
+                    result = self._run_cli(db, args)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("Could not safely read", result.stderr)
+                    self.assertNotIn("UNCOMMITTED PHANTOM GOAL", result.stdout)
+                    self.assertEqual(before, {p.name: p.read_bytes() for p in Path(tmp).iterdir()})
+                writer.rollback()
+                self.assertEqual(writer.execute("SELECT content FROM messages WHERE role='user'").fetchone()[0], "Implement resume-from-agent")
+            finally:
+                writer.close()
+
+    def test_cli_malformed_records_do_not_traceback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cases = [
+                ("gemini.json", {"sessionId": "g", "messages": [None]}, "gemini"),
+                ("gemini-type.json", {"sessionId": "g", "messages": [{"type": [], "content": "goal"}]}, "gemini"),
+                ("claude.jsonl", [{"type": [], "role": {}}, {"type": "user", "message": {"role": "user", "content": "goal"}}], "claude"),
+            ]
+            for name, content, agent in cases:
+                path = Path(tmp) / name
+                path.write_text("\n".join(map(json.dumps, content)) if isinstance(content, list) else json.dumps(content))
+                for args in ([], ["--agent", agent]):
+                    result = self._run_cli(path, args)
+                    self.assertNotIn("Traceback", result.stderr, (name, result.stderr))
+                    if result.returncode:
+                        self.assertIn("Could not", result.stderr)
+                    else:
+                        self.assertIn("goal", result.stdout)
+
+    def _run_cli(self, path, args):
+        script = Path(__file__).resolve().parents[2] / "skills/resume-from-agent/scripts/extract-session.py"
+        return subprocess.run([sys.executable, str(script), "--path", str(path), *args], capture_output=True, text=True)
+
+    def test_path_wal_snapshot_has_no_source_side_effects(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "state.db"
+            self._write_hermes_db(db)
+            writer = sqlite3.connect(db)
+            writer.execute("PRAGMA journal_mode=WAL")
+            writer.execute("INSERT INTO sessions VALUES (?,?,?,?,?,?,?,?,?,?,?)", ("live", "live", "/ws", "model", 1800000000, None, 1, None, None, "cli", 1))
+            writer.execute("INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,?)", (100, "live", "user", "live WAL goal", None, None, 1800000000, None, 1))
+            writer.commit()
+            def snapshot():
+                return {p.name: p.read_bytes() for p in root.iterdir()}
+            before = snapshot()
+            for args in ([], ["--agent", "hermes"]):
+                code, out = self._main_output([*args, "--path", str(db)])
+                self.assertEqual(code, 0, str(code))
+                self.assertIn("session_id: live", out)
+                self.assertIn("live WAL goal", out)
+                self.assertEqual(snapshot(), before)
+            writer.close()
+            before = snapshot()
+            code, out = self._main_output(["--path", str(db)])
+            self.assertEqual(code, 0, str(code))
+            self.assertIn("live WAL goal", out)
+            self.assertEqual(snapshot(), before)
+
+    def test_cli_accepts_inactive_retained_journals(self):
+        for mode in ("PERSIST", "TRUNCATE"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                db = root / "state.db"
+                self._write_hermes_db(db)
+                writer = sqlite3.connect(db)
+                try:
+                    self.assertEqual(writer.execute(f"PRAGMA journal_mode={mode}").fetchone()[0].upper(), mode)
+                    writer.execute("UPDATE messages SET content='retained journal goal' WHERE role='user'")
+                    writer.commit()
+                finally:
+                    writer.close()
+                journal = Path(str(db) + "-journal")
+                self.assertTrue(journal.exists())
+                before = {p.name: p.read_bytes() for p in root.iterdir()}
+                for args in ([], ["--agent", "hermes"]):
+                    result = self._run_cli(db, args)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn("retained journal goal", result.stdout)
+                    self.assertEqual(before, {p.name: p.read_bytes() for p in root.iterdir()})
+
+    def test_autodetect_json_without_fcntl_and_reject_sqlite(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "claude.jsonl"
+            path.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": "json goal"}}))
+            db = Path(tmp) / "state.db"
+            self._write_hermes_db(db)
+            with patch.object(self.mod, "fcntl", None):
+                code, out = self._main_output(["--path", str(path)])
+                self.assertEqual(code, 0, str(code))
+                self.assertIn("json goal", out)
+                code, out = self._main_output(["--path", str(db)])
+                self.assertIsInstance(code, SystemExit)
+                self.assertIn("Cannot safely lock", str(code))
+                self.assertFalse(out)
+
+    def test_snapshot_rejects_nonzero_or_changing_journal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "state.db"
+            self._write_hermes_db(db)
+            journal = Path(str(db) + "-journal")
+            journal.write_bytes(b"\xd9\xd5\x05\xf9\x20\xa1\x63\xd7" + bytes(504))
+            with self.assertRaisesRegex(self.mod.UnsafeSnapshotError, "Rollback journal"):
+                self.mod.open_sqlite_ro(db)
+            journal.write_bytes(bytes(512))
+            real_copy = self.mod.shutil.copyfileobj
+
+            def change_journal(source, target):
+                real_copy(source, target)
+                journal.write_bytes(bytes(513))
+
+            with patch.object(self.mod.shutil, "copyfileobj", side_effect=change_journal):
+                with self.assertRaisesRegex(self.mod.UnsafeSnapshotError, "Rollback journal changed"):
+                    self.mod.open_sqlite_ro(db)
+
+    def test_unknown_checkpointed_wal_does_not_create_sidecars(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "unknown.db"
+            conn = sqlite3.connect(db)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("CREATE TABLE unrelated (id TEXT)")
+            conn.commit()
+            conn.close()
+            before = {p.name: p.read_bytes() for p in root.iterdir()}
+            for args in ([], ["--agent", "hermes"]):
+                code, out = self._main_output([*args, "--path", str(db)])
+                self.assertIsInstance(code, SystemExit)
+                self.assertFalse(out)
+                self.assertEqual({p.name: p.read_bytes() for p in root.iterdir()}, before)
+
+    def test_sqlite_snapshot_rejects_continuous_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "state.db"
+            self._write_hermes_db(db)
+            real_copy = self.mod.shutil.copyfileobj
+            def changing_copy(source, target):
+                real_copy(source, target)
+                os.utime(db, None)
+            with patch.object(self.mod.shutil, "copyfileobj", side_effect=changing_copy):
+                with self.assertRaisesRegex(sqlite3.OperationalError, "changed while copying"):
+                    self.mod.open_sqlite_ro(db)
+
+    def test_sqlite_snapshot_rejects_journal_created_during_copy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "state.db"
+            self._write_hermes_db(db)
+            writer_code = (
+                "import sqlite3, sys\n"
+                "conn = sqlite3.connect(sys.argv[1])\n"
+                "conn.execute(\"UPDATE messages SET content='pending' WHERE role='user'\")\n"
+                "print('ready', flush=True)\n"
+                "sys.stdin.readline()\n"
+                "conn.rollback()\n"
+            )
+            writer = None
+            real_copy = self.mod.shutil.copyfileobj
+
+            def start_writer(source, target):
+                nonlocal writer
+                writer = subprocess.Popen([sys.executable, "-c", writer_code, str(db)],
+                                          stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+                self.assertEqual(writer.stdout.readline().strip(), "ready")
+                self.assertTrue(Path(str(db) + "-journal").exists())
+                real_copy(source, target)
+
+            try:
+                with patch.object(self.mod.shutil, "copyfileobj", side_effect=start_writer):
+                    with self.assertRaisesRegex(sqlite3.OperationalError, "Rollback journal"):
+                        self.mod.open_sqlite_ro(db)
+            finally:
+                if writer:
+                    writer.communicate("done\n", timeout=5)
+
+    def test_opencode_live_wal_does_not_change_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "opencode.db"
+            writer = sqlite3.connect(db)
+            writer.execute("PRAGMA journal_mode=WAL")
+            writer.executescript("""
+                CREATE TABLE session (id TEXT, title TEXT, directory TEXT, path TEXT, agent TEXT, version TEXT, time_updated INTEGER, time_created INTEGER, time_archived INTEGER, model TEXT, slug TEXT);
+                CREATE TABLE todo (session_id TEXT, content TEXT, status TEXT, priority TEXT, position INTEGER);
+                CREATE TABLE message (id TEXT, session_id TEXT, time_created INTEGER, data TEXT);
+                CREATE TABLE part (id TEXT, session_id TEXT, message_id TEXT, time_created INTEGER, data TEXT);
+            """)
+            writer.execute("INSERT INTO session VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ("live", "live", "/ws", "/ws", None, None, 2, 2, None, None, None))
+            writer.execute("INSERT INTO message VALUES (?, ?, ?, ?)", ("m", "live", 2, json.dumps({"role": "user"})))
+            writer.execute("INSERT INTO part VALUES (?, ?, ?, ?, ?)", ("p", "live", "m", 2, json.dumps({"type": "text", "text": "opencode WAL goal"})))
+            writer.commit()
+            before = {p.name: p.read_bytes() for p in root.iterdir()}
+            for args in ([], ["--agent", "opencode"]):
+                code, out = self._main_output([*args, "--path", str(db)])
+                self.assertEqual(code, 0, str(code))
+                self.assertIn("opencode WAL goal", out)
+                self.assertIn(str(db), out)
+                self.assertEqual({p.name: p.read_bytes() for p in root.iterdir()}, before)
+            writer.close()
+
+    def test_path_identifies_transcript_formats(self):
+        fixtures = {
+            "claude": [{"type": "user", "sessionId": "real-session", "cwd": "/ws", "uuid": "uuid-1", "message": {"role": "user", "content": "Shared goal"}}, {"type": "assistant", "sessionId": "real-session", "cwd": "/ws", "uuid": "uuid-2", "message": {"role": "assistant", "content": "Shared reply"}}],
+            "cursor": [{"role": "user", "message": {"content": [{"type": "text", "text": "Shared goal"}]}}, {"role": "assistant", "message": {"content": [{"type": "text", "text": "Shared reply"}]}}, {"type": "turn_ended", "status": "completed"}],
+            "goose": [{"working_dir": "/ws"}, {"role": "user", "content": [{"type": "text", "text": "Shared goal"}]}, {"role": "assistant", "content": [{"type": "text", "text": "Shared reply"}]}],
+            "gemini": {"sessionId": "gem-1", "messages": [{"type": "user", "content": "Shared goal"}, {"type": "gemini", "content": "Shared reply"}]},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            for agent, records in fixtures.items():
+                with self.subTest(agent=agent):
+                    path = Path(tmp) / (agent + (".json" if agent == "gemini" else ".jsonl"))
+                    path.write_text(json.dumps(records) if isinstance(records, dict) else "\n".join(map(json.dumps, records)))
+                    automatic, out = self._main_output(["--path", str(path)])
+                    explicit, expected = self._main_output(["--agent", agent, "--path", str(path)])
+                    self.assertEqual(explicit, 0)
+                    self.assertEqual(automatic, 0, str(automatic))
+                    self.assertEqual(out, expected)
+                    self.assertIn("agent: " + agent, out)
+                    self.assertIn("Shared goal", out)
+                    self.assertIn("Shared reply", out)
+
+    def test_path_database_selection_and_no_mutations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.db"
+            self._write_hermes_db(path)
+            conn = sqlite3.connect(path)
+            conn.execute("INSERT INTO sessions VALUES (?,?,?,?,?,?,?,?,?,?,?)", ("older", "old", "/ws", "model", 1, 2, 1, None, None, "cli", 1))
+            conn.execute("INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,?)", (3, "older", "user", "old message", None, None, 1, None, 1))
+            conn.commit(); conn.close()
+            before = path.read_bytes()
+            for args in ([], ["--agent", "hermes"]):
+                code, out = self._main_output([*args, "--path", str(path)])
+                self.assertEqual(code, 0, str(code))
+                self.assertIn("session_id: sess_abc", out)
+                self.assertIn("Implement resume-from-agent", out)
+                self.assertNotIn("old message", out)
+                self.assertEqual(path.read_bytes(), before)
+
+    def test_path_opencode_latest_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "opencode.db"
+            conn = sqlite3.connect(path)
+            conn.executescript("""
+                CREATE TABLE session (id TEXT, title TEXT, directory TEXT, path TEXT, agent TEXT, version TEXT, time_updated INTEGER, time_created INTEGER, time_archived INTEGER, model TEXT, slug TEXT);
+                CREATE TABLE todo (session_id TEXT, content TEXT, status TEXT, priority TEXT, position INTEGER);
+                CREATE TABLE message (id TEXT, session_id TEXT, time_created INTEGER, data TEXT);
+                CREATE TABLE part (id TEXT, session_id TEXT, message_id TEXT, time_created INTEGER, data TEXT);
+            """)
+            for sid, timestamp, message in [("old", 1, "old goal"), ("new", 2, "new goal")]:
+                conn.execute("INSERT INTO session VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (sid, sid, "/ws", "/ws", None, None, timestamp, timestamp, None, None, None))
+                conn.execute("INSERT INTO message VALUES (?, ?, ?, ?)", (sid, sid, timestamp, json.dumps({"role": "user"})))
+                conn.execute("INSERT INTO part VALUES (?, ?, ?, ?, ?)", (sid, sid, sid, timestamp, json.dumps({"type": "text", "text": message})))
+            conn.execute("INSERT INTO session VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ("archived", "archived", "/ws", "/ws", None, None, 3, 3, 4, None, None))
+            conn.commit(); conn.close()
+            before = path.read_bytes()
+            for args in ([], ["--agent", "opencode"]):
+                code, out = self._main_output([*args, "--path", str(path)])
+                self.assertEqual(code, 0, str(code))
+                self.assertIn("agent: opencode", out)
+                self.assertIn("session_id: new", out)
+                self.assertIn("new goal", out)
+                self.assertNotIn("old goal", out)
+                self.assertEqual(path.read_bytes(), before)
+
+    def test_path_unknown_mismatched_ambiguous_and_agy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "input.db"
+            conn = sqlite3.connect(path); conn.execute("CREATE TABLE unrelated (id TEXT)"); conn.commit(); conn.close()
+            before = path.read_bytes()
+            for args in ([], ["--agent", "agy"], ["--agent", "hermes"]):
+                code, out = self._main_output([*args, "--path", str(path)])
+                self.assertIsInstance(code, SystemExit)
+                self.assertFalse(out)
+                self.assertEqual(before, path.read_bytes())
+            conn = sqlite3.connect(path)
+            conn.executescript("CREATE TABLE session (id TEXT); CREATE TABLE message (id TEXT); CREATE TABLE part (id TEXT); CREATE TABLE steps (idx INTEGER, step_payload BLOB, task_details BLOB, render_info BLOB);")
+            conn.commit(); conn.close()
+            before = path.read_bytes()
+            code, out = self._main_output(["--path", str(path)])
+            self.assertIsInstance(code, SystemExit)
+            self.assertIn("Ambiguous", str(code))
+            self.assertFalse(out)
+            self.assertEqual(before, path.read_bytes())
+            conn = sqlite3.connect(path); conn.execute("DROP TABLE session"); conn.execute("INSERT INTO steps VALUES (1, ?, NULL, NULL)", (b"This is a sufficiently long real transcript message for the AGY extractor.",)); conn.commit(); conn.close()
+            before = path.read_bytes()
+            code, out = self._main_output(["--path", str(path)])
+            self.assertEqual(code, 0, str(code))
             self.assertIn("agent: agy", out)
-            self.assertIn("session_id: state", out)
+            self.assertEqual(before, path.read_bytes())
+            path.write_text('{"type":"user", "message":')
+            for args in ([], ["--agent", "claude"]):
+                code, out = self._main_output([*args, "--path", str(path)])
+                self.assertIsInstance(code, SystemExit)
+                self.assertFalse(out)
+
+    def test_path_regressions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            claude = root / "claude.jsonl"
+            claude.write_text(json.dumps({"type": "user", "sessionId": "id", "message": {"role": "user", "content": "real goal"}}) + '\n{"unfinished":')
+            for args in ([], ["--agent", "claude"]):
+                code, out = self._main_output([*args, "--path", str(claude)])
+                self.assertEqual(code, 0, str(code))
+                self.assertIn("real goal", out)
+            code, _ = self._main_output(["--agent", "gemini", "--path", str(claude)])
+            self.assertIsInstance(code, SystemExit)
+            task = root / "task"
+            task.mkdir()
+            (task / "ui_messages.json").write_text(json.dumps([{"say": "task", "text": "dirac goal"}]))
+            code, out = self._main_output(["--agent", "dirac", "--path", str(task)])
+            self.assertEqual(code, 0, str(code))
+            self.assertIn("dirac goal", out)
+            fixtures = {
+                "gemini": (".json", [{"type": "user", "content": "legacy goal"}]),
+                "goose": (".jsonl", [{"role": "user", "content": [{"type": "text", "text": "legacy goal"}]}]),
+                "cursor": (".jsonl", [{"role": "user", "message": {"content": [{"type": "text", "text": "legacy goal"}]}}]),
+            }
+            for agent, (suffix, records) in fixtures.items():
+                with self.subTest(agent=agent):
+                    path = root / (agent + suffix)
+                    path.write_text(json.dumps(records) if suffix == ".json" else "\n".join(map(json.dumps, records)))
+                    code, out = self._main_output(["--agent", agent, "--path", str(path)])
+                    self.assertEqual(code, 0, str(code))
+                    self.assertIn("legacy goal", out)
+                    code, _ = self._main_output(["--path", str(path)])
+                    self.assertIsInstance(code, SystemExit)
+
+    def test_path_probe_bounded_and_sqlite_schemas(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "large.jsonl"
+            path.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": "goal"}}) + "\n" + " " * 4_000_000)
+            with patch.object(Path, "read_text", side_effect=AssertionError("unbounded read")):
+                self.assertTrue(self.mod.ADAPTERS["claude"].identify(path))
+            for schema in ("CREATE TABLE session (id TEXT, time_created INTEGER)", "CREATE TABLE steps (id INTEGER)"):
+                path = root / (str(len(schema)) + ".db")
+                conn = sqlite3.connect(path); conn.execute(schema); conn.close()
+                code, out = self._main_output(["--path", str(path)])
+                self.assertIsInstance(code, SystemExit)
+                self.assertFalse(out)
+
+    def test_json_probe_reads_a_bounded_prefix_once(self):
+        payload = (json.dumps({"type": "user", "message": {"role": "user", "content": "goal"}}) + "\n").encode() + b" " * 4_000_000
+        class TrackedStream(io.BytesIO):
+            def read(self, size=-1):
+                self_test.assertGreater(size, 0)
+                self_test.assertLessEqual(size, 2_000_001)
+                return super().read(size)
+        self_test = self
+        path = Path("large.jsonl")
+        self.mod._json_values.cache_clear()
+        try:
+            with patch.object(Path, "open", side_effect=lambda *args, **kwargs: TrackedStream(payload)) as opened:
+                self.assertTrue(self.mod.ADAPTERS["claude"].identify(path))
+                self.assertFalse(self.mod.ADAPTERS["codex"].identify(path))
+                self.assertEqual(opened.call_count, 1)
+        finally:
+            self.mod._json_values.cache_clear()
+
+    def test_cursor_skips_malformed_and_non_object_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "cursor.jsonl"
+            path.write_text('\n'.join([
+                'not json', '[]',
+                json.dumps({"role": "user", "message": {"content": [{"type": "text", "text": "cursor goal"}]}}),
+                json.dumps({"type": "turn_ended", "status": "completed"}),
+                '{"unfinished":',
+            ]))
+            for args in ([], ["--agent", "cursor"]):
+                code, out = self._main_output([*args, "--path", str(path)])
+                self.assertEqual(code, 0, str(code))
+                self.assertIn("cursor goal", out)
+
+    def test_registered_adapter_controls_path_candidate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "custom.fixture"
+            path.write_text("custom")
+            def candidate(p):
+                return self.mod.Candidate(agent="test", session_id="custom-id", cwd=None, mtime=0, path=str(p))
+            def extract(c):
+                return self.mod.Brief(agent=c.agent, session_id=c.session_id, path=c.path, opening_users=["custom goal"])
+            adapter = self.mod.Adapter(name="test", aliases=(), discover=lambda cwd, sid: [], extract=extract, roots=(), identify=lambda p: p.read_text() == "custom", candidate_from_path=candidate)
+            with patch.dict(self.mod.ADAPTERS, {"test": adapter}):
+                code, out = self._main_output(["--path", str(path)])
+                self.assertEqual(code, 0, str(code))
+                self.assertIn("session_id: custom-id", out)
+                self.assertIn("custom goal", out)
 
     def test_pick_candidate_notes_close_runner_up(self):
         a = self.mod.Candidate(
