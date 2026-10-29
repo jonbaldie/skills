@@ -13,12 +13,19 @@ import argparse
 import json
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
 from collections import Counter, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
 
@@ -229,12 +236,87 @@ def parse_json_maybe(raw: Any) -> Any:
     return raw
 
 
+class _SnapshotConnection(sqlite3.Connection):
+    def close(self) -> None:
+        try:
+            super().close()
+        finally:
+            self.snapshot_dir.cleanup()
+
+
+class UnsafeSnapshotError(sqlite3.OperationalError):
+    pass
+
+
 def open_sqlite_ro(path: Path) -> sqlite3.Connection:
     if not path.is_file():
         raise FileNotFoundError(str(path))
-    # Encode filesystem characters before adding SQLite's URI options.
-    uri = path.resolve().as_uri() + "?mode=ro"
-    conn = sqlite3.connect(uri, uri=True, timeout=15.0)
+    path = path.resolve()
+    wal = Path(str(path) + "-wal")
+    journal = Path(str(path) + "-journal")
+    snapshot = tempfile.TemporaryDirectory(prefix="resume-sqlite-")
+    try:
+        copy = Path(snapshot.name) / "snapshot.db"
+        copy_wal = Path(str(copy) + "-wal")
+
+        def state(file: Path) -> tuple | None:
+            try:
+                st = file.stat()
+                return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+            except FileNotFoundError:
+                return None
+
+        # SQLite may update shared memory on a read-only open. Copy both files
+        # and rebuild the index privately. Retry if a writer changed either file
+        # during the copy, including creation or removal of a WAL.
+        if fcntl is None:
+            raise UnsafeSnapshotError("Cannot safely lock SQLite database on this platform")
+        for _ in range(3):
+            # Match SQLite's Unix shared locking protocol. Keep the database
+            # descriptor open throughout: closing another descriptor for this
+            # inode would release process-associated POSIX locks.
+            with path.open("rb") as source:
+                try:
+                    fcntl.lockf(source, fcntl.LOCK_SH | fcntl.LOCK_NB, 1, 0x40000000)
+                    fcntl.lockf(source, fcntl.LOCK_SH | fcntl.LOCK_NB, 510, 0x40000002)
+                    fcntl.lockf(source, fcntl.LOCK_UN, 1, 0x40000000)
+                except OSError as exc:
+                    raise UnsafeSnapshotError(f"Database is locked: {path}") from exc
+                before = (state(path), state(wal))
+                st = os.fstat(source.fileno())
+                if before[0] != (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns):
+                    continue
+                journal_before = state(journal)
+                if journal_before is not None:
+                    try:
+                        with journal.open("rb") as journal_file:
+                            header = journal_file.read(28)
+                    except FileNotFoundError:
+                        continue
+                    # TRUNCATE leaves an empty file; PERSIST invalidates the
+                    # entire header. Anything else may require recovery.
+                    if header != b"" and header != bytes(28):
+                        raise UnsafeSnapshotError(f"Rollback journal present; cannot safely copy: {path}")
+                copy_wal.unlink(missing_ok=True)
+                with copy.open("wb") as target:
+                    shutil.copyfileobj(source, target)
+                try:
+                    if before[1] is not None:
+                        shutil.copyfile(wal, copy_wal)
+                except FileNotFoundError:
+                    continue
+                if journal_before != state(journal):
+                    raise UnsafeSnapshotError(f"Rollback journal changed while copying: {path}")
+                if before == (state(path), state(wal)):
+                    break
+        else:
+            raise sqlite3.OperationalError(f"Database changed while copying: {path}")
+        conn = sqlite3.connect(copy.resolve().as_uri() + "?mode=ro", uri=True,
+                               timeout=15.0, factory=_SnapshotConnection)
+        conn.snapshot_dir = snapshot
+    except BaseException:
+        snapshot.cleanup()
+        raise
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 15000")
     conn.execute("PRAGMA query_only = ON")
@@ -491,18 +573,141 @@ class Adapter:
         discover: DiscoverFn,
         extract: ExtractFn,
         roots: tuple[str, ...] | Callable[[], tuple[str, ...]],
+        identify: Callable[[Path], bool] = lambda path: False,
+        candidate_from_path: Callable[[Path], Candidate] | None = None,
+        identify_explicit: Callable[[Path], bool] = lambda path: False,
     ) -> None:
         self.name = name
         self.aliases = aliases
         self.discover = discover
         self.extract = extract
         self._roots = roots
+        self.identify = identify
+        self.identify_explicit = identify_explicit
+        self._candidate_from_path = candidate_from_path
+
+    def candidate_from_path(self, path: Path) -> Candidate:
+        if self._candidate_from_path:
+            return self._candidate_from_path(path)
+        return Candidate(
+            agent=self.name, session_id=path.stem, cwd=None,
+            mtime=path.stat().st_mtime, path=str(path),
+            extra={"explicit_path": True},
+        )
 
     @property
     def roots(self) -> tuple[str, ...]:
         if callable(self._roots):
             return self._roots()
         return self._roots
+
+
+@lru_cache(maxsize=1)
+def _json_values(path: Path) -> list:
+    # Bound both I/O and memory even when an input contains a huge JSONL line.
+    # Gemini's JSON extractor already caps whole-document parsing at 50 MB.
+    limit = 50_000_000 if path.suffix == ".json" else 2_000_000
+    try:
+        with path.open("rb") as fh:
+            data = fh.read(limit + 1)
+            partial_line = data.rsplit(b"\n", 1)[-1].lstrip()
+            if (path.suffix != ".json" and len(data) > limit
+                    and partial_line.startswith((b"{", b"["))):
+                data += fh.read(50_000_001 - len(data))
+                limit = 50_000_000
+        complete = len(data) <= limit
+        data = data[:limit].decode("utf-8", errors="strict" if complete else "ignore")
+        try:
+            value = json.loads(data) if complete else None
+            if isinstance(value, list):
+                return value
+            if isinstance(value, dict):
+                return [value]
+        except json.JSONDecodeError:
+            pass
+        lines = data.splitlines()
+        if not complete and not data.endswith("\n"):
+            lines = lines[:-1]
+        values = []
+        for line in lines:
+            try:
+                values.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        return values
+    except (OSError, UnicodeError):
+        return []
+
+
+def _json_records(path: Path) -> list[dict]:
+    return [value for value in _json_values(path) if isinstance(value, dict)]
+
+
+@lru_cache(maxsize=1)
+def _sqlite_tables(path: Path) -> set[str]:
+    try:
+        with path.open("rb") as source:
+            if source.read(16) != b"SQLite format 3\x00":
+                return set()
+        conn = open_sqlite_ro(path)
+        try:
+            return {row[0] for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'")}
+        finally:
+            conn.close()
+    except UnsafeSnapshotError:
+        raise
+    except (sqlite3.Error, OSError):
+        return set()
+
+
+def _sqlite_columns(path: Path, table: str) -> set[str]:
+    try:
+        conn = open_sqlite_ro(path)
+        try:
+            return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        finally:
+            conn.close()
+    except UnsafeSnapshotError:
+        raise
+    except (sqlite3.Error, OSError):
+        return set()
+
+
+def _require_database_columns(conn: sqlite3.Connection, agent: str, path: Path,
+                              required: dict[str, set[str]]) -> None:
+    for table, columns in required.items():
+        actual = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        missing = sorted(columns - actual)
+        if missing:
+            raise SystemExit(
+                f"Malformed {agent} database {path}: {table} is missing required "
+                f"columns: {', '.join(missing)}. Check the database or use a supported schema."
+            )
+
+
+def _database_candidate(path: Path, agent: str, table: str, times: tuple[str, ...]) -> Candidate:
+    try:
+        conn = open_sqlite_ro(path)
+        try:
+            columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+            available = [name for name in times if name in columns]
+            if "id" not in columns or not available:
+                raise sqlite3.DatabaseError("missing session id or timestamp columns")
+            order = available[0] if len(available) == 1 else f"COALESCE({', '.join(available)})"
+            archive_order = "time_archived IS NOT NULL, " if agent == "opencode" and "time_archived" in columns else ""
+            row = conn.execute(f"SELECT * FROM {table} ORDER BY {archive_order}{order} DESC LIMIT 1").fetchone()
+            if not row or not row["id"]:
+                raise SystemExit(f"{agent} database contains no sessions: {path}")
+            data = dict(row)
+            return Candidate(agent=agent, session_id=str(data["id"]),
+                             cwd=data.get("cwd") or data.get("directory") or data.get("path"),
+                             mtime=path.stat().st_mtime, path=str(path),
+                             extra={"explicit_path": True})
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:
+        raise SystemExit(f"Could not read {path} as a {agent} database: {exc}") from None
 
 
 ADAPTERS: dict[str, Adapter] = {}
@@ -598,6 +803,12 @@ def extract_hermes(cand: Candidate) -> Brief:
     db = Path(cand.path) if cand.path else hermes_db()
     conn = open_sqlite_ro(db)
     try:
+        _require_database_columns(conn, "hermes", db, {
+            "sessions": {"id", "cwd", "title", "model", "git_branch", "started_at",
+                         "ended_at", "end_reason", "message_count"},
+            "messages": {"id", "session_id", "role", "content", "tool_calls",
+                         "tool_name", "timestamp", "finish_reason", "active"},
+        })
         session = conn.execute(
             "SELECT * FROM sessions WHERE id = ?", (cand.session_id,)
         ).fetchone()
@@ -709,6 +920,8 @@ def extract_hermes(cand: Candidate) -> Brief:
 register(
     Adapter(
         name="hermes",
+        identify=lambda p: {"sessions", "messages"} <= _sqlite_tables(p),
+        candidate_from_path=lambda p: _database_candidate(p, "hermes", "sessions", ("ended_at", "started_at")),
         aliases=("hermes-agent",),
         discover=discover_hermes,
         extract=extract_hermes,
@@ -911,6 +1124,7 @@ def extract_dirac(cand: Candidate) -> Brief:
 register(
     Adapter(
         name="dirac",
+        identify=lambda p: p.is_dir() and any((p / name).is_file() for name in ("ui_messages.json", "api_conversation_history.json")),
         aliases=("dirac-cli",),
         discover=discover_dirac,
         extract=extract_dirac,
@@ -1090,6 +1304,15 @@ def extract_goose(cand: Candidate) -> Brief:
 register(
     Adapter(
         name="goose",
+        identify_explicit=lambda p: any(r.get("role") in ("user", "assistant") and isinstance(r.get("content"), (list, str)) for r in _json_records(p)),
+        identify=lambda p: any(
+            ("working_dir" in r and "role" not in r)
+            or any(
+                isinstance(c, dict) and c.get("type") in ("toolRequest", "toolResponse")
+                for c in (r.get("content") if isinstance(r.get("content"), list) else [])
+            )
+            for r in _json_records(p)
+        ),
         aliases=(),
         discover=discover_goose,
         extract=extract_goose,
@@ -1183,6 +1406,8 @@ def extract_cursor(cand: Candidate) -> Brief:
                 obj = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if not isinstance(obj, dict):
+                continue
             if obj.get("type") == "turn_ended":
                 endings.append(f"turn_ended: {obj.get('status') or 'unknown'}")
                 continue
@@ -1237,6 +1462,13 @@ def extract_cursor(cand: Candidate) -> Brief:
 register(
     Adapter(
         name="cursor",
+        identify_explicit=lambda p: any(r.get("role") in ("user", "assistant") and isinstance(r.get("message"), dict) and "content" in r["message"] for r in _json_records(p)),
+        identify=lambda p: (
+            ("agent-transcripts" in p.parts and any(
+                r.get("role") in ("user", "assistant") and isinstance(r.get("message"), dict)
+                for r in _json_records(p)))
+            or any(r.get("type") == "turn_ended" for r in _json_records(p))
+        ),
         aliases=("cursor-agent", "cursor-cli"),
         discover=discover_cursor,
         extract=extract_cursor,
@@ -1378,6 +1610,8 @@ def extract_gemini(cand: Candidate) -> Brief:
     title = None
 
     for msg in messages:
+        if not isinstance(msg, dict) or not isinstance(msg.get("type"), str):
+            continue
         mtype = msg.get("type")
         if mtype == "info":
             continue
@@ -1453,6 +1687,8 @@ def extract_gemini(cand: Candidate) -> Brief:
 register(
     Adapter(
         name="gemini",
+        identify=lambda p: any(isinstance(r.get("messages"), list) and ("sessionId" in r or "projectHash" in r) or ("sessionId" in r and "type" not in r) for r in _json_records(p)),
+        identify_explicit=lambda p: any(r.get("type") in ("user", "gemini", "model", "assistant") and "content" in r for r in _json_records(p)),
         aliases=("gemini-cli",),
         discover=discover_gemini,
         extract=extract_gemini,
@@ -1621,6 +1857,7 @@ def extract_agy(cand: Candidate) -> Brief:
 register(
     Adapter(
         name="agy",
+        identify=lambda p: "steps" in _sqlite_tables(p) and {"idx", "step_payload", "task_details", "render_info"} <= _sqlite_columns(p, "steps"),
         aliases=("antigravity", "antigravity-cli", "jetski"),
         discover=discover_agy,
         extract=extract_agy,
@@ -2130,23 +2367,37 @@ def discover_opencode(cwd: str, session_id: str | None) -> list[Candidate]:
 
 
 def extract_opencode_or_sibling(cand: Candidate) -> Brief:
-    if cand.extra.get("explicit_path"):
-        raise SystemExit(
-            f"OpenCode sessions live in a store db; cannot parse {cand.path!r} "
-            "directly. Install resume-from-opencode and pass the session id instead."
-        )
     # Pass the selected store and real id so the sibling cannot re-resolve
-    # the user's query to a different session.
-    text = run_sibling_extractor(
-        "opencode",
-        [
-            "--cwd",
-            cand.cwd or os.getcwd(),
-            "--db",
-            cand.path or "",
-            cand.session_id,
-        ],
-    )
+    # the user's query to a different session. Give it a private database so
+    # its SQLite connection cannot alter the source WAL or shared-memory file.
+    with tempfile.TemporaryDirectory(prefix="resume-opencode-") as tmp:
+        copy = Path(tmp) / "snapshot.db"
+        source = open_sqlite_ro(Path(cand.path or ""))
+        try:
+            _require_database_columns(source, "opencode", Path(cand.path or ""), {
+                "message": {"id", "session_id", "time_created", "data"},
+                "part": {"id", "session_id", "message_id", "time_created", "data"},
+                "todo": {"session_id", "content", "status", "priority", "position"},
+                "session": {"id", "model", "slug", "title", "directory", "path", "agent",
+                            "version", "time_updated", "time_created", "time_archived"},
+            })
+            if not source.execute("SELECT 1 FROM part WHERE session_id = ? LIMIT 1", (cand.session_id,)).fetchone():
+                _require_database_columns(source, "opencode", Path(cand.path or ""), {
+                    "session_message": {"session_id", "type", "data", "time_created", "seq"},
+                })
+            target = sqlite3.connect(copy)
+            try:
+                source.backup(target)
+            finally:
+                target.close()
+        finally:
+            source.close()
+        text = run_sibling_extractor(
+            "opencode",
+            ["--cwd", cand.cwd or os.getcwd(), "--db", str(copy), cand.session_id],
+        )
+        if text:
+            text = text.replace(f"db: {copy}\n", f"db: {cand.path}\n")
     if text:
         return _brief_from_preformatted(text, agent="opencode", cand=cand)
     raise SystemExit(
@@ -2280,7 +2531,7 @@ def _codex_rollout_brief(path: Path, session_id: str | None = None) -> Brief:
             continue
 
         role = payload.get("role")
-        if role not in {"user", "assistant"}:
+        if role not in ("user", "assistant"):
             continue
         text = extract_text(payload.get("content"))
         if role == "user":
@@ -2348,7 +2599,7 @@ def _generic_jsonl_brief(
                 for block in content:
                     if not isinstance(block, dict):
                         continue
-                    if block.get("type") in {"tool_use", "toolCall"}:
+                    if block.get("type") in ("tool_use", "toolCall"):
                         name = block.get("name") or "tool"
                         tool_names.append(str(name))
                         inp = block.get("input") or parse_json_maybe(
@@ -2358,9 +2609,9 @@ def _generic_jsonl_brief(
                             pth = path_from_mapping(str(name), inp)
                             if pth:
                                 files[pth] += 1
-            if role in {"user", "human"} and text:
+            if role in ("user", "human") and text:
                 turns.append({"role": "user", "text": text})
-            elif role in {"assistant", "ai", "model", "gemini"} and (
+            elif role in ("assistant", "ai", "model", "gemini") and (
                 text or tool_names
             ):
                 turns.append(
@@ -2385,6 +2636,11 @@ def _generic_jsonl_brief(
 register(
     Adapter(
         name="claude",
+        identify=lambda p: any(
+            r.get("type") in ("ai-title", "last-prompt")
+            or (r.get("type") in ("user", "assistant") and isinstance(r.get("message"), dict))
+            for r in _json_records(p)
+        ),
         aliases=("claude-code", "anthropic"),
         discover=discover_claude,
         extract=extract_claude_or_sibling,
@@ -2394,6 +2650,12 @@ register(
 register(
     Adapter(
         name="pi",
+        identify=lambda p: any(
+            (r.get("type") == "session" and (r.get("id") or r.get("cwd")))
+            or (r.get("type") == "message" and isinstance(r.get("message"), dict)
+                and r["message"].get("role") in ("user", "assistant"))
+            for r in _json_records(p)
+        ),
         aliases=("pi-coding-agent",),
         discover=discover_pi,
         extract=extract_pi_or_sibling,
@@ -2403,6 +2665,10 @@ register(
 register(
     Adapter(
         name="codex",
+        identify=lambda p: any(
+            r.get("type") in ("session_meta", "response_item", "event_msg", "turn_context")
+            and isinstance(r.get("payload"), dict) for r in _json_records(p)
+        ),
         aliases=("codex-cli",),
         discover=discover_codex,
         extract=extract_codex_or_sibling,
@@ -2412,6 +2678,8 @@ register(
 register(
     Adapter(
         name="opencode",
+        identify=lambda p: {"session", "message", "part"} <= _sqlite_tables(p),
+        candidate_from_path=lambda p: _database_candidate(p, "opencode", "session", ("time_updated", "time_created")),
         aliases=("open-code",),
         discover=discover_opencode,
         extract=extract_opencode_or_sibling,
@@ -2535,61 +2803,17 @@ def pick_candidate(
     return winner, notes
 
 
-def _resolve_hermes_session(path: Path) -> str:
-    """Verify a Hermes-format db and return its most recent session id."""
+def extract_path_with_adapter(adapter: Adapter, path: Path, *, identified: bool = False) -> Brief:
+    if not identified and not adapter.identify(path) and not (
+        adapter.identify_explicit(path)
+        and not any(other.identify(path) for other in ADAPTERS.values() if other is not adapter)
+    ):
+        raise SystemExit(f"Could not identify {path} as {adapter.name} content.")
     try:
-        conn = open_sqlite_ro(path)
-    except sqlite3.DatabaseError as exc:
-        raise SystemExit(
-            f"Could not open {path} as a hermes database: {exc}"
-        ) from None
-    try:
-        tables = {
-            row[0]
-            for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'table'"
-            ).fetchall()
-        }
-        if not {"sessions", "messages"} <= tables:
-            raise SystemExit(
-                f"Could not identify {path} as a hermes session database "
-                "(missing sessions/messages tables)"
-            )
-        row = conn.execute(
-            """
-            SELECT id FROM sessions
-            ORDER BY COALESCE(ended_at, started_at) DESC
-            LIMIT 1
-            """
-        ).fetchone()
-        if not row:
-            raise SystemExit(f"Hermes database contains no sessions: {path}")
-        return str(row["id"])
-    except sqlite3.DatabaseError as exc:
-        raise SystemExit(
-            f"Could not read {path} as a hermes database: {exc}"
-        ) from None
-    finally:
-        conn.close()
-
-
-def extract_path_with_adapter(adapter: Adapter, path: Path) -> Brief:
-    cand = Candidate(
-        agent=adapter.name,
-        session_id=path.stem,
-        cwd=None,
-        mtime=path.stat().st_mtime,
-        path=str(path),
-        extra={"explicit_path": True},
-    )
-    if adapter.name == "hermes":
-        cand.session_id = _resolve_hermes_session(path)
-    try:
+        cand = adapter.candidate_from_path(path)
         brief = adapter.extract(cand)
-    except (sqlite3.DatabaseError, UnicodeDecodeError) as exc:
-        raise SystemExit(
-            f"Could not parse {path} as {adapter.name} content: {exc}"
-        ) from None
+    except (sqlite3.DatabaseError, UnicodeDecodeError, OSError) as exc:
+        raise SystemExit(f"Could not parse {path} as {adapter.name} content: {exc}") from None
     _require_identified_content(adapter, path, brief)
     return brief
 
@@ -2610,78 +2834,30 @@ def _require_identified_content(adapter: Adapter, path: Path, brief: Brief) -> N
         )
 
 
-def _identify_jsonl_adapter(path: Path) -> Adapter | None:
-    """Identify the supported Pi or Codex JSONL envelope without parsing turns."""
-    try:
-        with path.open() as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(obj, dict):
-                    continue
-
-                if obj.get("type") == "session" and (
-                    obj.get("id") or obj.get("cwd")
-                ):
-                    return ADAPTERS["pi"]
-                message = obj.get("message")
-                if (
-                    obj.get("type") == "message"
-                    and isinstance(message, dict)
-                    and message.get("role") in {"user", "assistant"}
-                ):
-                    return ADAPTERS["pi"]
-
-                payload = obj.get("payload")
-                if (
-                    isinstance(payload, dict)
-                    and obj.get("type")
-                    in {
-                        "session_meta",
-                        "response_item",
-                        "event_msg",
-                        "turn_context",
-                    }
-                ):
-                    return ADAPTERS["codex"]
-    except (OSError, UnicodeDecodeError):
-        return None
-    return None
-
-
 def extract_path_generic(path: Path, agent_label: str = "unknown") -> Brief:
-    if agent_label and agent_label != "unknown":
-        key = agent_aliases().get(agent_label.lower())
-        if not key:
-            known = ", ".join(sorted(ADAPTERS))
-            raise SystemExit(
-                f"Unknown agent {agent_label!r} for path {path}. Known: {known}"
-            )
-        return extract_path_with_adapter(ADAPTERS[key], path)
-    if path.suffix == ".db":
-        # Try agy-style
-        cand = Candidate(
-            agent="agy",
-            session_id=path.stem,
-            cwd=None,
-            mtime=path.stat().st_mtime,
-            path=str(path),
-        )
-        return extract_agy(cand)
-    if path.suffix in {".jsonl", ".json"}:
-        adapter = _identify_jsonl_adapter(path)
-        if adapter:
-            return extract_path_with_adapter(adapter, path)
-        raise SystemExit(
-            f"Could not identify {path} as a supported transcript format; "
-            "pass --agent to select a parser."
-        )
-    raise SystemExit(f"Unsupported path type for generic extract: {path}")
+    _json_values.cache_clear()
+    _sqlite_tables.cache_clear()
+    try:
+        if agent_label and agent_label != "unknown":
+            key = agent_aliases().get(agent_label.lower())
+            if not key:
+                known = ", ".join(sorted(ADAPTERS))
+                raise SystemExit(f"Unknown agent {agent_label!r} for path {path}. Known: {known}")
+            return extract_path_with_adapter(ADAPTERS[key], path)
+        matches = [adapter for adapter in ADAPTERS.values() if adapter.identify(path)]
+        if len(matches) > 1:
+            names = ", ".join(adapter.name for adapter in matches)
+            raise SystemExit(f"Ambiguous transcript format for {path}: {names}; pass --agent to select a parser.")
+        if not matches:
+            raise SystemExit(f"Could not identify {path} as a supported transcript format; pass --agent to select a parser.")
+        return extract_path_with_adapter(matches[0], path, identified=True)
+    except UnsafeSnapshotError as exc:
+        raise SystemExit(f"Could not safely read {path}: {exc}") from None
+    except (TypeError, AttributeError, ValueError) as exc:
+        raise SystemExit(f"Could not parse malformed content in {path}: {exc}") from None
+    finally:
+        _json_values.cache_clear()
+        _sqlite_tables.cache_clear()
 
 
 def main(argv: list[str] | None = None) -> int:
