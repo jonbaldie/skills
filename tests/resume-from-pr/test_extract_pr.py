@@ -535,6 +535,7 @@ class LinkedIssueTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.mod = load_mod()
+        cls.target = cls.mod.Target("github", "github.com", "9")
 
     def test_closing_keyword_variants(self):
         for keyword in (
@@ -574,7 +575,7 @@ class LinkedIssueTests(unittest.TestCase):
                 {"number": 34, "title": "Remote issue",
                  "repository": {"nameWithOwner": "other/repo"}},
             ],
-        })
+        }, target=self.target)
         self.assertEqual(brief.linked_issues, ["#12 Local issue", "other/repo#34 Remote issue"])
         self.assertIn(
             "## Linked issues\n- #12 Local issue\n- other/repo#34 Remote issue\n",
@@ -587,15 +588,15 @@ class LinkedIssueTests(unittest.TestCase):
                 brief = self.mod.brief_from_github_view({
                     "body": "Closes #12. Fixes #12.",
                     "closingIssuesReferences": native,
-                })
+                }, target=self.target)
                 self.assertEqual(brief.linked_issues, ["#12"])
 
     def test_provider_descriptions_render_linked_issues(self):
         mod = self.mod
         body = "Closes #12. Fixes other/repo#34. Closes #12."
         briefs = [
-            ("github-cli", mod.brief_from_github_view({"body": body}), "#12"),
-            ("github-rest", mod.brief_from_github_rest({"body": body}), "#12"),
+            ("github-cli", mod.brief_from_github_view({"body": body}, target=self.target), "#12"),
+            ("github-rest", mod.brief_from_github_rest({"body": body}, target=self.target), "#12"),
             ("gitlab", mod.brief_from_gitlab({
                 "description": body, "web_url": "https://gitlab.com/acme/app/-/merge_requests/7",
             }), "acme/app#12"),
@@ -634,6 +635,7 @@ class BriefRenderTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.mod = load_mod()
+        cls.target = cls.mod.Target("github", "github.com", "9")
 
     def test_gitea_rest_uses_resolved_target_identity(self):
         target = self.mod.Target(
@@ -670,6 +672,13 @@ class BriefRenderTests(unittest.TestCase):
         self.assertIn("### Comment — reviewer\nWatch the TTL.", text)
         self.assertIn("### cache.py:12 — ada\nCheck this line.", text)
         self.assertNotIn("changed the title", text)
+
+    def test_gitlab_explicit_empty_discussions_override_payload(self):
+        mr = {"discussions": [{"notes": [{"body": "Embedded comment"}]}]}
+        embedded = self.mod.brief_from_gitlab(mr)
+        explicit = self.mod.brief_from_gitlab(mr, discussions=[])
+        self.assertEqual([comment.body for comment in embedded.comments], ["Embedded comment"])
+        self.assertEqual(explicit.comments, [])
 
     def test_bitbucket_server_normalizes_payload_without_http(self):
         target = self.mod.Target(
@@ -757,10 +766,15 @@ class BriefRenderTests(unittest.TestCase):
                 "line": 44,
             }
         ]
-        brief = self.mod.brief_from_github_view(data, inline=inline, source="gh")
+        brief = self.mod.brief_from_github_view(
+            data, inline=inline, source="gh",
+            target=self.mod.Target("github", "github.com", "9", owner="acme", repo="app"),
+        )
         text = self.mod.render(brief)
         self.assertIn("provider: github", text)
         self.assertIn("number: 9", text)
+        self.assertIn("repo: acme/app\n", text)
+        self.assertIn("host: github.com\n", text)
         self.assertIn("draft: true", text)
         self.assertIn("src/auth.ts (+10/-2)", text)
         self.assertIn("## Goal", text)
@@ -894,7 +908,7 @@ class BriefRenderTests(unittest.TestCase):
                 }
             ],
         }
-        brief = self.mod.brief_from_github_view(data)
+        brief = self.mod.brief_from_github_view(data, target=self.target)
         text = self.mod.render(brief)
         discussion = text.split("## Discussion", 1)[1].split("## Checks", 1)[0]
         self.assertLess(
@@ -911,6 +925,7 @@ class BriefRenderTests(unittest.TestCase):
         """Issue #162: REST issue comments carry the author under `user`."""
         brief = self.mod.brief_from_github_rest(
             {"number": 5, "title": "T", "state": "open", "user": {"login": "linus"}},
+            target=self.target,
             issue_comments=[
                 {
                     "body": "x",
@@ -929,7 +944,7 @@ class BriefRenderTests(unittest.TestCase):
                 "title": "T",
                 "number": 5,
                 "comments": [{"body": "x", "author": {"login": "ada"}}],
-            }
+            }, target=self.target
         )
         self.assertEqual([c.author for c in brief.comments], ["ada"])
 
@@ -985,6 +1000,7 @@ class ReviewStatePolicyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.mod = load_mod()
+        cls.target = cls.mod.Target("github", "github.com", "9")
 
     def test_github_normalizers_separate_state_and_preserve_review_text(self):
         briefs = [
@@ -992,9 +1008,9 @@ class ReviewStatePolicyTests(unittest.TestCase):
                 "reviewDecision": "CHANGES_REQUESTED",
                 "reviews": [{"state": "CHANGES_REQUESTED", "body": "  Add a test.  ",
                              "author": {"login": "reviewer"}}],
-            }),
+            }, target=self.target),
             self.mod.brief_from_github_rest(
-                {"reviewDecision": "CHANGES_REQUESTED"},
+                {"reviewDecision": "CHANGES_REQUESTED"}, target=self.target,
                 reviews=[{"state": "changes_requested", "body": "  Add a test.  ",
                           "user": {"login": "reviewer"}}],
             ),
@@ -1018,7 +1034,7 @@ class ReviewStatePolicyTests(unittest.TestCase):
                     "reviewDecision": "CHANGES_REQUESTED",
                     "reviews": [{"state": state, "body": "Document CHANGES_REQUESTED.",
                                  "author": {"login": "reviewer"}}],
-                })
+                }, target=self.target)
                 self.assertEqual(self.mod.ending_text(brief), "Changes Requested")
                 self.assertIn("Document CHANGES_REQUESTED.", self.mod.render(brief))
 
@@ -1044,7 +1060,7 @@ class ReviewStatePolicyTests(unittest.TestCase):
                 {"state": "APPROVED", "body": "  ", "author": {"login": "reviewer"}},
                 {"body": "  ", "author": {"login": "empty"}},
             ],
-        })
+        }, target=self.target)
         self.assertEqual([(c.body, c.state) for c in brief.comments], [("", "APPROVED")])
         self.assertIn("### Review — reviewer\nAPPROVED\n", self.mod.render(brief))
         self.assertEqual(self.mod.ending_text(brief), "reviewer: APPROVED")
@@ -1056,7 +1072,7 @@ class ReviewStatePolicyTests(unittest.TestCase):
             "reviewDecision": "CHANGES_REQUESTED",
             "reviews": [{"state": "CHANGES_REQUESTED", "body": "",
                          "author": {"login": "reviewer"}}],
-        })
+        }, target=self.target)
         self.assertEqual(brief.comments[0].body, "")
         self.assertEqual(
             self.mod.ending_text(brief), "Changes Requested. reviewer: CHANGES_REQUESTED"
@@ -1066,7 +1082,7 @@ class ReviewStatePolicyTests(unittest.TestCase):
         brief = self.mod.brief_from_github_view({
             "reviews": [{"state": "CHANGES_REQUESTED", "body": "x" * 1600,
                          "author": {"login": "reviewer"}}],
-        })
+        }, target=self.target)
         text = self.mod.render(brief)
         self.assertIn(
             "### Review — reviewer\nCHANGES_REQUESTED\n" + "x" * 1481 + "…\n", text
@@ -1115,14 +1131,14 @@ class ReviewStatePolicyTests(unittest.TestCase):
                 brief = self.mod.brief_from_github_view({
                     "comments": [{"body": "Continue.", "author": {"login": "ada"}}],
                     "statusCheckRollup": [{"name": "ci", "conclusion": raw}],
-                })
+                }, target=self.target)
                 self.assertEqual(brief.checks[0].status, canonical)
                 self.assertIn(f"- ci: {canonical}\n", self.mod.render(brief))
                 self.assertIn("## Ending\nFailing checks: ci\n", self.mod.render(brief))
         brief = self.mod.brief_from_github_view({
             "comments": [{"body": "Continue.", "author": {"login": "ada"}}],
             "statusCheckRollup": [{"name": "ci", "conclusion": "SUCCESS"}],
-        })
+        }, target=self.target)
         self.assertIn("## Ending\nada: Continue.\n", self.mod.render(brief))
 
 
@@ -1866,6 +1882,50 @@ class CollectionPagingTests(unittest.TestCase):
         self.assertEqual([p.get("limit") for p in pages], ["50"] * 3)
         self.assertEqual([p.get("page") for p in pages], [None, "2", "3"])
         self.assertEqual(brief.notes, [])
+
+    def test_gh_dispatch_recovers_identity_from_successful_url(self):
+        remote = self.mod.repo_from_remote("git@example.com:acme/app.git")
+        cases = [
+            (self.mod.target_from_repo(remote, "9"), "example.com"),
+            (self.mod.Target("github", "", "9"), "github.com"),
+            (self.mod.Target("github", "", "9", owner="partial"), "github.com"),
+        ]
+        payload = json.dumps({"number": 9, "url": "https://github.com/acme/app/pull/9"})
+        for target, host in cases:
+            with self.subTest(target=target):
+                with patch.object(self.mod, "run_cmd", return_value=payload):
+                    brief = self.mod.fetch_brief(target, None)
+                self.assertEqual(
+                    (brief.provider, brief.host, brief.repo),
+                    ("github", host, "acme/app"),
+                )
+                self.assertIn("provider: github\n", self.mod.render(brief))
+
+    def test_unknown_dispatch_identifies_successful_github_api(self):
+        target = self.github_forge(comments=[])
+        target.provider = "unknown"
+        with patch.object(self.mod, "run_cmd", side_effect=self.mod.Skip("gh unavailable")):
+            brief = self.mod.fetch_brief(target, None)
+        self.assertEqual((brief.provider, brief.host, brief.repo),
+                         ("github", "github.com", "acme/app"))
+
+    def test_gitea_dispatch_keeps_complete_target_over_payload_url(self):
+        root = "https://codeberg.org/api/v1/repos/owner/repo/pulls/9"
+        self.forge.route(root, single({
+            "number": 9, "html_url": "https://github.com/wrong/project/pull/9",
+        }))
+        for path in ("files", "reviews"):
+            self.forge.route(f"{root}/{path}", link_pager([], "limit", 30, 1))
+        self.forge.route(
+            "https://codeberg.org/api/v1/repos/owner/repo/issues/9/comments",
+            link_pager([], "limit", 30, 1),
+        )
+        target = self.mod.parse_pr_url("https://codeberg.org/owner/repo/pulls/9")
+        brief = self.mod.fetch_brief(target, None)
+        self.assertEqual(
+            (brief.provider, brief.host, brief.repo),
+            ("gitea", "codeberg.org", "owner/repo"),
+        )
 
     def test_gitea_api_brief_names_the_gitea_provider(self):
         root = "https://gitea.com/api/v1/repos/gitea/tea/pulls/1126"
@@ -2665,6 +2725,7 @@ class ForgeCheckConstructionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.mod = load_mod()
+        cls.target = cls.mod.Target("github", "github.com", "9")
 
     def test_github_view_check_construction_and_details(self):
         data = {
@@ -2676,7 +2737,7 @@ class ForgeCheckConstructionTests(unittest.TestCase):
                 {"name": "no-url", "conclusion": "NEUTRAL"},
             ],
         }
-        brief = self.mod.brief_from_github_view(data)
+        brief = self.mod.brief_from_github_view(data, target=self.target)
         self.assertEqual(len(brief.checks), 3)
         self.assertEqual(brief.checks[0].name, "run-ci")
         self.assertEqual(brief.checks[0].status, "success")
@@ -2698,7 +2759,9 @@ class ForgeCheckConstructionTests(unittest.TestCase):
             {"name": "run-ci", "status": "completed", "conclusion": "action_required", "details_url": "https://ci.example.com/r"},
             {"name": "run-no-url", "status": "in_progress", "conclusion": None},
         ]
-        brief = self.mod.brief_from_github_rest(pr, statuses=statuses, check_runs=check_runs)
+        brief = self.mod.brief_from_github_rest(
+            pr, target=self.target, statuses=statuses, check_runs=check_runs
+        )
         self.assertEqual(len(brief.checks), 4)
         self.assertEqual(brief.checks[0].status, "success")
         self.assertEqual(brief.checks[0].details, "https://ci.example.com/s")
@@ -2784,6 +2847,7 @@ class ForgeEndingSummariesAndRenderingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.mod = load_mod()
+        cls.target = cls.mod.Target("github", "github.com", "9")
 
     def test_gitlab_cancellation_ending_and_render(self):
         for status_spelling in ("canceled", "cancelled"):
@@ -2850,7 +2914,7 @@ class ForgeEndingSummariesAndRenderingTests(unittest.TestCase):
                 {"name": "ci", "conclusion": "FAILURE"}
             ],
         }
-        brief = self.mod.brief_from_github_view(data)
+        brief = self.mod.brief_from_github_view(data, target=self.target)
         ending = self.mod.ending_text(brief)
         self.assertTrue(ending.startswith("Changes Requested"))
         self.assertNotIn("Failing checks", ending)
@@ -2864,7 +2928,7 @@ class ForgeEndingSummariesAndRenderingTests(unittest.TestCase):
                 {"name": "ci", "conclusion": "CANCELLED"}
             ],
         }
-        brief_approved = self.mod.brief_from_github_view(data_approved)
+        brief_approved = self.mod.brief_from_github_view(data_approved, target=self.target)
         self.assertEqual(self.mod.ending_text(brief_approved), "Approved")
 
     def test_action_required_included_in_failing_checks(self):
@@ -2875,7 +2939,7 @@ class ForgeEndingSummariesAndRenderingTests(unittest.TestCase):
                 {"name": "cla-check", "conclusion": "ACTION_REQUIRED"}
             ],
         }
-        brief = self.mod.brief_from_github_view(data)
+        brief = self.mod.brief_from_github_view(data, target=self.target)
         self.assertEqual(self.mod.ending_text(brief), "Failing checks: cla-check")
 
 
