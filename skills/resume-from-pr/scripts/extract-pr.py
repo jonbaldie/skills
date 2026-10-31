@@ -1225,7 +1225,8 @@ def brief_from_github_view(
     data: dict[str, Any],
     inline: list[dict[str, Any]] | None = None,
     source: str = "gh",
-    host: str | None = None,
+    *,
+    target: Target,
 ) -> Brief:
     author = login_of(data.get("author"), "login", "name")
     files = [
@@ -1325,17 +1326,19 @@ def brief_from_github_view(
         repo_name = (issue.get("repository") or {}).get("nameWithOwner") or ""
         if num:
             linked.append(f"{repo_name}#{num} {title}".strip())
-    repo = None
     url = data.get("url") or ""
-    if url:
+    host, repo = target.host, target.slug
+    complete_repo = bool(target.project or (target.owner and target.repo))
+    if url and (not host or not complete_repo):
         try:
             parsed = parse_pr_url(url)
-            repo = parsed.slug
             host = host or parsed.host
+            if not complete_repo:
+                repo = parsed.slug or repo
         except FetchError:
             pass
     return Brief(
-        provider="github",
+        provider=target.provider,
         url=url,
         number=str(data.get("number") or ""),
         title=data.get("title") or "",
@@ -1373,7 +1376,7 @@ def brief_from_github_rest(
     statuses: list[dict[str, Any]] | None = None,
     check_runs: list[dict[str, Any]] | None = None,
     source: str = "api",
-    host: str | None = None,
+    target: Target,
 ) -> Brief:
     body = pr.get("body") or pr.get("description")
     data: dict[str, Any] = {
@@ -1453,7 +1456,7 @@ def brief_from_github_rest(
         ],
     }
     return brief_from_github_view(
-        data, inline=review_comments or [], source=source, host=host
+        data, inline=review_comments or [], source=source, target=target
     )
 
 
@@ -1480,7 +1483,9 @@ def fetch_github_gh(target: Target, cwd: str | None = None) -> Brief:
                 inline = parsed
         except (Skip, json.JSONDecodeError):
             pass
-    return brief_from_github_view(data, inline=inline, source="gh", host=target.host)
+    return brief_from_github_view(
+        data, inline=inline, source="gh", target=replace(target, provider="github")
+    )
 
 
 def fetch_github_api(target: Target, cwd: str | None = None) -> Brief:
@@ -1537,7 +1542,7 @@ def fetch_github_api(target: Target, cwd: str | None = None) -> Brief:
         statuses=statuses,
         check_runs=check_runs,
         source="api",
-        host=target.host,
+        target=replace(target, provider="github"),
     )
     brief.notes = notes
     return brief
@@ -1578,7 +1583,9 @@ def brief_from_gitlab(
         if path:
             files.append(FileChange(path=path, change_type="deleted" if change.get("deleted_file") else None))
     comments: list[Comment] = []
-    for discussion in discussions or []:
+    if discussions is None:
+        discussions = mr.get("discussions") or []
+    for discussion in discussions:
         for note in discussion.get("notes") or []:
             if note.get("system"):
                 continue
@@ -1652,7 +1659,9 @@ def fetch_gitlab_glab(target: Target, cwd: str | None = None) -> Brief:
         raise Skip("glab returned non-JSON") from exc
     if isinstance(data, list):
         data = data[0] if data else {}
-    return brief_from_gitlab(data, source="glab", host=target.host)
+    return brief_from_gitlab(
+        data, discussions=data.get("Discussions"), source="glab", host=target.host
+    )
 
 
 def fetch_gitlab_api(target: Target, cwd: str | None = None) -> Brief:
@@ -1842,20 +1851,30 @@ def fetch_bitbucket_server_api(target: Target, cwd: str | None = None) -> Brief:
     pr = reader.json(root)
     if not isinstance(pr, dict):
         raise FetchError(f"No Bitbucket Server pull request {target.number}")
+    notes: list[str] = []
+    changes = collect(notes, f"{root}/changes", reader, BITBUCKET_SERVER_PAGING, "changes")
+    activities = collect(notes, f"{root}/activities", reader, BITBUCKET_SERVER_PAGING, "activities")
+    brief = brief_from_bitbucket_server(pr, changes, activities, target=target)
+    brief.notes = notes
+    return brief
+
+
+def brief_from_bitbucket_server(
+    pr: dict[str, Any],
+    changes: list[dict[str, Any]],
+    activities: list[dict[str, Any]],
+    *,
+    target: Target,
+) -> Brief:
     from_ref = pr.get("fromRef") or {}
     to_ref = pr.get("toRef") or {}
-    notes: list[str] = []
     files: list[FileChange] = []
-    for item in collect(
-        notes, f"{root}/changes", reader, BITBUCKET_SERVER_PAGING, "changes"
-    ):
+    for item in changes:
         path = ((item.get("path") or {}).get("toString")) or ""
         if path:
             files.append(FileChange(path=path, change_type=item.get("type")))
     comments: list[Comment] = []
-    for item in collect(
-        notes, f"{root}/activities", reader, BITBUCKET_SERVER_PAGING, "activities"
-    ):
+    for item in activities:
         comment = item.get("comment") or {}
         body = (comment.get("text") or "").strip()
         if not body:
@@ -1885,7 +1904,7 @@ def fetch_bitbucket_server_api(target: Target, cwd: str | None = None) -> Brief:
         number=str(pr.get("id") or target.number),
         title=pr.get("title") or "",
         state=(pr.get("state") or "").lower(),
-        author=login_of(pr.get("author"), "name", "displayName"),
+        author=login_of(pr.get("author"), "name", "displayName", "user"),
         body=pr.get("description") or "",
         draft=bool(pr.get("draft")),
         base=to_ref.get("displayId"),
@@ -1899,7 +1918,6 @@ def fetch_bitbucket_server_api(target: Target, cwd: str | None = None) -> Brief:
         source="api",
         files=files,
         comments=comments,
-        notes=notes,
     )
 
 
@@ -1934,10 +1952,8 @@ def fetch_gitea_api(target: Target, cwd: str | None = None) -> Brief:
         issue_comments=issue_comments,
         reviews=reviews,
         source="api",
-        host=host,
+        target=replace(target, provider="gitea"),
     )
-    # The GitHub-shaped builder stamps github; this brief came from Gitea.
-    brief.provider = "gitea"
     brief.notes = notes
     return brief
 
