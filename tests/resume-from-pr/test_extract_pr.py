@@ -635,6 +635,79 @@ class BriefRenderTests(unittest.TestCase):
     def setUpClass(cls):
         cls.mod = load_mod()
 
+    def test_gitea_rest_uses_resolved_target_identity(self):
+        target = self.mod.Target(
+            provider="gitea", host="codeberg.org", number="9", owner="acme", repo="app"
+        )
+        for url in (None, "https://github.com/wrong/project/pull/9"):
+            with self.subTest(url=url):
+                pr = {"number": 9, "title": "Fix auth", "state": "open", "html_url": url}
+                brief = self.mod.brief_from_github_rest(pr, target=target)
+                text = self.mod.render(brief)
+                self.assertIn("provider: gitea\n", text)
+                self.assertIn("host: codeberg.org\n", text)
+                self.assertIn("repo: acme/app\n", text)
+
+    def test_gitlab_glab_renders_embedded_discussions_like_api(self):
+        target = self.mod.Target(
+            provider="gitlab", host="gitlab.com", number="7", project="group/app"
+        )
+        mr = {"iid": 7, "title": "Add cache", "state": "opened"}
+        discussions = [{"notes": [
+            {"body": "Watch the TTL.", "author": {"username": "reviewer"},
+             "created_at": "2024-01-02T03:04:05Z"},
+            {"body": "Check this line.", "author": {"username": "ada"},
+             "position": {"new_path": "cache.py", "new_line": 12}},
+            {"body": "changed the title", "system": True},
+        ]}]
+        with patch.object(self.mod, "run_cmd", return_value=json.dumps(dict(mr, discussions=discussions))):
+            cli = self.mod.fetch_gitlab_glab(target)
+        api = self.mod.brief_from_gitlab(mr, discussions=discussions, host=target.host)
+        self.assertEqual([asdict(comment) for comment in cli.comments], [
+            asdict(comment) for comment in api.comments
+        ])
+        text = self.mod.render(cli)
+        self.assertIn("### Comment — reviewer\nWatch the TTL.", text)
+        self.assertIn("### cache.py:12 — ada\nCheck this line.", text)
+        self.assertNotIn("changed the title", text)
+
+    def test_bitbucket_server_normalizes_payload_without_http(self):
+        target = self.mod.Target(
+            provider="bitbucket-server", host="git.example.com", number="4",
+            owner="KEY", repo="slug",
+            url="https://git.example.com/projects/KEY/repos/slug/pull-requests/4",
+        )
+        pr = {
+            "id": 4, "title": "Fix cache", "state": "OPEN", "draft": True,
+            "author": {"user": {"name": "ada"}}, "description": "Fixes #12.",
+            "fromRef": {"displayId": "feature/cache", "latestCommit": "abc123"},
+            "toRef": {"displayId": "main"},
+        }
+        changes = [{"path": {"toString": "cache.py"}, "type": "MODIFY"}]
+        activities = [{"comment": {
+            "text": "Watch the TTL.", "author": {"name": "reviewer"},
+            "createdDate": 1704164645000,
+        }}]
+        brief = self.mod.brief_from_bitbucket_server(pr, changes, activities, target=target)
+        self.assertEqual(
+            (brief.provider, brief.host, brief.repo, brief.url, brief.number, brief.source),
+            ("bitbucket-server", "git.example.com", "KEY/slug", target.url, "4", "api"),
+        )
+        self.assertEqual(
+            (brief.title, brief.state, brief.author, brief.body, brief.draft,
+             brief.base, brief.head, brief.head_sha, brief.linked_issues),
+            ("Fix cache", "open", "ada", "Fixes #12.", True,
+             "main", "feature/cache", "abc123", ["KEY/slug#12"]),
+        )
+        self.assertEqual([(f.path, f.change_type) for f in brief.files], [("cache.py", "MODIFY")])
+        self.assertEqual(
+            [(c.author, c.body, c.created, c.kind) for c in brief.comments],
+            [("reviewer", "Watch the TTL.", "2024-01-02T03:04:05+00:00", "discussion")],
+        )
+        text = self.mod.render(brief)
+        self.assertIn("- cache.py MODIFY", text)
+        self.assertIn("### Comment — reviewer\nWatch the TTL.", text)
+
     def test_github_view_roundtrip(self):
         data = {
             "title": "Fix auth middleware",
