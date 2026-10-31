@@ -1659,7 +1659,9 @@ def fetch_gitlab_glab(target: Target, cwd: str | None = None) -> Brief:
         raise Skip("glab returned non-JSON") from exc
     if isinstance(data, list):
         data = data[0] if data else {}
-    return brief_from_gitlab(data, source="glab", host=target.host)
+    return brief_from_gitlab(
+        data, discussions=data.get("Discussions"), source="glab", host=target.host
+    )
 
 
 def fetch_gitlab_api(target: Target, cwd: str | None = None) -> Brief:

@@ -673,12 +673,36 @@ class BriefRenderTests(unittest.TestCase):
         self.assertIn("### cache.py:12 — ada\nCheck this line.", text)
         self.assertNotIn("changed the title", text)
 
+    def test_gitlab_main_renders_glab_v126_discussions(self):
+        payload = {
+            "iid": 7, "title": "Add cache", "state": "opened",
+            "Discussions": [{"id": "abc", "individual_note": False, "notes": [
+                {"body": "Watch the TTL.", "author": {"username": "reviewer"},
+                 "created_at": "2024-01-02T03:04:05Z", "system": False, "position": None},
+                {"body": "Check this line.", "author": {"username": "ada"}, "system": False,
+                 "position": {"new_path": "cache.py", "new_line": 12}},
+                {"body": "changed the title", "system": True},
+            ]}],
+        }
+        output = io.StringIO()
+        with patch.object(self.mod, "run_cmd", return_value=json.dumps(payload)):
+            with contextlib.redirect_stdout(output):
+                self.assertEqual(self.mod.main(["https://gitlab.com/group/app/-/merge_requests/7"]), 0)
+        text = output.getvalue()
+        self.assertIn("### Comment — reviewer\nWatch the TTL.", text)
+        self.assertIn("### cache.py:12 — ada\nCheck this line.", text)
+        self.assertNotIn("changed the title", text)
+
     def test_gitlab_explicit_empty_discussions_override_payload(self):
         mr = {"discussions": [{"notes": [{"body": "Embedded comment"}]}]}
         embedded = self.mod.brief_from_gitlab(mr)
         explicit = self.mod.brief_from_gitlab(mr, discussions=[])
+        api = self.mod.brief_from_gitlab(
+            mr, discussions=[{"notes": [{"body": "API comment"}]}]
+        )
         self.assertEqual([comment.body for comment in embedded.comments], ["Embedded comment"])
         self.assertEqual(explicit.comments, [])
+        self.assertEqual([comment.body for comment in api.comments], ["API comment"])
 
     def test_bitbucket_server_normalizes_payload_without_http(self):
         target = self.mod.Target(
