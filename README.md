@@ -237,6 +237,22 @@ PR/MR for the current branch.
 
 ---
 
+### I want to finish the current task and land it
+
+[`land-the-plane`](./skills/land-the-plane/SKILL.md) finishes the assigned
+task, verifies the integration candidate, merges it into the default branch,
+and syncs the local and remote branches. It uses `ship-pr` when the repository
+uses pull requests.
+
+```text
+/land-the-plane
+```
+
+When using the installer's `--skill` filter, select both `land-the-plane` and
+`ship-pr` to make the PR workflow available.
+
+---
+
 ### I finished the work — ship it through a PR
 
 **The problem.** Finished work may still be only a local branch. The last mile
