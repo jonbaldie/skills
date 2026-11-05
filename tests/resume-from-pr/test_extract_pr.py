@@ -3117,5 +3117,154 @@ class CredentialTests(unittest.TestCase):
                     self.assertIn("GITLAB_TOKEN", message)
 
 
+class AttemptPolicyTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_mod()
+
+    def test_first_ok_obeys_explicit_policy(self):
+        mod = self.mod
+        def skip():
+            raise mod.Skip("offline")
+        def fail():
+            raise mod.FetchError("denied")
+        self.assertEqual(mod.first_ok([("offline", skip), ("success", lambda: "found")]), "found")
+        with self.assertRaisesRegex(mod.FetchError, "denied"):
+            mod.first_ok([("denied", fail), ("success", lambda: "found")],
+                         continue_on=(mod.Skip,))
+        self.assertEqual(mod.first_ok([("denied", fail), ("success", lambda: "found")],
+                                      continue_on=(mod.Skip, mod.FetchError)), "found")
+
+    def test_branch_registry_continues_on_skip_and_stops_on_fetch_error(self):
+        mod = self.mod
+        expected = mod.Target("github", "github.com", "42")
+        def skip(cwd):
+            raise mod.Skip("missing CLI")
+        def fail(cwd):
+            raise mod.FetchError("CLI denied")
+        with patch.object(mod, "git_current_branch", return_value="topic"), patch.object(
+            mod, "git_remotes", return_value=[("origin", "https://github.com/a/b.git")]
+        ), patch.dict(mod.BRANCH_LOOKUPS, {"github": lambda remote, branch: expected}):
+            with patch.dict(mod.CLI_LOOKUPS, {"github": skip}):
+                self.assertEqual(mod.resolve_current_branch("work"), expected)
+            with patch.dict(mod.CLI_LOOKUPS, {"github": fail}):
+                with self.assertRaisesRegex(mod.FetchError, "CLI denied"):
+                    mod.resolve_current_branch("work")
+
+    def test_branch_failure_keeps_earlier_skip(self):
+        mod = self.mod
+        def unavailable(cwd):
+            raise mod.Skip("CLI unavailable")
+        def denied(remote, branch):
+            raise mod.FetchError("API denied")
+        with patch.object(mod, "git_current_branch", return_value="topic"), patch.object(
+            mod, "git_remotes", return_value=[("origin", "https://github.com/a/b.git")]
+        ), patch.dict(mod.CLI_LOOKUPS, {"github": unavailable}), patch.dict(
+            mod.BRANCH_LOOKUPS, {"github": denied}
+        ):
+            with self.assertRaises(mod.FetchError) as ctx:
+                mod.resolve_current_branch("work")
+        self.assertIn("CLI unavailable", str(ctx.exception))
+        self.assertIn("API denied", str(ctx.exception))
+
+    def test_branch_adapters_preserve_skip(self):
+        mod = self.mod
+        cases = [
+            (mod.github_branch_target, mod.Repo("github", "github.com", "a", "b")),
+            (mod.gitlab_branch_target, mod.Repo("gitlab", "gitlab.com", "a", "b", "a/b")),
+            (mod.bitbucket_branch_target, mod.Repo("bitbucket", "bitbucket.org", "a", "b")),
+            (mod.bitbucket_server_branch_target, mod.Repo("bitbucket-server", "example.com", "a", "b")),
+            (mod.azure_branch_target, mod.Repo("azure", "dev.azure.com", "a", "b", project="p", org="a")),
+        ]
+        with patch.object(mod, "http_json", side_effect=mod.Skip("offline")):
+            for lookup, remote in cases:
+                with self.subTest(provider=remote.provider), patch.object(mod, "auth_headers", return_value={}):
+                    with self.assertRaises(mod.Skip) as ctx:
+                        lookup(remote, "topic")
+                    for detail in ("offline", "topic", remote.host, "private"):
+                        self.assertIn(detail, str(ctx.exception))
+
+    def test_unknown_branch_uses_registered_cli_order(self):
+        mod = self.mod
+        expected = mod.Target("gitlab", "gitlab.com", "17")
+        def unavailable(cwd):
+            raise mod.Skip("unavailable")
+        with patch.object(mod, "git_current_branch", return_value="topic"), patch.object(
+            mod, "git_remotes", return_value=[]
+        ), patch.dict(mod.CLI_LOOKUPS, {"first": unavailable, "second": lambda cwd: expected}, clear=True):
+            self.assertEqual(mod.resolve_current_branch("work"), expected)
+
+    def test_gitea_branch_preserves_skip_on_incomplete_listing(self):
+        mod = self.mod
+        remote = mod.Repo("gitea", "codeberg.org", "a", "b")
+        with patch.object(mod.ForgeReader, "page", side_effect=mod.Skip("offline")):
+            with self.assertRaisesRegex(mod.Skip, "offline"):
+                mod.gitea_branch_target(remote, "topic")
+
+    def test_fetch_brief_continues_on_fetch_error(self):
+        mod = self.mod
+        target = mod.Target("github", "github.com", "3")
+        expected = object()
+        def denied(target, cwd):
+            raise mod.FetchError("denied")
+        def success(target, cwd):
+            return expected
+        with patch.dict(mod.FETCHERS, {"github": [denied, success]}):
+            self.assertIs(mod.fetch_brief(target, None), expected)
+
+    def test_unknown_branch_stops_on_fetch_error(self):
+        mod = self.mod
+        def denied(cwd):
+            raise mod.FetchError("denied")
+        later = unittest.mock.Mock()
+        with patch.object(mod, "git_current_branch", return_value="topic"), patch.object(
+            mod, "git_remotes", return_value=[]
+        ), patch.dict(mod.CLI_LOOKUPS, {"first": denied, "second": later}, clear=True):
+            with self.assertRaisesRegex(mod.FetchError, "denied"):
+                mod.resolve_current_branch("work")
+        later.assert_not_called()
+
+    def test_gitea_second_page_skip_keeps_diagnostics(self):
+        mod = self.mod
+        remote = mod.Repo("gitea", "codeberg.org", "a", "b")
+        with patch.object(mod, "auth_headers", return_value={}), patch.object(
+            mod.ForgeReader, "page", side_effect=[
+                ([{"head": {"ref": "other"}}], {"link": '<?page=2>; rel="next"'}),
+                mod.Skip("offline"),
+            ]
+        ):
+            with self.assertRaises(mod.Skip) as ctx:
+                mod.gitea_branch_target(remote, "topic")
+        for detail in ("offline", "topic", "codeberg.org", "private", "1 items"):
+            self.assertIn(detail, str(ctx.exception))
+
+    def test_collection_keeps_partial_items_for_both_failure_types(self):
+        mod = self.mod
+        for error in (mod.Skip("offline"), mod.FetchError("denied")):
+            with self.subTest(error=error):
+                reader = mod.ForgeReader("https://example.com/items")
+                with patch.object(reader, "page", side_effect=[
+                    (["first"], {"link": '<?page=2>; rel="next"'}), error
+                ]):
+                    result = mod.http_collection("https://example.com/items", reader,
+                                                 mod.GITHUB_PAGING, "items")
+                self.assertEqual(result.items, ["first"])
+                self.assertIs(result.error, error)
+                self.assertIn(f"items: fetch failed after 1 items — {error}", result.note)
+
+    def test_collection_records_link_refusal(self):
+        mod = self.mod
+        reader = mod.ForgeReader("https://example.com/items")
+        with patch.object(reader, "page", return_value=(
+            ["first"], {"link": '<https://outside.invalid/items>; rel="next"'}
+        )) as page:
+            result = mod.http_collection("https://example.com/items", reader,
+                                         mod.GITHUB_PAGING, "items")
+        self.assertEqual(result.items, ["first"])
+        self.assertIsInstance(result.error, mod.FetchError)
+        self.assertIn("unsafe", result.note)
+        page.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()
