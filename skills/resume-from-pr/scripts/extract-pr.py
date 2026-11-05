@@ -21,7 +21,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
-from typing import Any, Callable, Literal
+from typing import Any, Callable, Literal, TypeVar
 
 
 class Skip(Exception):
@@ -30,6 +30,29 @@ class Skip(Exception):
 
 class FetchError(Exception):
     """Stop this provider path."""
+
+
+T = TypeVar("T")
+CONTINUE_ON_UNAVAILABLE = (Skip, FetchError)
+
+
+def first_ok(
+    attempts: list[tuple[str, Callable[[], T]]],
+    *,
+    continue_on: tuple[type[Exception], ...] = (Skip,),
+    errors: list[str] | None = None,
+) -> T:
+    failures = errors if errors is not None else []
+    last_error: Exception | None = None
+    for name, attempt in attempts:
+        try:
+            return attempt()
+        except Exception as exc:
+            failures.append(f"{name}: {exc}")
+            if not isinstance(exc, continue_on):
+                raise
+            last_error = exc
+    raise Skip("; ".join(failures)) from last_error
 
 
 def truncate(text: str | None, limit: int) -> str:
@@ -1123,6 +1146,7 @@ MAX_COLLECTION_PAGES = 20
 class Collection:
     items: list[Any] = field(default_factory=list)
     note: str | None = None  # why items is incomplete, if it is
+    error: Exception | None = None
 
 
 def http_collection(
@@ -1146,19 +1170,14 @@ def http_collection(
             break
         try:
             body, response_headers = reader.page(next_url)
-        except (FetchError, Skip) as exc:
-            collection.note = (
-                f"{name}: fetch failed after {len(collection.items)} items — {exc}"
-            )
-            break
-        pages += 1
-        items = body.get(paging.items) if paging.items and isinstance(body, dict) else body
-        if isinstance(items, list):
-            collection.items.extend(items)
-        link = paging.next_page(next_url, body, response_headers)
-        try:
+            pages += 1
+            items = body.get(paging.items) if paging.items and isinstance(body, dict) else body
+            if isinstance(items, list):
+                collection.items.extend(items)
+            link = paging.next_page(next_url, body, response_headers)
             next_url = reader.resolve(link, reader.current_url) if link else None
-        except FetchError as exc:
+        except CONTINUE_ON_UNAVAILABLE as exc:
+            collection.error = exc
             collection.note = (
                 f"{name}: fetch failed after {len(collection.items)} items — {exc}"
             )
@@ -2279,7 +2298,9 @@ def github_branch_target(remote: Repo, branch: str) -> Target:
     try:
         data = http_json(root + query, headers=auth_headers("github"))
     except Skip as exc:
-        raise _branch_lookup_failure("github", remote, branch, f"network error: {exc}") from exc
+        raise Skip(_branch_lookup_message(
+            "github", remote, branch, f"network error: {exc}"
+        )) from exc
     except FetchError as exc:
         raise _branch_lookup_failure("github", remote, branch, str(exc)) from exc
     prs = data if isinstance(data, list) else []
@@ -2306,7 +2327,9 @@ def gitlab_branch_target(remote: Repo, branch: str) -> Target:
     try:
         data = http_json(root, headers=auth_headers("gitlab"))
     except Skip as exc:
-        raise _branch_lookup_failure("gitlab", remote, branch, f"network error: {exc}") from exc
+        raise Skip(_branch_lookup_message(
+            "gitlab", remote, branch, f"network error: {exc}"
+        )) from exc
     except FetchError as exc:
         raise _branch_lookup_failure("gitlab", remote, branch, str(exc)) from exc
     mrs = data if isinstance(data, list) else []
@@ -2335,7 +2358,9 @@ def bitbucket_branch_target(remote: Repo, branch: str) -> Target:
     try:
         data = http_json(root, headers=auth_headers("bitbucket"))
     except Skip as exc:
-        raise _branch_lookup_failure("bitbucket", remote, branch, f"network error: {exc}") from exc
+        raise Skip(_branch_lookup_message(
+            "bitbucket", remote, branch, f"network error: {exc}"
+        )) from exc
     except FetchError as exc:
         raise _branch_lookup_failure("bitbucket", remote, branch, str(exc)) from exc
     values = data.get("values") or [] if isinstance(data, dict) else []
@@ -2367,9 +2392,9 @@ def bitbucket_server_branch_target(remote: Repo, branch: str) -> Target:
     try:
         data = http_json(root, headers=auth_headers("bitbucket-server"))
     except Skip as exc:
-        raise _branch_lookup_failure(
+        raise Skip(_branch_lookup_message(
             "bitbucket-server", remote, branch, f"network error: {exc}"
-        ) from exc
+        )) from exc
     except FetchError as exc:
         raise _branch_lookup_failure("bitbucket-server", remote, branch, str(exc)) from exc
     values = data.get("values") or [] if isinstance(data, dict) else []
@@ -2414,6 +2439,10 @@ def gitea_branch_target(remote: Repo, branch: str) -> Target:
         else:
             fork = fork or pr
     pr = same_repo or fork
+    if not pr and isinstance(listing.error, Skip):
+        raise Skip(_branch_lookup_message(
+            "gitea", remote, branch, f"open pull request listing incomplete: {listing.note}"
+        )) from listing.error
     if not pr and listing.note:
         raise _branch_lookup_failure(
             "gitea", remote, branch, f"open pull request listing incomplete: {listing.note}"
@@ -2454,7 +2483,9 @@ def azure_branch_target(remote: Repo, branch: str) -> Target:
     try:
         data = http_json(root + query, headers=auth_headers("azure"))
     except Skip as exc:
-        raise _branch_lookup_failure("azure", remote, branch, f"network error: {exc}") from exc
+        raise Skip(_branch_lookup_message(
+            "azure", remote, branch, f"network error: {exc}"
+        )) from exc
     except FetchError as exc:
         raise _branch_lookup_failure("azure", remote, branch, str(exc)) from exc
     values = data.get("value") or [] if isinstance(data, dict) else []
@@ -2480,9 +2511,9 @@ def azure_branch_target(remote: Repo, branch: str) -> Target:
     )
 
 
-def _branch_lookup_failure(
+def _branch_lookup_message(
     provider: str, remote: Repo, branch: str, detail: str
-) -> FetchError:
+) -> str:
     label = PROVIDER_LABELS.get(provider, provider)
     message = (
         f"{label}: could not look up the open pull request for branch "
@@ -2491,7 +2522,13 @@ def _branch_lookup_failure(
     hint = credential_hint(provider)
     if hint:
         message += f" ({hint})"
-    return FetchError(message)
+    return message
+
+
+def _branch_lookup_failure(
+    provider: str, remote: Repo, branch: str, detail: str
+) -> FetchError:
+    return FetchError(_branch_lookup_message(provider, remote, branch, detail))
 
 
 def _branch_lookup_empty(provider: str, remote: Repo, branch: str) -> FetchError:
@@ -2535,36 +2572,28 @@ def resolve_current_branch(cwd: str) -> Target:
                 f"{label}: cannot find the current-branch pull request because this "
                 "workspace has no current branch (detached HEAD?). Pass a PR/MR URL."
             )
-        errors: list[str] = []
+        attempts = []
         cli_lookup = CLI_LOOKUPS.get(remote.provider)
         if cli_lookup:
-            try:
-                return cli_lookup(cwd)
-            except (Skip, FetchError) as exc:
-                errors.append(str(exc))
+            attempts.append(("CLI", lambda: cli_lookup(cwd)))
         api_lookup = BRANCH_LOOKUPS.get(remote.provider)
         if api_lookup:
-            try:
-                return api_lookup(remote, branch)
-            except (Skip, FetchError) as exc:
-                errors.append(str(exc))
-        raise FetchError("; ".join(errors) if errors else f"{label}: lookup failed")
-    # Unrecognised host (or no git metadata): keep the GitHub/GitLab CLI
-    # probing that used to be the only current-branch path.
+            attempts.append(("API", lambda: api_lookup(remote, branch)))
+        errors: list[str] = []
+        try:
+            return first_ok(attempts, errors=errors)
+        except (Skip, FetchError) as exc:
+            raise FetchError("; ".join(errors) if errors else f"{label}: lookup failed") from exc
+    attempts = [(name, lambda lookup=lookup: lookup(cwd))
+                for name, lookup in CLI_LOOKUPS.items()]
     errors = []
     try:
-        return _gh_cli_branch_target(cwd)
+        return first_ok(attempts, errors=errors)
     except (Skip, FetchError) as exc:
-        errors.append(str(exc))
-    try:
-        return _glab_cli_branch_target(cwd)
-    except (Skip, FetchError) as exc:
-        errors.append(str(exc))
-    raise FetchError(
-        "No open pull/merge request for the current branch. "
-        "Pass a PR/MR URL. "
-        + (f"({'; '.join(errors)})" if errors else "")
-    )
+        raise FetchError(
+            "No open pull/merge request for the current branch. "
+            "Pass a PR/MR URL. " + (f"({'; '.join(errors)})" if errors else "")
+        ) from exc
 
 
 def resolve_number(number: str, cwd: str) -> Target:
@@ -2592,18 +2621,16 @@ def resolve_number(number: str, cwd: str) -> Target:
 def fetch_brief(target: Target, cwd: str | None) -> Brief:
     fetchers = FETCHERS.get(target.provider, FETCHERS["unknown"])
     errors: list[str] = []
-    for fetcher in fetchers:
-        try:
-            return fetcher(target, cwd)
-        except Skip as exc:
-            errors.append(f"{fetcher.__name__}: {exc}")
-        except FetchError as exc:
-            errors.append(f"{fetcher.__name__}: {exc}")
-            # 404-style failures on a known host should not keep fishing forever,
-            # but git refs can still exist when the API is private.
-            if fetcher is not fetch_git and fetch_git in fetchers:
-                continue
-            break
+    attempts = [(fetcher.__name__, lambda fetcher=fetcher: fetcher(target, cwd))
+                for fetcher in fetchers]
+    try:
+        return first_ok(
+            attempts,
+            continue_on=CONTINUE_ON_UNAVAILABLE,
+            errors=errors,
+        )
+    except Skip:
+        pass
     label = PROVIDER_LABELS.get(target.provider, target.provider)
     if target.provider == "unknown":
         raise FetchError(
