@@ -1,0 +1,3 @@
+Unsupported agent: non-existent
+Supported: codex, claude-code, opencode, pi, cursor, gemini, universal
+exit: 1

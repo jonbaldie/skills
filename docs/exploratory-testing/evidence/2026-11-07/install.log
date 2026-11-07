@@ -1,0 +1,13 @@
+Installing to: Pi
+Installing jonbaldie/skills...
+  installed options
+  installed resume-from-pr
+Done. Skills installed for this project.
+
+Installed files:
+.agents/skills/options/SKILL.md
+.agents/skills/resume-from-pr/SKILL.md
+.pi/skills/options
+.pi/skills/resume-from-pr
+Pi target: /home/ubuntu/Code/pstack/jonbaldie/skills-explore-20261107/.explore-tmp/project/.agents/skills/options
+Pi bytes match

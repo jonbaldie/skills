@@ -1,0 +1,91 @@
+RUN: tests/agent-destinations.sh
+PASS: agent-destinations: all scenarios passed
+PASS: tests/agent-destinations.sh
+RUN: tests/copy-to-skill-dirs-agents.sh
+PASS: copy-to-skill-dirs-agents: all scenarios passed
+PASS: tests/copy-to-skill-dirs-agents.sh
+RUN: tests/copy-to-skill-dirs-overlap.sh
+PASS: copy-to-skill-dirs-overlap: all scenarios passed
+PASS: tests/copy-to-skill-dirs-overlap.sh
+RUN: tests/copy-to-skill-dirs-project-root.sh
+PASS: copy-to-skill-dirs-project-root: all scenarios passed
+PASS: tests/copy-to-skill-dirs-project-root.sh
+RUN: tests/install-agent-destinations.sh
+PASS: install-agent-destinations: all scenarios passed
+PASS: tests/install-agent-destinations.sh
+RUN: tests/install-in-progress.sh
+PASS: install-in-progress: in-progress skills are not distributed
+PASS: tests/install-in-progress.sh
+RUN: tests/install-name-collision.sh
+PASS: install-name-collision: all scenarios passed
+PASS: tests/install-name-collision.sh
+RUN: tests/install-prereq-prompt.sh
+PASS: install-prereq-prompt: prerequisite prompt defaults to No without an answer
+PASS: tests/install-prereq-prompt.sh
+RUN: tests/install-pycache-exclusion.sh
+PASS: install-pycache-exclusion: all scenarios passed
+PASS: tests/install-pycache-exclusion.sh
+SKIP: tests/install-ship-spec.sh (requires sandbox-exec)
+RUN: tests/install-skill-filter.sh
+Cloning mattpocock/skills...
+warning: --depth is ignored in local clones; use file:// instead.
+PASS: install-skill-filter: all scenarios passed
+PASS: tests/install-skill-filter.sh
+RUN: tests/install-symlinked-agent-root.sh
+PASS: install-symlinked-agent-root: all scenarios passed
+PASS: tests/install-symlinked-agent-root.sh
+RUN: tests/installed-skill-name.sh
+PASS: installed-skill-name: all scenarios passed
+PASS: tests/installed-skill-name.sh
+RUN: tests/managed-manifest-cli.sh
+PASS: managed-manifest-cli: standalone sync and copy manifest behavior
+PASS: tests/managed-manifest-cli.sh
+RUN: tests/shell-lib.sh
+PASS: shell-lib: all scenarios passed
+PASS: tests/shell-lib.sh
+RUN: tests/skill-tree.sh
+PASS: skill-tree: all scenarios passed
+PASS: tests/skill-tree.sh
+RUN: tests/sync-jonbaldie-skills.sh
+Fetching mattpocock/skills...
+warning: --depth is ignored in local clones; use file:// instead.
+Fetching jonbaldie/skills...
+warning: --depth is ignored in local clones; use file:// instead.
+Installing mattpocock/skills...
+  installed helper
+  installed alpha
+Installing jonbaldie/skills...
+  installed shared
+  installed beta
+  removed retired skill retired
+mattpocock/skills commit: 7da5e2399c532bac4b1b676c4d0fa41b0ce025e5
+jonbaldie/skills commit: 85528e3d8991aa2660070ef319794717362fc5d8
+Canonical destination: /home/ubuntu/Code/pstack/jonbaldie/skills-explore-20261107/.explore-tmp/tmp/test-sync-jonbaldie-skills.6G0Lea/target project/.agents/skills
+Fetching mattpocock/skills...
+warning: --depth is ignored in local clones; use file:// instead.
+Fetching jonbaldie/skills...
+warning: --depth is ignored in local clones; use file:// instead.
+Installing mattpocock/skills...
+  installed helper
+  installed alpha
+Installing jonbaldie/skills...
+  installed shared
+  installed beta
+mattpocock/skills commit: 7da5e2399c532bac4b1b676c4d0fa41b0ce025e5
+jonbaldie/skills commit: 85528e3d8991aa2660070ef319794717362fc5d8
+Canonical destination: /home/ubuntu/Code/pstack/jonbaldie/skills-explore-20261107/.explore-tmp/tmp/test-sync-jonbaldie-skills.6G0Lea/target project/.agents/skills
+  copied alpha -> /home/ubuntu/Code/pstack/jonbaldie/skills-explore-20261107/.explore-tmp/tmp/test-sync-jonbaldie-skills.6G0Lea/target project/.claude/skills
+  copied beta -> /home/ubuntu/Code/pstack/jonbaldie/skills-explore-20261107/.explore-tmp/tmp/test-sync-jonbaldie-skills.6G0Lea/target project/.claude/skills
+  copied helper -> /home/ubuntu/Code/pstack/jonbaldie/skills-explore-20261107/.explore-tmp/tmp/test-sync-jonbaldie-skills.6G0Lea/target project/.claude/skills
+  copied shared -> /home/ubuntu/Code/pstack/jonbaldie/skills-explore-20261107/.explore-tmp/tmp/test-sync-jonbaldie-skills.6G0Lea/target project/.claude/skills
+Additional destination: /home/ubuntu/Code/pstack/jonbaldie/skills-explore-20261107/.explore-tmp/tmp/test-sync-jonbaldie-skills.6G0Lea/target project/.claude/skills
+  copied alpha -> /home/ubuntu/Code/pstack/jonbaldie/skills-explore-20261107/.explore-tmp/tmp/test-sync-jonbaldie-skills.6G0Lea/external skills
+  copied beta -> /home/ubuntu/Code/pstack/jonbaldie/skills-explore-20261107/.explore-tmp/tmp/test-sync-jonbaldie-skills.6G0Lea/external skills
+  copied helper -> /home/ubuntu/Code/pstack/jonbaldie/skills-explore-20261107/.explore-tmp/tmp/test-sync-jonbaldie-skills.6G0Lea/external skills
+  copied shared -> /home/ubuntu/Code/pstack/jonbaldie/skills-explore-20261107/.explore-tmp/tmp/test-sync-jonbaldie-skills.6G0Lea/external skills
+Additional destination: /home/ubuntu/Code/pstack/jonbaldie/skills-explore-20261107/.explore-tmp/tmp/test-sync-jonbaldie-skills.6G0Lea/external skills
+PASS: sync-jonbaldie-skills: deterministic sync and optional copies
+PASS: tests/sync-jonbaldie-skills.sh
+SKIP: pytest tests (RUN_ALL_SKIP requested)
+
+Test suites: 16 passed, 2 skipped, 0 failed

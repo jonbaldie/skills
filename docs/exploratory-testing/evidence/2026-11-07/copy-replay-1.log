@@ -1,0 +1,11 @@
+run 1 named agent
+skills/sync-jonbaldie-skills/scripts/lib/agent-destinations.sh: line 99: local: project_root: readonly variable
+  copied options -> /home/ubuntu/Code/pstack/jonbaldie/skills-explore-20261107/.explore-replay/project1/.claude/skills
+Additional destination: /home/ubuntu/Code/pstack/jonbaldie/skills-explore-20261107/.explore-replay/project1/.claude/skills
+exit: 0
+content matches
+custom path control
+  copied options -> /home/ubuntu/Code/pstack/jonbaldie/skills-explore-20261107/.explore-replay/project1/.custom/skills
+Additional destination: /home/ubuntu/Code/pstack/jonbaldie/skills-explore-20261107/.explore-replay/project1/.custom/skills
+exit: 0
+content matches

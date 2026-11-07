@@ -1,0 +1,2 @@
+No background processes, browser sessions, containers, Docker images, volumes, or listening ports registered.
+All foreground commands use .explore-tmp; teardown removes it.

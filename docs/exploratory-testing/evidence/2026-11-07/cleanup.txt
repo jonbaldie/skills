@@ -1,0 +1,4 @@
+Scratch directory absent: True
+Processes referencing worktree outside verifier ancestors: []
+No browsers, listeners, containers, images, or volumes were started by the foreground commands. The Docker-dependent suite was skipped.
+Replay scratch absent after EXIT trap.

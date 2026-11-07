@@ -1,0 +1,68 @@
+Fetching mattpocock/skills...
+warning: --depth is ignored in local clones; use file:// instead.
+Fetching jonbaldie/skills...
+warning: --depth is ignored in local clones; use file:// instead.
+Installing mattpocock/skills...
+  installed grilling
+  installed writing-for-agents
+  installed handoff
+  installed to-questionnaire
+  installed grill-me
+  installed teach
+  installed wait-what
+  installed migrate-to-shoehorn
+  installed setup-pre-commit
+  installed git-guardrails-claude-code
+  installed scaffold-exercises
+  installed to-tickets
+  installed improve-codebase-architecture
+  installed grill-with-docs
+  installed triage
+  installed pr
+  installed retro
+  installed prototype
+  installed diagnosing-bugs
+  installed codebase-design
+  installed setup-matt-pocock-skills
+  installed to-spec
+  installed ask-matt
+  installed implement-spec
+  installed implement
+  installed tdd
+  installed wayfinder
+  installed wizard
+  installed code-review
+  installed domain-modeling
+  installed research
+Installing jonbaldie/skills...
+  installed resume-from-agent
+  installed ship-pr
+  installed bmf
+  installed resume-from-pr
+  installed promote-fork-pr-upstream
+  installed resume-from-opencode
+  installed to-summary
+  installed deintrovert-tests
+  installed walk-the-spec
+  installed resume-from-claude
+  installed hill-climbing
+  installed sync-jonbaldie-skills
+  installed mutation-testing
+  installed finding-seams
+  installed user-journeys
+  installed exploratory-testing
+  installed land-the-plane
+  installed worked-example
+  installed scale-test-impact-analysis
+  installed resume-from-codex
+  installed seeking-performance
+  installed options
+  installed finding-bugs
+  installed resume-from-pi
+  installed perffuzz
+mattpocock/skills commit: 4ae2317ddb22b046e26455e4f9c9b3aaaf62212d
+jonbaldie/skills commit: 1b1d392ae575a589ad546291d391c29a52f5e3e2
+Canonical destination: /home/ubuntu/Code/pstack/jonbaldie/skills-explore-20261107/.explore-tmp/sync-project/.agents/skills
+managed stale file removed
+unrelated sentinel retained
+manifest present

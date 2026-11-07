@@ -1,0 +1,57 @@
+# Pull request brief
+provider: github
+source: api
+url: https://github.com/jonbaldie/skills/pull/242
+number: 242
+repo: jonbaldie/skills
+host: github.com
+title: chore(release): bump plugin version to 0.2.42
+state: merged
+draft: false
+author: jonbaldie
+base: main
+head: release/v0.2.42
+head_sha: 96d41e85b25c230b4e03630c5d24ae411845f7ed
+
+## Goal
+
+## Summary
+
+```diff
+ .cursor-plugin/plugin.json
+-  version: 0.2.41
++  version: 0.2.42
+```
+
+Release the `land-the-plane` skill and the PR extraction fallback refactor from #241 and #240.
+
+## Evidence
+
+- **Before:** The plugin manifest reported 0.2.41 after both changes landed.
+  **After:** The marketplace and plugin manifests parse as JSON, and the plugin version is 0.2.42. Shell syntax passed. `tests/run-all.sh` passed 17 suites, including 289 Python tests. The macOS sandbox installer suite was skipped because `sandbox-exec` is unavailable on Linux.
+
+## Merge Danger
+
+**Door:** Two-way for the version bump. A published tag and release require explicit correction.
+
+**Blast Radius:** Plugin. The release distributes the changes to skill consumers.
+
+## Commits
+- 96d41e8 chore(release): bump plugin version to 0.2.42
+
+## Files in play
+- .cursor-plugin/plugin.json (+1/-1) modified
+
+## Discussion
+
+### Comment — jonbaldie
+Independent review verdict: PASS+NOTES. Claude Opus reviewed head `96d41e85b25c230b4e03630c5d24ae411845f7ed` against base `5f4afe00d4949266ae33d596843c952eb263cf69`. The version bump and marketplace manifest match the release policy. The macOS sandbox installer suite did not run on Linux. Recheck the merged manifest before tagging.
+
+## Checks
+- installer: success — https://github.com/jonbaldie/skills/actions/runs/42175222228/job/127752021205
+
+## Ending
+jonbaldie: Independent review verdict: PASS+NOTES. Claude Opus reviewed head `96d41e85b25c230b4e03630c5d24ae411845f7ed` against base `5f4afe00d4949266ae33d596843c952eb263cf69`. The version bump and marketplace manifest match the release policy. The macOS sandbox installer suite did not run on Linux. Recheck the merged manifest before tagging.
+
+## Resume instruction
+Continue the interrupted work from this brief. Do not summarise and wait. Ground against the live workspace, then act.
