@@ -39,12 +39,17 @@ update the candidate and repeat verification before pushing.
 If the merged tree differs from the verified candidate, run the checks on the
 merged tree and report any failure.
 
-## 4. Sync and report
+## 4. Sync
 
 Fetch the remote default branch. Confirm that it contains the assigned work and
 update the local default branch to the same commit without discarding existing
 work. Verify that both tips match. If the local branch cannot be updated safely,
 stop and report why.
 
-Report the checks and their results, the merged commit, the PR if used, and the
-local and remote sync status.
+## 5. Clean up and report
+
+Remove the work's associated worktree and clean up session cruft, including
+temporary files and processes that are no longer needed.
+
+Report the checks and their results, the merged commit, the PR if used, the local
+and remote sync status, and the cleanup completed.
