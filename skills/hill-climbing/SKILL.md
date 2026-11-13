@@ -23,6 +23,8 @@ Turn a slow user journey into a repeatable optimization loop.
    correctness checks. Establish tests for affected behaviour before optimizing
    it. Keep changes whose gains exceed measurement noise and justify their
    maintenance cost. Preserve before-and-after evidence for each retained change.
+   Save the exact pre-experiment state before each edit, including existing work.
+   Use the experiment lifecycle below before starting another edit.
 
 4. **Roll out.** Follow the project's review and deployment process within the
    user's authorization. Keep patches small enough to review. Present
@@ -44,3 +46,28 @@ Turn a slow user journey into a repeatable optimization loop.
    continue until the budget expires, progress is blocked, or further gains no
    longer justify complexity. Report measured gains, retained guardrails,
    pending field checks, and the stopping reason.
+
+## Experiment and rollout states
+
+Start at **Baseline**. Keep the measured revision, workload, environment, and
+check configuration with every result. If unrelated code, the workload,
+environment, or check configuration changes, establish a comparable baseline
+before evaluating another experiment.
+
+| State | Event and guard | Next state and action |
+| --- | --- | --- |
+| Baseline | Feedback tracks user latency and the baseline checks pass. | Experiment. Change one bottleneck. |
+| Experiment | Checks pass, the gain exceeds noise, and maintenance cost is justified. | Retained. Save the comparison. |
+| Experiment | Any acceptance condition fails or the experiment stops early. | Restoring. Remove only this experiment's edits. |
+| Restoring | Exact pre-experiment contents and baseline checks are verified. | Baseline. Try another hypothesis within budget. |
+| Restoring | Restoration is ambiguous or verification fails. | Blocked. Preserve recovery evidence and resolve the failure before another experiment. |
+| Retained | Review and rollout authorization permit deployment. | Field check. Follow steps 4 and 5. |
+| Retained or field check | Deployment or telemetry is unavailable. | Lab-only. Record the pending field check without claiming a field win. |
+| Lab-only | Deployment and comparable telemetry become available. | Field check. Run the pending check. |
+| Field check | A regression appears. | Rollback. Disable or revert through the authorized process and verify recovery before iterating. |
+| Rollback | Recovery is verified. | Baseline. Reproduce and investigate the regression. |
+| Rollback | Recovery fails or authorization blocks recovery. | Blocked. Report the active rollout state and required action. |
+| Field check | Comparable field data confirms the win and correctness. | Confirmed. Apply step 6, then choose the next stretch within scope. |
+
+End the pass only at the stopping conditions in step 7, with every experiment
+retained or restored. A blocked recovery remains incomplete and must be reported.

@@ -18,6 +18,26 @@ Define these semantics before coding; field names and storage technology belong 
 | Freshness | Selector-visible watermark exposes lag; missing and stale histories invoke the approved fallback. |
 | Isolation | Independent keys can progress concurrently. Define behavior for a hot key, unavailable store, and malformed event. Account for quarantined events. |
 
+For the journal design, implement this result lifecycle per stable result
+identity. Acknowledgement, materialization, and selector freshness are separate
+facts. A crash may leave a durable result unacknowledged or pending rollup.
+
+| State | Event and guard | Next state and action |
+| --- | --- | --- |
+| Received | Validation and journal append satisfy the recovery contract. | Durable. Acknowledge delivery only now. |
+| Received | Validation or append fails. | Unaccepted or quarantined according to the recorded contract. Account for the event and retain its recovery path. |
+| Durable | The materializer selects the result within its ordering key. | Applying. Update history and checkpoint atomically or with replay-safe effects. |
+| Applying | Both history effect and recoverable checkpoint are committed. | Applied. Expose the new watermark. |
+| Received | A worker crashes before a recoverable append. | Received on upstream replay. Acceptance remains unacknowledged. |
+| Durable or applying | A worker crashes or delivery repeats. | Durable. Recover the journal record and replay its history update without a second history effect. |
+| Applied | The same delivery repeats. | Applied. Keep history unchanged and acknowledge the recoverable result. |
+| Applied | The source reports a genuine rerun. | Received for a distinct result identity, including its attempt. |
+| Durable or applying | Retention or compaction runs. | Preserve pending records until history and checkpoint recovery are guaranteed. |
+
+An append failure cannot acknowledge acceptance. A checkpoint alone cannot prove
+application unless the corresponding history effect is recoverable. Replaying
+an applied identity leaves its history effect unchanged.
+
 ## Correctness matrix
 
 Use known result sequences and policy expectations. Assert observable history, checkpoints, reconciliation, and selected tests—not just that a worker returned successfully.

@@ -9,6 +9,22 @@ Make test-selection state fresh enough to trust under growing CI load. Treat lis
 
 Work within the requested scope. For an assessment, produce an evidence-backed plan. For implementation, work through validation and cutover. Get approval before changing production resources, selection policy, or CI gates.
 
+## Workflow states
+
+Start at **Tracing**. Each numbered step's Done criterion guards advancement.
+
+| State | Event and guard | Next state and action |
+| --- | --- | --- |
+| Tracing | Steps 1–4 establish the system, evidence, durable design, and release target. | Assessed. Return the plan if assessment is the requested scope. Label evidence gaps. |
+| Assessed | Implementation is requested and its measurement and approval gates hold. | Building. Execute steps 5 and 6. |
+| Building | The executable path, correctness matrix, reconciliation, and measured release budgets pass. | Rollout ready. Execute step 7 within authorization. |
+| Tracing, building, or rollout ready | A required measurement, access, or approval is missing. | Blocked. Record the last passed gate, missing evidence, and next action. Resume there when the blocker clears. |
+| Any active state | The design, workload, or policy changes invalidate a passed gate. | Return to the earliest affected step and repeat its checks before advancing. |
+
+Assessment may end with explicit gaps. Implementation completes only after the
+step 7 observation and recovery criteria hold. A blocked or budget-limited run
+reports partial implementation and the active safe selection path.
+
 ## 1. Trace one result through the system
 
 Inspect the CI configuration, listener, history storage, selector, and operational telemetry. Follow a real job result from completion to its effect on a later selection decision.
@@ -90,7 +106,18 @@ Listeners append results and release local state. The materializer rolls the jou
 
 Use the repository's existing storage and messaging capabilities where they satisfy recovery and ordering requirements. An in-memory store is an option, not a requirement; its persistence or source-replay guarantees must cover the allowed outage window. Measure the materializer and store as potential next bottlenecks.
 
-Keep the selection algorithm unchanged during a capacity redesign unless policy changes are explicitly in scope. Choose a conservative fallback for stale or incomplete history: expand to the affected package suite, then the full suite if package relevance is unknown. Keep mandatory gates intact.
+Keep the selection algorithm unchanged during a capacity redesign unless policy
+changes are explicitly in scope. Model selector freshness separately from result
+acknowledgement:
+
+| State | Event and guard | Next state and action |
+| --- | --- | --- |
+| Unknown or fresh | History is missing, incomplete, or beyond the freshness budget. | Fallback. Select the affected package suite, or the full suite if package relevance is unknown. |
+| Unknown or fallback | Reconciliation closes and selector-visible history meets the freshness budget. | Fresh. Use approved history-based selection. |
+| Fresh | The next selection query arrives. | Check freshness again before using history. |
+
+Keep mandatory gates intact in every state. Acknowledged journal input alone
+cannot move the selector to Fresh.
 
 **Done:** the design specifies ordering, acknowledgement, replay, recovery, fallback, and capacity for every stateful stage. Every production behavior change is identified for approval.
 
@@ -114,7 +141,21 @@ Separate two questions:
 
 ## 7. Canary and tune until stable
 
-Prepare rollback before routing production selection through the new path. Shadow it first, then canary a bounded traffic slice with comparable baseline traffic. Advance only while reconciliation, freshness, and selection checks hold. On a threshold breach, restore the approved path or conservative fallback and preserve diagnostic evidence.
+Use this rollout lifecycle independently of ingestion and selector freshness.
+Prepare rollback and numeric thresholds before routing production selection.
+
+| State | Event and guard | Next state and action |
+| --- | --- | --- |
+| Rollout ready | Rollback is prepared and authorized. | Shadow. Compare against approved behavior without routing production selection. |
+| Shadow | Reconciliation, freshness, selection safety, and resource thresholds hold. | Canary. Route the bounded traffic slice and compare equivalent baseline traffic. |
+| Canary | Thresholds hold for the agreed observation window and rollback is exercised. | Promoted. Keep the operating record and ownership required by this step's Done criterion. |
+| Shadow, canary, or promoted | A rollback threshold is breached. | Recovering. Restore a fresh approved selector or conservative fallback and preserve diagnostics. |
+| Recovering | Safe selection and recovery are verified. | Safe path active. Resume experiments or rollout only after the failed gates pass again. |
+| Recovering | Recovery fails or cannot be verified. | Blocked. Report the active state and required recovery action. |
+| Shadow or canary | A budget or access limit ends tuning. | Recovering. Restore and verify the approved path, then report the unresolved target. |
+
+A stale prior selector does not satisfy recovery. Keep the prior recovery path
+and needed journal data until the observation window and rollback checks pass.
 
 Agree on a tuning time budget, spending ceiling, and settings the agent may change. Within those bounds, repeat:
 1. Query the metrics and identify the limiting stage.

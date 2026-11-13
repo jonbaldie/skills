@@ -27,9 +27,24 @@ We can marry these approaches up together with CGPT.
 4. Turn each chosen property into an executable predicate over a real user-facing SUT entry point. A metamorphic predicate must run both the original and transformed inputs, then compare their results according to the named relationship. Treat inputs that fail the property's precondition as discards, not bugs. This is complete when every run returns success, discard, or a concrete counterexample.
 5. Build a random generator and a type-aware mutator for the property's input. Prefer automatically derived, structure-aware mutations: recursively mutate fields, replace a value with a same-type subterm, switch to a smaller constructor while reusing compatible fields, or switch to a larger constructor and randomly generate its missing fields. This is complete when every mutation remains a valid value of the input type.
 6. Instrument the property and the SUT code it exercises—not the testing framework—for control-flow coverage. This is complete when coverage reflects paths through the tested behaviour.
-7. Run the CGPT loop. Generate randomly while the corpus is empty, then mostly mutate coverage-increasing seeds. Keep separate queues for interesting successful and discarded runs; prioritise successes, but retain novel discards with less mutation energy because they may approach the precondition. Give more energy to short runs and seeds that open many new paths.
-8. When a seed's energy is exhausted or mutation stops opening paths, return to random generation to escape the local minimum. Continue until a counterexample is found or the agreed test budget is exhausted.
-9. On a counterexample, shrink the input and, for a metamorphic property, the transformation's parameters together. Rerun the minimised input or input pair through the same SUT entry point. Report it in simple, domain-accurate language only when it reliably produces the same failure.
+
+Start this search controller at **Generate** once the executable property and
+feedback are ready. Mostly mutate coverage-increasing seeds after the corpus
+has entries.
+
+| State | Event and guard | Next state and action |
+| --- | --- | --- |
+| Generate | The corpus is empty or no seed has useful mutation energy. | Generate a random input and execute the property. |
+| Generate or mutate | A successful or discarded run increases coverage. | Mutate. Keep separate queues for interesting successes and discards. Prioritize successes, give novel discards less energy, and favor short runs and seeds that open many paths. |
+| Mutate | The selected seed still has energy and opens paths. | Mutate. Execute another valid mutation. |
+| Mutate | Energy ends or mutations stop opening paths. | Generate. Try a random input. |
+| Generate or mutate | A run has no new coverage and no counterexample. | Continue the current controller, consuming the seed's mutation energy where applicable. |
+| Generate or mutate | A counterexample appears. | Replay. Shrink and verify it through the same entry point. |
+| Generate or mutate | The agreed budget ends. | Stopped. Preserve the corpus and any pending candidates. |
+
+For a counterexample, shrink the input and any metamorphic transformation
+parameters together. Replay through the same SUT entry point. The candidate
+lifecycle at the end of this skill governs its outcome.
 
 Anti-patterns and escape hatches to avoid:
 - "I'll just run CGPT on parser.go because coverage-guided fuzzing is just for pure functions" -> misses critical user hot paths in the SUT that we should run CGPT on, opportunites to rigorously test integrations and system behaviour. 
@@ -68,9 +83,27 @@ Here, state is anything one action leaves for the next: stored data, login statu
 4. Build the harness: an ordered sequence of actions, the reset, and the per-action probes, runnable from a single command, recording each action's data, its stdout and stderr, and every probe's structured result after every action. This is complete when the harness can re-run any recorded sequence from a clean start and reproduce the same observations.
 5. Generate sequences using only actions that are valid in the current state. Vary their data and favour actions and combinations that previous sequences have not exercised.
 6. Return the system to the known starting state, execute one sequence, and check the visible result and every probed state field after every action. On any mismatch, record the prefix that failed.
-7. When a sequence fails, return to the starting state and replay it until the same failure occurs three consecutive times. Keep failures that meet this bound; record the others as unstable.
-8. Minimise a stable failure by removing actions and simplifying their data, returning to the starting state before every attempt. This is complete when no remaining action or available data simplification can be removed without losing the failure.
-9. Continue generating sequences until the agreed test budget is exhausted or repeated runs stop reaching new states and action combinations. Report each bug with its starting state and smallest stable sequence, and keep the harness so the sequence can be replayed against a fix.
+
+Start the harness controller at **Reset needed**, separately from the SUT's state
+model. Stop generating when the budget ends or repeated runs stop reaching new
+states and action combinations.
+
+| State | Event and guard | Next state and action |
+| --- | --- | --- |
+| Reset needed | Reset runs and every probe confirms the starting state. | Ready. Execute a sequence of actions valid in the current SUT state. |
+| Reset needed | A probe errors or reports the wrong starting state. | Candidate. Preserve the reset or probe failure and investigate it before trusting further sequences. |
+| Ready | An action or probe violates its expectation. | Candidate. Save the failing prefix and reset before each replay. |
+| Candidate | The same failure occurs three consecutive times within the replay budget. | Stable. Remove actions and simplify their data, resetting and probing before every attempt. |
+| Candidate | The replay budget ends without that stability. | Unstable. Preserve the observations. |
+| Stable | A simplification preserves the same stable failure. | Stable. Keep it and try another simplification. |
+| Stable | No available simplification preserves the failure. | Reproduced. Preserve the minimal sequence and replay command. |
+| Ready, reproduced, or unstable | Search budget remains and new sequences are useful. | Reset needed. Start another sequence. |
+
+Choose a finite replay allowance within the investigation budget before replay.
+A reset or probe failure is its own candidate. It cannot count as successful
+execution of the intended sequence. If the SUT build, action model, or reset
+changes, verify the reset again and replay affected candidates under the new
+conditions before reusing their status.
 
 ### Worked example: a stateful CLI lifecycle
 
@@ -118,4 +151,37 @@ Use a dedicated concolic tool when one supports the codebase. Otherwise approxim
 7. Replay every failure against the normally built program, outside any dedicated concolic engine. Keep it only if the same failure reliably appears.
 8. Simplify the input and its required environment while preserving the failure. Report the bug with the smallest stable input and the command or action needed to replay it.
 
-Choose the methods that fit the codebase and the failures it can produce. Reuse useful inputs and action sequences across methods: run generated cases with runtime checks, use analyzer findings to choose paths to explore, and use coverage results to guide further testing. Finish when the agreed budgets are exhausted and every candidate has been reproduced, rejected with evidence, or recorded as unstable. Report only bugs with a small, reliable reproducer. `/diagnosing-bugs` covers the next stage: using the confirmed bug and its reproducer to identify the root cause and verify a fix.
+The concolic search starts at **Observed path** after the ordinary run:
+
+| State | Event and guard | Next state and action |
+| --- | --- | --- |
+| Observed path | An unreached branch has satisfiable conditions. | Constructing. Preserve earlier conditions and reverse the selected branch condition. |
+| Constructing | A concrete input is available. | Executing. Run it from a clean state through the real interface. |
+| Executing | The input misses the chosen branch. | Constructing. Find the missing condition before retrying. |
+| Executing | New code runs without a failure. | Observed path. Use the input for further exploration. |
+| Executing | A failure appears. | Candidate. Apply the candidate lifecycle and replay outside the engine. |
+| Observed path or constructing | No remaining branch is reachable, or the budget ends. | Stopped. Preserve covered paths and unresolved conditions. |
+
+## Candidate lifecycle and completion
+
+Choose the methods that fit the codebase and the failures it can produce. Reuse
+useful inputs and action sequences across methods. Keep each candidate's input,
+starting state, build, method, and check configuration with its evidence.
+
+| State | Event and guard | Next state and action |
+| --- | --- | --- |
+| Candidate | The method's replay criterion holds and independent expectations establish a violation. | Reproduced. Minimize while preserving that failure and retain a final replay. |
+| Candidate | Evidence establishes that the reported behaviour satisfies the contract. | Rejected. Save the evidence. |
+| Candidate | Repeated observations disagree and the replay allowance ends. | Unstable. Save the observations and missing stability check. |
+| Candidate | Access, environment, or the investigation budget prevents a required check. | Deferred. Record the blocker and next check. |
+| Deferred or unstable | The required access or replay opportunity becomes available. | Candidate. Resume the missing check. |
+| Reproduced | The build, environment, or invocation changes. | Candidate for the new conditions. Keep the original evidence and replay before transferring the claim. |
+
+A differential mismatch remains a candidate until an independent rule identifies
+the faulty behaviour. A concolic failure needs replay outside the engine. The
+three-consecutive-replay rule belongs to action-sequence testing only.
+
+Finish when the chosen methods meet their stopping conditions or the agreed
+budget ends, and every candidate has one of the outcomes above. Deferred work
+remains explicitly unverified. Report only reproduced bugs with a small, reliable
+reproducer. `/diagnosing-bugs` covers root-cause investigation and fixing next.

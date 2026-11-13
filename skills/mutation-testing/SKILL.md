@@ -83,21 +83,26 @@ and a bounded command. Record relevant behaviours left outside the sample.
 
 ## 3. Run the green–mutant–green loop
 
-For each mutant, starting from the saved baseline:
+Start each mutant at **Baseline ready**, using the readiness criteria in step 1.
+Keep its ID, original contents, diff, check configuration, and logs together.
 
-1. Apply only that mutation. Save its diff and verify no other mutant is active.
-2. Rebuild/reload as required and run the selected existing checks with the same
-   configuration as the baseline. Capture exit status and actual test output;
-   bypass stale test-result caches. Keep tests unchanged during this measurement.
-3. Inspect the failure or pass. If focused checks pass, widen to relevant callers
-   or integration checks within budget. First establish an unchanged-source pass
-   for any newly selected command, then replay the same mutant. Report a result
-   only against the checks actually run.
-4. Restore the exact pre-mutation contents, including on error or interruption.
-   Verify the restored diff/content and rerun the applicable checks. A restoration
-   failure stops the pass; preserve recovery information and tell the user.
-   If host headroom prevents verification tests, keep the source restored and
-   report verification as blocked until the host budget permits a rerun.
+| State | Event and guard | Next state and action |
+| --- | --- | --- |
+| Baseline ready | No other mutant is active. | Mutant active. Apply exactly one recorded mutation and save its diff. |
+| Mutant active | Host headroom permits execution. | Checking. Rebuild or reload to load the mutation, then run the baseline commands with unchanged tests and configuration. Bypass stale result caches and capture the actual output. |
+| Checking | Focused checks pass and a wider check is needed. | Restoring. Record the pending wider command and restore before establishing its baseline. |
+| Mutant active or checking | A result, error, interruption, or host-budget breach occurs. | Restoring. Stop owned test processes and restore exact pre-mutation contents. |
+| Restoring | Original contents and baseline checks pass, and a wider command is pending. | Rebaselining. Run that wider command on unchanged source. |
+| Rebaselining | The wider command passes. | Baseline ready. Replay the same mutant with the expanded configuration. |
+| Rebaselining | The wider command fails or cannot run. | Accounted for the original checks only. Record the blocked wider scope without attributing its failure to the mutant. |
+| Restoring | Original contents and applicable baseline checks pass, and no wider command is pending. | Accounted. Classify the result below, then return to baseline ready. |
+| Restoring | Contents cannot be restored unambiguously, or baseline checks fail. | Recovery blocked. Stop the pass and preserve recovery information. |
+| Restoring | Contents match but host pressure prevents checks. | Verification blocked. Keep the source restored and wait for headroom. |
+| Recovery or verification blocked | Recovery is possible and host headroom meets budget. | Restoring. Verify contents and rerun baseline checks before continuing. |
+
+An expanded or changed check configuration needs its own passing unchanged-source
+baseline. Results apply only to the checks actually run. Never apply another
+mutant while restoration or verification remains blocked.
 
 Classify each result from evidence, not just a non-zero exit:
 
