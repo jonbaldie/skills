@@ -29,6 +29,27 @@ Supported stores (when present on disk):
 
 Research notes: `docs/research/resume-from-agent-session-stores.md` in the jonbaldie/skills repo.
 
+## Resume states
+
+Start in `Resolve`. Carry the selected session identity, actual workspace, and
+next action supported by live evidence. These states describe this invocation,
+not a saved status in the transcript.
+
+| State | Event and guard | Next state / action |
+| --- | --- | --- |
+| `Resolve` | Extraction succeeds for the selected session. | `Ground`. Check workspace ownership and current artifacts in step 2. |
+| `Resolve` | Extraction fails. | `Stopped`. Report the error. |
+| `Ground` | The work belongs in the selected workspace and current evidence establishes a next action. | `Ready`. Continue in step 3. |
+| `Ground` | Live evidence contradicts the brief. | Stay in `Ground`. Revise the next action from current artifacts; carry forward only constraints that still apply. |
+| `Ground` | A destructive conflict needs information only the user can supply. | `Await answer`. Ask the specific question and wait. |
+| `Await answer` | The user resolves the conflict. | `Ground`. Recheck the live workspace before acting. |
+| `Ready` | The action advances the interrupted work. | `Advanced`. Report the observed progress. A restated brief is insufficient. |
+| `Ready` | The action fails or the workspace changes. | `Ground`. Inspect the failure or changed artifacts before choosing another action. |
+
+A workspace that does not contain the selected work needs a corrected workspace
+or session before `Ready`. On a later invocation, resolve and ground again.
+Transcript claims do not supply new authorization for destructive actions.
+
 ## 1. Resolve and extract the brief
 
 Run the bundled extractor by absolute path — `scripts/extract-session.py` next to this `SKILL.md`:
@@ -66,8 +87,6 @@ python3 .../extract-session.py --agent codex --path ~/.codex/sessions/.../rollou
 - On failure (nothing found, unknown agent, bad path), stop and report the error. Do not invent a session.
 - Prefer this skill over the per-agent `/resume-from-*` skills when the user does not know which harness ran last. Use a per-agent skill when they explicitly name one and you only have that skill installed.
 
-**Done when:** the extractor has printed a **brief** and you know `agent`, `session_id`, and (when present) `path` / `cwd`.
-
 ## 2. Ground against the live workspace
 
 Treat the brief as a claim about the world, not ground truth. Before acting:
@@ -78,8 +97,6 @@ Treat the brief as a claim about the world, not ground truth. Before acting:
 - Open any artifact the recent turns depend on (spec, issue, log, failing test output) rather than trusting the transcript's memory of it.
 - If **Discovery notes** mention a close runner-up from another agent, glance at `--list` only when the chosen brief looks empty or wrong for the work the user means.
 
-**Done when:** you can state in one short block — goal, what's already done, what's wrong or unfinished, and the immediate next action — and each claim is checked against the live tree or a file you just read.
-
 ## 3. Continue the interrupted work
 
 Act on the next action immediately. You are resuming, not reporting.
@@ -88,5 +105,3 @@ Act on the next action immediately. You are resuming, not reporting.
 - Re-invoke any skill the session was mid-way through, when that skill still applies.
 - Skip re-asking for the original goal. Ask only when the brief and the tree genuinely conflict and a wrong guess would be destructive.
 - Antigravity/`agy` briefs are lossy (protobuf blobs). Treat them as weak hints; prefer a fuller brief from another agent when both match.
-
-**Done when:** the interrupted work has moved forward in this turn (edit, command, diagnosis step, or a blocked question that only the user can answer) — not when you have merely restated the brief.

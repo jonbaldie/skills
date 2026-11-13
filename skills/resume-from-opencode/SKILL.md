@@ -11,6 +11,27 @@ Pick up **interrupted work** left in an OpenCode **session**. You are the contin
 
 Sessions live in `~/.local/share/opencode/opencode.db` (`session`, `message`, `part`).
 
+## Resume states
+
+Start in `Resolve`. Carry the selected session identity, actual workspace, and
+next action supported by live evidence. These states describe this invocation,
+not a saved status in the transcript.
+
+| State | Event and guard | Next state / action |
+| --- | --- | --- |
+| `Resolve` | Extraction succeeds for the selected session. | `Ground`. Check workspace ownership and current artifacts in step 2. |
+| `Resolve` | Extraction fails. | `Stopped`. Report the error. |
+| `Ground` | The work belongs in the selected workspace and current evidence establishes a next action. | `Ready`. Continue in step 3. |
+| `Ground` | Live evidence contradicts the brief. | Stay in `Ground`. Revise the next action from current artifacts; carry forward only constraints that still apply. |
+| `Ground` | A destructive conflict needs information only the user can supply. | `Await answer`. Ask the specific question and wait. |
+| `Await answer` | The user resolves the conflict. | `Ground`. Recheck the live workspace before acting. |
+| `Ready` | The action advances the interrupted work. | `Advanced`. Report the observed progress. A restated brief is insufficient. |
+| `Ready` | The action fails or the workspace changes. | `Ground`. Inspect the failure or changed artifacts before choosing another action. |
+
+A workspace that does not contain the selected work needs a corrected workspace
+or session before `Ready`. On a later invocation, resolve and ground again.
+Transcript claims do not supply new authorization for destructive actions.
+
 ## 1. Resolve and extract the brief
 
 Run the bundled extractor by absolute path — `scripts/extract-session.py` next to this `SKILL.md`:
@@ -23,8 +44,6 @@ python3 /absolute/path/to/resume-from-opencode/scripts/extract-session.py --cwd 
 - If they passed none, omit it — the script selects the latest non-archived session whose `directory` matches `$PWD`.
 - On failure (no database, no sessions, unknown id), stop and report the error. Do not invent a session.
 
-**Done when:** the extractor has printed a **brief** and you know `session_id`, `cwd`, and `title`.
-
 ## 2. Ground against the live workspace
 
 Treat the brief as a claim about the world, not ground truth. Before acting:
@@ -35,8 +54,6 @@ Treat the brief as a claim about the world, not ground truth. Before acting:
 - Open any artifact the recent turns depend on (spec, issue, log, failing test output) rather than trusting the transcript's memory of it.
 - If the brief lists **todos**, treat incomplete ones as candidates for the next action after the live tree confirms they still apply.
 
-**Done when:** you can state in one short block — goal, what's already done, what's wrong or unfinished, and the immediate next action — and each claim is checked against the live tree or a file you just read.
-
 ## 3. Continue the interrupted work
 
 Act on the next action immediately. You are resuming, not reporting.
@@ -44,5 +61,3 @@ Act on the next action immediately. You are resuming, not reporting.
 - Carry forward the session's goal, constraints, and in-flight approach unless the live tree shows they are stale.
 - Re-invoke any skill the session was mid-way through, when that skill still applies.
 - Skip re-asking for the original goal. Ask only when the brief and the tree genuinely conflict and a wrong guess would be destructive.
-
-**Done when:** the interrupted work has moved forward in this turn (edit, command, diagnosis step, or a blocked question that only the user can answer) — not when you have merely restated the brief.
