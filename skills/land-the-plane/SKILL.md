@@ -5,6 +5,30 @@ description: "Land the plane: finish the current task, verify it, merge into the
 
 # Land the plane
 
+## Landing states
+
+Start in `Finish`. Track assigned work, the fetched default tip, the verified
+candidate tree, and the actual integrated commit. Verification belongs to that
+candidate, not to the task indefinitely.
+
+| State | Event and guard | Next state / action |
+| --- | --- | --- |
+| `Finish` | Assigned work is complete and unrelated work is preserved. | `Verify candidate`. Prepare and check the candidate in step 2. |
+| `Verify candidate` | Required checks pass. | `Integrate`. Choose the route in step 3. |
+| `Verify candidate` | A check fails. | Stay in `Verify candidate` while fixing it. If it cannot pass, `Stopped` and report the failure. |
+| `Integrate` | Assigned work or the remote default tip changes, or a direct push loses a race. | `Verify candidate`. Update the candidate and invalidate earlier results. |
+| `Integrate` | The remote already contains the work or integration succeeds. | `Verify result`. Inspect the actual remote tree. |
+| `Verify result` | The tree differs from the candidate. | Stay in `Verify result`. Run the checks on that tree. |
+| `Verify result` | The tree matches the candidate or its checks pass. | `Sync`. Follow step 4. |
+| `Verify result` | A required check fails on the integrated tree. | `Integrated with failure`. Report the commit and failure. Preserve evidence needed for recovery; do not claim a successful landing or silently roll back shared history. |
+| `Sync` | The remote contains the work and local and remote tips match safely. | `Cleanup`. Follow step 5. |
+| `Sync` | A safe local update is impossible. | `Stopped`. Preserve existing work and report the sync blocker. |
+| `Cleanup` | Associated temporary files, worktrees, and processes no longer needed are removed. | `Complete`. Report the verified result and cleanup. |
+
+If a recovery changes the work or candidate, return to `Verify candidate`.
+After a failed integrated-tree check, an authorized fix must pass verification
+and integration before the landing can be complete.
+
 ## 1. Finish
 
 Complete the current assigned task. Include only the assigned work and preserve
@@ -37,7 +61,7 @@ remote. Respect branch protections and use a non-force push. If the remote moves
 update the candidate and repeat verification before pushing.
 
 If the merged tree differs from the verified candidate, run the checks on the
-merged tree and report any failure.
+merged tree. A failure takes the `Integrated with failure` path above.
 
 ## 4. Sync
 

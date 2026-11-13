@@ -60,9 +60,20 @@ original observations and disclose the intervention. A successful comparison
 under different conditions does not erase a failure in the ordinary user setup.
 
 Reduce a suspected bug to the smallest practical action sequence and replay it
-from a known starting state. Confirm it only when the same failure recurs and
-violates a grounded expectation. Keep intermittent or ambiguous observations
-explicitly unresolved.
+from a known starting state. Track each candidate with this lifecycle:
+
+| State | Event and guard | Next state and action |
+| --- | --- | --- |
+| Observed | The driver, observation, or prerequisite is faulty. | Repair observation, retain the original evidence, and replay. |
+| Observed | The observation is reliable and conflicts with a grounded expectation. | Suspected. Minimize and replay from the recorded starting state. |
+| Suspected | The same failure recurs and violates the expectation. | Confirmed. Preserve the reproducer. |
+| Observed or suspected | Evidence explains why the observation satisfies the expectation. | Rejected. Record that evidence. |
+| Observed or suspected | Replay is ambiguous, intermittent, or blocked when the budget ends. | Unresolved. Record the missing check and next replay. |
+
+If the build, configuration, or starting state changes, retain the old result
+under its original conditions and replay before claiming it applies to the new
+conditions. A passing run under altered conditions does not reject the original
+candidate.
 
 ## 4. Preserve findings and continue
 
@@ -71,13 +82,21 @@ Record a blocked journey with its failed step and prerequisite. Keep product
 fixes for a subsequent task; `/diagnosing-bugs` can take the confirmed reproducer
 into root-cause investigation and fixing.
 
-Finish exploring when each selected journey has been explored or has a concrete
-blocker recorded. An explored journey has its ordinary path and a relevant
-variation attempted, observable outcomes and lasting effects checked, and
-suspected failures replayed from a known starting state. If an explicit user
-budget ends the pass sooner, record the unfinished work. Classify every candidate
-as confirmed, rejected with evidence, or unresolved. Preserve useful driving
-scripts when they help replay; a reusable harness is optional.
+Start every selected journey at **Selected** and track it independently from its
+bug candidates:
+
+| State | Event and guard | Next state and action |
+| --- | --- | --- |
+| Selected | Its grounded goal and starting state are recorded. | Exploring. Attempt the ordinary path and a relevant variation. |
+| Exploring | Observable outcomes and lasting effects are checked, and suspected failures have been replayed. | Explored. Preserve candidate outcomes and evidence. |
+| Selected or exploring | A prerequisite prevents progress. | Blocked. Record the failed step and concrete prerequisite. |
+| Blocked | The prerequisite becomes available within budget. | Exploring. Resume from a known starting state. |
+| Selected, exploring, or blocked | The explicit user budget ends. | Unfinished. Record the remaining work. |
+
+Finish exploring when every selected journey is explored or has a concrete
+blocker, or the explicit budget ends. Account for each candidate using step 3.
+Preserve useful driving scripts when they help replay; a reusable harness is
+optional.
 
 ## 5. Report the evidence
 
@@ -96,12 +115,21 @@ File confirmed bugs in the project's issue tracker, following its conventions
 and including the replay steps and evidence. If filing is blocked, record the
 blocker and preserve ready-to-file bug reports.
 
-Run the registered teardown and remove scratch state created by the pass.
-Preserve the report and evidence. Check the recorded identifiers and ports to
-verify that zero processes, browser sessions, listening ports, or containers
-started by the pass remain active. Do not stop pre-existing resources. If cleanup
-fails, report each surviving resource with its identifier and the blocker.
-Link the report in the final response only after this check passes.
+Finish through the resource lifecycle below, including on early exit. Preserve
+the report and evidence, and stop only resources owned by this pass.
+
+| State | Event and guard | Next state and action |
+| --- | --- | --- |
+| Unprepared | The cleanup owner exists. | Ready. Register each resource and its teardown as it starts. |
+| Ready or active | An owned resource starts and its identifiers are registered. | Active. Keep its teardown with the cleanup owner. |
+| Ready or active | Exploration finishes, fails, or stops early. | Cleaning. Run the registered teardown and remove owned scratch state. |
+| Cleaning | Recorded identifiers and ports show no owned resource remains active. | Clean. Link the report in the final response. |
+| Cleaning | A resource survives or its absence cannot be verified. | Cleanup blocked. Report its identifier and blocker. Preserve the teardown record and retry safe cleanup. |
+| Cleanup blocked | The blocker clears. | Cleaning. Retry teardown and the absence check. |
+
+A blocked cleanup is an incomplete pass. Report that status even if all journeys
+finished. Journey exploration itself ends when every selected journey meets the
+criteria in step 4 or the explicit budget ends.
 
 Offer to preserve the report as exploratory feedback under `docs/`, naming a
 concrete destination. Reuse the project's existing feedback or testing report

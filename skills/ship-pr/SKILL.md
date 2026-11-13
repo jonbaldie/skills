@@ -6,6 +6,28 @@ disable-model-invocation: true
 
 # Ship a PR
 
+## Shipping states
+
+Start in `Resolve`. Track the exact PR, target, recorded head SHA, gate results,
+closing issues, and host-reported merge commit. A merge request or queue entry
+is not a merged PR.
+
+| State | Event and guard | Next state / action |
+| --- | --- | --- |
+| `Resolve` | An open PR is selected or created. | `Gate`. Record its identity and head in step 1. |
+| `Resolve` | The explicit PR is already merged. | `Verify`. Verify its actual target and merge commit without retargeting or merging again. |
+| `Resolve` | The explicit PR is missing or closed without merging. | `Stopped`. Report that PR's state. |
+| `Gate` | Required checks and protections pass for the recorded head. | `Merge`. Use the guarded merge in step 3. |
+| `Gate` | Required checks are still pending. | Stay in `Gate`. Observe checks for the recorded head. |
+| `Gate` | A required check fails or is canceled, or a protection blocks merging. | `Stopped`. Report the failed gate. |
+| `Gate`, `Merge`, or `Queued` | The PR head changes or compare-and-merge reports a mismatch. | `Gate`. Capture the new head and invalidate the old gate results. |
+| `Merge` | The host queues the merge. | `Queued`. Observe the same PR until its state changes. |
+| `Merge` or `Queued` | The host reports `MERGED`. | `Verify`. Fetch and check the remote target. |
+| `Merge` or `Queued` | The entry is canceled or ejected, or the PR closes unmerged. | `Stopped`. Report the host reason. Any retry must re-enter `Gate`. |
+| `Merge` | The host rejects the merge for another reason. | `Stopped`. Report the host error and preserve the PR. |
+| `Verify` | The merge commit is reachable and issues and branch are settled or restrictions reported. | `Complete`. Report the results from step 4. |
+| `Verify` | Fetch or reachability verification fails. | `Unverified`. Report the failure; retry verification after the cause is resolved. |
+
 ## 1. Resolve or create
 
 Use an explicitly supplied PR. Otherwise treat the current branch as the work to
@@ -15,11 +37,13 @@ Reuse the branch's open PR. When none exists, commit the intended work, push the
 branch, and create a PR against the user-named target or the repository default
 branch. Use the repository PR template.
 
-An explicit PR is authoritative: report it when it is missing or not open rather
-than selecting another PR.
+An explicit PR is authoritative. Follow its state in the table rather than
+selecting another PR.
 
-Treat an existing PR's base as the target. When the user names another target,
-retarget the PR before continuing.
+Treat an existing PR's base as the target. For an open PR, retarget it before
+continuing when the user names another target. For an already merged PR,
+verify its actual target and report any difference from the requested target;
+do not claim that the work landed on the requested target.
 
 Record the repository, base, head branch and SHA, draft and review state,
 required checks, and host-native closing issue links.
@@ -45,7 +69,8 @@ squash.
 Merge through the host. On GitHub, pass `--match-head-commit <sha>` and
 `--delete-branch`. A head mismatch restarts the gate.
 
-Wait through any merge queue until the PR state is `MERGED`.
+Observe any merge queue using the transitions above. Continue to verification
+only after the host reports `MERGED`.
 
 ## 4. Verify
 

@@ -14,6 +14,32 @@ reach an implementation shape through small, justified transformations.
 This is a read-only design skill. End at the derived design; implementation
 begins only after a separate user request.
 
+## Pass states
+
+Start in **Resolve source**. The current source boundary, contract, reference
+version, ledger, and check evidence determine the state.
+
+| State | Event and guard | Next state / action |
+| --- | --- | --- |
+| Resolve source | No readable source exists. | **Await source**. Ask for one and wait. |
+| Await source | The user supplies a readable source. | **Resolve source**. |
+| Resolve source | The source boundary and discrepancies are explicit. | **Establish contract**. |
+| Establish contract | The source lacks a sufficiently precise data transformation. | **Fit report complete**. Return the Fit report and stop. Its missing semantics may remain unresolved. |
+| Establish contract | A computational core exists, but plausible interpretations change its computation. | **Await answers**. Ask the blocking ambiguities as one batch and wait. |
+| Await answers | The user settles the ambiguities. | **Establish contract**. Update claims and provenance. |
+| Establish contract | Every claim has provenance and no blocking ambiguity remains. | **Reference**. |
+| Reference | Every part traces to the contract and semantic hazards are modeled or visible assumptions. | **Calculate**. |
+| Calculate | The shape satisfies the contract, each ledger step is justified, and the target is met, unattainable, or an explicit proof obligation. | **Check**. |
+| Check | A counterexample invalidates a transformation or a contract interpretation. | **Calculate**, or **Establish contract** if the interpretation changed. Invalidate dependent rows and checks. |
+| Check | The artifact accounts for all required claims, premises, edges, discrepancies, checks, costs, and obligations. | Show the complete artifact. Enter **Await save approval** if a file was requested; otherwise **Design complete**. |
+| Await save approval | The user approves the shown artifact and destination. | Write that artifact and enter **Design complete**. |
+| Await save approval | The user requests a revision. | Return to the earliest affected state. Show the revised artifact before seeking approval to save it. |
+| Any active state | Source material or the contract changes. | **Resolve source** or **Establish contract**. Rebuild dependent reference parts, ledger rows, checks, and pending save approval. |
+
+**Fit report complete** and **Design complete** end this pass. Open proof
+obligations may remain visible in a completed design. Claim provenance and
+ledger kinds classify evidence; they do not authorize a state transition.
+
 ## 1. Resolve the source
 
 Use the source in this order:
@@ -48,12 +74,8 @@ Tag each contract claim **Stated**, **Derived**, **Assumed**, or **Open**. When
 normalizing the user's vocabulary, show the original and normalized terms
 together once.
 
-Collect every **blocking ambiguity** whose plausible answers produce different
-computations. Ask them as one numbered batch and wait. Carry harmless
-assumptions visibly.
-
-When the source has no sufficiently precise data transformation, return a
-**Fit report** and stop:
+Carry harmless assumptions visibly. Use this **Fit report** when no
+sufficiently precise data transformation exists:
 
 <fit-report>
 
@@ -71,10 +93,11 @@ possible.
 
 </fit-report>
 
-Complete this step when every contract claim has provenance, no blocking
-ambiguity remains, and either a computational core or a complete Fit report
-exists. When no optimization target is stated, target the most direct idiomatic
-implementation and make no claim of global optimality.
+For a computational core, complete this step only when every contract claim
+has provenance and no blocking ambiguity remains. A Fit report is the alternate
+terminal outcome, not permission to calculate. When no optimization target is
+stated, target the most direct idiomatic implementation and make no claim of
+global optimality.
 
 ## 3. Write the reference version
 
@@ -188,9 +211,8 @@ Complete the pass only when the artifact accounts for every contract claim,
 ledger premise, semantic edge, discrepancy, check, cost claim, and proof
 obligation.
 
-Return the artifact in chat. When the user requested a file, show the complete
-artifact first and wait for confirmation, then write that approved artifact to
-the requested destination. Stop at the design.
+Return the artifact in chat. Follow the save-approval transition when a file
+was requested. Stop at the design.
 
 ## Make the report understandable
 

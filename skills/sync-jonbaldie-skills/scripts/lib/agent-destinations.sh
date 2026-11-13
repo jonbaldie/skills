@@ -96,7 +96,7 @@ canonical_skills_dir() {
 agent_skills_dir() {
   local agent="$1"
   local scope="$2"
-  local project_root="${3:-}"
+  local destination_root="${3:-}"
   local line project_dir global_dir
 
   line="$(agent_row "${agent}")" || {
@@ -107,14 +107,14 @@ agent_skills_dir() {
 
   case "${scope}" in
     project)
-      [[ -n "${project_root}" ]] || {
+      [[ -n "${destination_root}" ]] || {
         printf 'agent_skills_dir: project scope needs a project root\n' >&2
         return 2
       }
       if [[ "${project_dir}" == canonical ]]; then
-        canonical_skills_dir "${project_root}"
+        canonical_skills_dir "${destination_root}"
       else
-        printf '%s/%s\n' "${project_root}" "${project_dir}"
+        printf '%s/%s\n' "${destination_root}" "${project_dir}"
       fi
       ;;
     global)

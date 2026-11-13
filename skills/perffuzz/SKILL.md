@@ -88,9 +88,11 @@ Run an automated loop until the search budget expires:
    preserving a witness for every current maximum.
 
 Keep maxima comparable within a fixed build, configuration, and input-size
-bound. If changing the bound, start a separately recorded campaign. For adapted
-feedback use one maximum per work counter; for timing use repeated measurements
-whose improvement exceeds the established noise.
+bound. If any of these changes, archive the campaign's maxima and start a
+separately recorded campaign at step 2. Retained inputs may seed it, but their old
+measurements cannot initialize its maxima. For adapted feedback use one maximum
+per work counter; for timing use repeated measurements whose improvement exceeds
+the established noise.
 
 Save crashes, timeouts, and memory-limit hits separately for replay. A timeout
 is a censored observation, not a completed execution count or measured runtime.
@@ -123,6 +125,37 @@ Complete validation when each candidate is confirmed, rejected with evidence,
 or unresolved with the missing check recorded. Budget exhaustion leaves pending
 candidates unresolved. A high counter alone is a search result; calling it a
 performance defect requires demonstrated impact against a grounded expectation.
+
+### Campaign states
+
+Start at **Setup** with the limits from step 1. A campaign owns its fixed build,
+configuration, input-size bound, maxima map, and witnesses.
+
+| State | Event and guard | Next state and action |
+| --- | --- | --- |
+| Setup | Step 2 demonstrates repeatable feedback and enforced limits. | Searching. Initialize maxima from this campaign's seed measurements. |
+| Setup | Reachability or usable feedback is blocked. | Blocked. Preserve the harness and concrete blocker. |
+| Searching | Search time or a resource limit ends. | Validating. Preserve the corpus, maxima, and stop reason. |
+| Validating | Every retained candidate has a recorded validation outcome and replay artifacts. | Finished. Preserve the result in step 5. |
+
+### Witness states
+
+Each apparent improvement starts at **Candidate**. Track witnesses independently
+so a pending replay does not stop other search work within budget.
+
+| State | Event and guard | Next state and action |
+| --- | --- | --- |
+| Candidate | An improvement is unstable. | Pending replay. Replay before promotion. |
+| Candidate or pending replay | Comparable feedback establishes an improvement at any location. | Retained. Update that maximum and keep its witness, even if total work falls. |
+| Retained | Search ends and validation allowance remains. | Validating. Compare repeated ordinary-build measurements as in step 4. |
+| Validating | Impact violates a grounded expectation. | Confirmed. Reduce while preserving the explicit cost predicate. |
+| Candidate, pending replay, or validating | Evidence disproves the claimed improvement or impact. | Rejected. Record the evidence. |
+| Candidate, pending replay, retained, or validating | The allowance ends or a required check is blocked. | Unresolved. Record the missing check. |
+| Confirmed | A smaller input preserves validity, hotspot, and cost predicate. | Confirmed. Keep the reduction alongside the original witness. |
+
+Keep crashes and censored limit hits in their separate replay queue. They do not
+update completed-execution maxima. Finish when every retained candidate is
+confirmed, rejected, or unresolved, and the replay artifacts are preserved.
 
 ## 5. Preserve the result
 

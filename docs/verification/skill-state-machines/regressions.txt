@@ -1,0 +1,13 @@
+Skill state machine regression evidence
+Baseline: origin/main c97eb2c, with the two new regression tests applied.
+$ bash tests/skill-copy-failure.sh
+Before:
+FAIL: skill-copy-failure: failed copy changed the installed tree
+After:
+PASS: skill-copy-failure: failed copy preserves installed tree
+
+$ bash tests/copy-to-skill-dirs-incomplete.sh
+Before:
+FAIL: copy-to-skill-dirs-incomplete: incomplete canonical installation changed destination
+After:
+PASS: copy-to-skill-dirs-incomplete: incomplete canonical source fails before destination changes

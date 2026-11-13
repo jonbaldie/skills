@@ -1,0 +1,30 @@
+$ TMPDIR=/private/tmp bash tests/run-all.sh
+PASS: tests/agent-destinations.sh
+PASS: tests/copy-to-skill-dirs-agents.sh
+PASS: tests/copy-to-skill-dirs-incomplete.sh
+PASS: tests/copy-to-skill-dirs-overlap.sh
+PASS: tests/copy-to-skill-dirs-project-root.sh
+PASS: tests/install-agent-destinations.sh
+PASS: tests/install-in-progress.sh
+PASS: tests/install-name-collision.sh
+PASS: tests/install-prereq-prompt.sh
+PASS: tests/install-pycache-exclusion.sh
+PASS: tests/install-ship-spec.sh
+PASS: tests/install-skill-filter.sh
+PASS: tests/install-symlinked-agent-root.sh
+PASS: tests/installed-skill-name.sh
+PASS: tests/managed-manifest-cli.sh
+PASS: tests/shell-lib.sh
+PASS: tests/skill-copy-failure.sh
+PASS: tests/skill-tree.sh
+PASS: tests/sync-jonbaldie-skills.sh
+============================= 289 passed in 9.85s ==============================
+PASS: pytest tests
+Test suites: 20 passed, 0 skipped, 0 failed
+
+Shell syntax: PASS for every installer and test script.
+ShellCheck: PASS with the repository CI arguments.
+git diff --check origin/main: PASS.
+Artifact coverage: PASS. 27 skills, 21 skill definitions with explicit workflow tables, six procedures/classifiers, unchanged parsed frontmatter.
+Independent instruction scenarios: 26 reviewed. Two conflicts corrected, with recovery paths rechecked.
+Limits: instruction scenarios are not runtime proof; no real merge or production operation was performed.

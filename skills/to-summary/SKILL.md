@@ -19,16 +19,48 @@ Require one readable source and normalise it to a local file path:
 - a URL: `curl -sL <url> -o <path>`, converting HTML to text;
 - pasted text: write it to a file.
 
-Make a work directory alongside it for the layer files.
+Make a uniquely named work directory alongside it for the layer files.
 
-Ask once:
+Use Summary instructions supplied with the invocation. Otherwise ask once:
 
 > Any particular focus, audience, format, or length? Say "no" for a general
 > summary.
 
-Use Summary instructions supplied with the invocation and proceed. Complete
-this step when the source is one readable path on disk, the work directory
-exists, and the Summary instructions are clear.
+Complete this step when the source is one readable path on disk, the work
+directory exists, and the Summary instructions are clear.
+
+Copy the source into the work directory as an immutable input. Check the source
+hash before and after copying and the copy's hash; they must match. Workers use
+this copy. Keep an ordered lineage map in the work directory with the source
+hash, Summary instructions, chunk ranges, parent paths and hashes, output paths
+and hashes, and per-chunk and per-layer attempts. Record outputs only after a
+worker finishes writing. Give each attempt a fresh output path.
+
+### Reduction states
+
+Start in **Resolve brief**. Size means the byte estimate in step 2.
+
+| State | Event and guard | Next state / action |
+| --- | --- | --- |
+| Resolve brief | The source is unreadable or Summary instructions are unsettled. | **Await brief**. Ask for the missing source or instructions and wait. |
+| Await brief | The user supplies the missing input. | **Resolve brief**. |
+| Resolve brief | The source and Summary instructions are pinned. | **Probe**. |
+| Probe | Input is at most 200,000 bytes. | **Final pass**. |
+| Probe | Input exceeds 200,000 bytes. | **Reduce**. Partition with exact ordered coverage. |
+| Reduce | A chunk output is missing, failed, or empty for nonempty input. | **Retry chunk**. Correct a concrete cause and retry that chunk once. If there is no correction or the retry fails, enter **Incomplete**. |
+| Retry chunk | The replacement output is complete and bound to unchanged inputs. | **Reduce**. Retain exactly one output for the chunk. |
+| Reduce | Every chunk has one verified output and lineage covers every input. | **Check layer**. Probe the ordered outputs together. |
+| Check layer | The layer is smaller than its inputs and at most 200,000 bytes. | **Final pass**. |
+| Check layer | The layer is smaller but still exceeds 200,000 bytes. | **Reduce**. Use it as the next layer's input. |
+| Check layer | The layer fails to shrink. | Retry reduction from the same inputs once with a tighter target. If it still fails to shrink, enter **Incomplete**. |
+| Final pass | Input hashes and complete lineage still match, and the summary satisfies the brief. | **Delivered**. Return the final summary. |
+| Any active state | The requested source or Summary instructions change. | **Resolve brief**. Invalidate derived outputs and start a new run from the changed input. |
+| Any active state | A recorded output is missing, lineage coverage is incomplete, or a layer input or output hash differs from its recorded value. | **Reduce**. Invalidate affected outputs and their descendants, then rebuild missing or invalid coverage from the nearest verified parents. Return to **Resolve brief** if none remain. |
+| Any active state | The task budget is exhausted or work cannot continue. | **Incomplete**. Retain verified artifacts and report the missing coverage or failed guard. |
+
+**Delivered** and **Incomplete** end the run. An incomplete run reports its
+status instead of presenting partial coverage as a final summary. On resumption,
+verify hashes before reusing artifacts and retain the recorded attempt counts.
 
 ## 2. Probe the size
 
@@ -56,24 +88,23 @@ Spawn one subagent per chunk, up to available concurrency. Give each subagent:
 Each subagent dereferences its own range (`sed -n 'A,Bp' <path>`), writes its
 prose to the output path, and returns that path alone.
 
-Retry a missing or failed chunk. Complete the layer only when every chunk range
-has exactly one layer file, and you hold the ordered list of their paths.
+Complete a layer only through the **Check layer** guard. Use the lineage map's
+ordered paths, rather than a directory glob that could include stale attempts.
 
 ## 4. Repeat
 
-Probe the layer files together (`wc -c <workdir>/<layer>-*`). While they exceed
-50,000 tokens, group them in source order into batches of roughly 25,000
-tokens or fewer and run another reduction layer: each subagent `cat`s its batch
-in order and writes one file at the next layer, under the same Summary
-instructions and 10:1 target.
-
-Complete reduction when one layer's files total at most 50,000 tokens and
-every original chunk reaches that layer through an unbroken line of files.
+Probe only the ordered layer files recorded in the lineage map with `wc -c`.
+Compare their total bytes with their inputs before accepting the layer. Group
+an accepted layer that still exceeds 50,000 tokens in source order into batches
+of roughly 25,000 tokens or fewer. Each subagent `cat`s its batch in order and
+writes one file at the next layer under the same Summary instructions and
+10:1 target. Apply the retry and progress guards above at each layer.
 
 ## 5. Write the final summary
 
-Read the final-pass input: the source file, or the last layer's files in source
-order.
+Recheck the requested source hash and the lineage map before finalization.
+Read the final-pass input, either the immutable source copy or the last layer's
+verified files in source order.
 
 Apply the Summary instructions. With none, write a broad-audience summary of at
 most 1,000 words in continuous prose paragraphs. Use uncited prose by default;

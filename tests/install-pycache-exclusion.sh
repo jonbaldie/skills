@@ -115,7 +115,7 @@ assert_clean_installation "${project_copy}" "copy mode"
 fake_bin="${test_root}/fake-bin"
 mkdir -p "${fake_bin}"
 # Put a non-rsync path in front: symlink all essential commands except rsync
-for cmd in bash git find awk dirname basename mkdir rm cp sort mktemp ln sed tr uname cut cat cmp; do
+for cmd in bash git find awk dirname basename mkdir rm cp mv sort mktemp ln sed tr uname cut cat cmp; do
   cmd_path="$(command -v "${cmd}" || true)"
   if [[ -n "${cmd_path}" ]]; then
     ln -s "${cmd_path}" "${fake_bin}/${cmd}"
