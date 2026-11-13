@@ -25,6 +25,6 @@ Test suites: 20 passed, 0 skipped, 0 failed
 Shell syntax: PASS for every installer and test script.
 ShellCheck: PASS with the repository CI arguments.
 git diff --check origin/main: PASS.
-Artifact coverage: PASS. 27 skills, 21 explicit workflow tables, six procedures/classifiers, unchanged parsed frontmatter.
+Artifact coverage: PASS. 27 skills, 21 skill definitions with explicit workflow tables, six procedures/classifiers, unchanged parsed frontmatter.
 Independent instruction scenarios: 26 reviewed. Two conflicts corrected, with recovery paths rechecked.
 Limits: instruction scenarios are not runtime proof; no real merge or production operation was performed.
