@@ -23,20 +23,16 @@ read_managed_names() {
 retire_absent() {
   local retirement_dir="$1" old_manifest="$2" kept_file="$3" callback="${4:-}"
   local kept old name candidate found
-  local -a kept_names=()
 
   [[ -f "${old_manifest}" ]] || return 0
   kept="$(read_managed_names "${kept_file}" --strict)" || return 1
   old="$(read_managed_names "${old_manifest}" --skip)" || return 1
   while IFS= read -r name; do
-    [[ -n "${name}" ]] && kept_names+=("${name}")
-  done <<<"${kept}"
-  while IFS= read -r name; do
     [[ -n "${name}" ]] || continue
     found=false
-    for candidate in "${kept_names[@]}"; do
+    while IFS= read -r candidate; do
       if [[ "${candidate}" == "${name}" ]]; then found=true; break; fi
-    done
+    done <<<"${kept}"
     if [[ "${found}" == false ]]; then
       rm -rf -- "${retirement_dir:?}/${name}" || return 1
       if [[ -n "${callback}" ]]; then "${callback}" "${name}" || return 1; fi

@@ -159,26 +159,48 @@ prune_build_artifacts() {
 
 # Replaces <dst> with a copy of <src> without SKILL_TREE_EXCLUDES.
 copy_skill_tree() {
-  local src="$1"
-  local dest="$2"
+  local src="$1" dest="$2" staging pattern
   local -a rsync_excludes=()
-  local pattern
 
-  rm -rf "${dest}"
-  mkdir -p "$(dirname "${dest}")"
-
+  mkdir -p "$(dirname "${dest}")" || return 1
+  staging="$(mktemp -d "$(dirname "${dest}")/.skill-copy.XXXXXX")" || return 1
   if command -v rsync >/dev/null 2>&1; then
     for pattern in "${SKILL_TREE_EXCLUDES[@]}"; do
       rsync_excludes+=("--exclude=${pattern}")
     done
-    mkdir -p "${dest}"
-    rsync -a --delete "${rsync_excludes[@]}" "${src}/" "${dest}/"
-    return
+    if ! rsync -a "${rsync_excludes[@]}" "${src}/" "${staging}/tree/"; then
+      rm -rf "${staging}"
+      return 1
+    fi
+  else
+    if ! cp -a "${src}" "${staging}/tree" 2>/dev/null; then
+      rm -rf "${staging}/tree"
+      if ! cp -R "${src}" "${staging}/tree"; then
+        rm -rf "${staging}"
+        return 1
+      fi
+    fi
+    if ! prune_build_artifacts "${staging}/tree"; then
+      rm -rf "${staging}"
+      return 1
+    fi
   fi
 
-  if ! cp -a "${src}" "${dest}" 2>/dev/null; then
-    rm -rf "${dest}"
-    cp -R "${src}" "${dest}"
+  if [[ -e "${dest}" || -L "${dest}" ]]; then
+    if ! mv "${dest}" "${staging}/previous"; then
+      rm -rf "${staging}"
+      return 1
+    fi
   fi
-  prune_build_artifacts "${dest}"
+  if ! mv "${staging}/tree" "${dest}"; then
+    if [[ -e "${staging}/previous" || -L "${staging}/previous" ]]; then
+      mv "${staging}/previous" "${dest}" || {
+        printf 'error: restore %s from %s/previous before retrying\n' "${dest}" "${staging}" >&2
+        return 1
+      }
+    fi
+    rm -rf "${staging}"
+    return 1
+  fi
+  rm -rf "${staging}"
 }

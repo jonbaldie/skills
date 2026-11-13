@@ -125,6 +125,11 @@ prepare_manifest() {
   temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/copy-managed-skills.XXXXXX")" || return 1
   cp "${canonical_manifest}" "${temporary_root}/manifest" || return 1
   read_managed_names "${temporary_root}/manifest" --strict >"${temporary_root}/names" || return 1
+  local managed_name
+  while IFS= read -r managed_name; do
+    [[ -f "${canonical_skills_dir}/${managed_name}/SKILL.md" ]] ||
+      die "managed skill is missing: ${canonical_skills_dir}/${managed_name}"
+  done <"${temporary_root}/names"
 }
 
 copy_to_directory() {
@@ -151,7 +156,6 @@ copy_to_directory() {
   retire_absent "${destination}" "${destination_manifest}" "${temporary_root}/names" || return 1
 
   while IFS= read -r name; do
-    [[ -d "${canonical_skills_dir}/${name}" ]] || die "managed skill is missing: ${canonical_skills_dir}/${name}"
     copy_skill_tree "${canonical_skills_dir}/${name}" "${destination:?}/${name}"
     printf '  copied %s -> %s\n' "${name}" "${destination}"
   done <"${temporary_root}/names"

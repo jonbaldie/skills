@@ -153,7 +153,7 @@ assert_copied "${with_rsync_destination}" "default PATH"
 
 no_rsync_bin="${test_root}/no-rsync-bin"
 mkdir -p "${no_rsync_bin}"
-for command_name in find mkdir rm cp dirname; do
+for command_name in find mkdir rm cp dirname mktemp mv; do
   ln -s "$(command -v "${command_name}")" "${no_rsync_bin}/${command_name}"
 done
 no_rsync_destination="${test_root}/no-rsync/nested/fixture"
