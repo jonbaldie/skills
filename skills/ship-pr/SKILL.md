@@ -40,8 +40,10 @@ branch. Use the repository PR template.
 An explicit PR is authoritative. Follow its state in the table rather than
 selecting another PR.
 
-Treat an existing PR's base as the target. When the user names another target,
-retarget the PR before continuing.
+Treat an existing PR's base as the target. For an open PR, retarget it before
+continuing when the user names another target. For an already merged PR,
+verify its actual target and report any difference from the requested target;
+do not claim that the work landed on the requested target.
 
 Record the repository, base, head branch and SHA, draft and review state,
 required checks, and host-native closing issue links.

@@ -42,6 +42,8 @@ Start in **Resolve brief**. Size means the byte estimate in step 2.
 
 | State | Event and guard | Next state / action |
 | --- | --- | --- |
+| Resolve brief | The source is unreadable or Summary instructions are unsettled. | **Await brief**. Ask for the missing source or instructions and wait. |
+| Await brief | The user supplies the missing input. | **Resolve brief**. |
 | Resolve brief | The source and Summary instructions are pinned. | **Probe**. |
 | Probe | Input is at most 200,000 bytes. | **Final pass**. |
 | Probe | Input exceeds 200,000 bytes. | **Reduce**. Partition with exact ordered coverage. |
@@ -53,7 +55,7 @@ Start in **Resolve brief**. Size means the byte estimate in step 2.
 | Check layer | The layer fails to shrink. | Retry reduction from the same inputs once with a tighter target. If it still fails to shrink, enter **Incomplete**. |
 | Final pass | Input hashes and complete lineage still match, and the summary satisfies the brief. | **Delivered**. Return the final summary. |
 | Any active state | The requested source or Summary instructions change. | **Resolve brief**. Invalidate derived outputs and start a new run from the changed input. |
-| Any active state | A layer input or output hash differs from its recorded value. | **Reduce**. Invalidate that output and its descendants, then rebuild from the nearest verified parents. Return to **Resolve brief** if none remain. |
+| Any active state | A recorded output is missing, lineage coverage is incomplete, or a layer input or output hash differs from its recorded value. | **Reduce**. Invalidate affected outputs and their descendants, then rebuild missing or invalid coverage from the nearest verified parents. Return to **Resolve brief** if none remain. |
 | Any active state | The task budget is exhausted or work cannot continue. | **Incomplete**. Retain verified artifacts and report the missing coverage or failed guard. |
 
 **Delivered** and **Incomplete** end the run. An incomplete run reports its
