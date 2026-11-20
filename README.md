@@ -439,7 +439,7 @@ and subscription states; tries other users' resource IDs, prohibited writes,
 direct API calls bypassing the UI, and access after downgrade or expiry; and
 classifies every discovered boundary as tested (a replayable failure was
 found), blocked (the probe was denied, with a successful authorised control),
-or untested (the probe never ran).
+or untested (no usable probe or a failed control).
 
 ```text
 /access-boundary-testing

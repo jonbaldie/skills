@@ -125,13 +125,13 @@ principal that cannot be created does not stop probes on other rows.
 | Unmapped | Step 1 records an expected decision for this actor class. | Mapped. Create the principals for step 2. |
 | Mapped | The principals exist and each owns its seeded resources. | Probing. Run every differing actor class, each with its positive control. |
 | Probing | The unprivileged actor is denied, no durable effect occurs, and the positive control passes. | Blocked. Record the response and effect check. |
-| Probing | The request succeeds but the durable-effect check shows no lasting change. | Blocked. Record the empty effect; a 200 alone is not a violation. |
+| Probing | The request is a write and succeeds, the durable-effect check shows no lasting change, no protected data was returned, and the positive control passes. | Blocked. Record the empty effect; a 200 alone is not a violation. |
 | Probing | The unprivileged actor reads or changes the resource. | Candidate. Minimize before calling it a violation. |
 | Mapped | The principal or prerequisite cannot be created. | Untested. Record the blocker and next check. |
 | Probing | The positive control fails, so the run is inconclusive. | Untested. Record the control failure; do not report the boundary as held or broken. |
 | Candidate | The minimized replay from the starting state does not reproduce the access. | Probing. Retain the observation; re-probe from a clean start. |
 | Candidate | The minimized replay from the starting state reproduces the access. | Tested. Preserve the reproducer. |
-| Untested | The prerequisite becomes available. | Mapped. Create the principals and probe. |
+| Untested | The prerequisite becomes available or the positive control is repaired. | Mapped. Create the principals and probe. |
 | Blocked, tested, or candidate | The build, authorization code, or account state changes. | Mapped. Replay under the new conditions before reusing the outcome. |
 
 ## 5. Preserve the result
