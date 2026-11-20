@@ -18,7 +18,7 @@ set is the same command excluding `skills/in-progress/` and
 | [tutor](../skills/in-progress/tutor/SKILL.md) | Mission, chosen beat, pending question and used repair attempt | Restore the checkpoint; understanding does not grant permission to continue. |
 | [to-summary](../skills/to-summary/SKILL.md) | Source snapshot, ordered chunk lineage, hashes and attempts | Rebuild invalid outputs; repeated failure or nonprogress ends as incomplete. |
 | [worked-example](../skills/worked-example/SKILL.md) | Current mechanism and learner response | Trace the unclear decision again or confirm demonstrated understanding. |
-| [exploratory-testing](../skills/exploratory-testing/SKILL.md) | Candidate evidence and owned resources | Confirm by replay; verify cleanup before completion. |
+| [exploratory-testing](../skills/exploratory-testing/SKILL.md) | Candidate evidence, promise matrix (in customer-promise mode) and owned resources | Confirm by replay; verify cleanup before completion. |
 | [access-boundary-testing](../skills/access-boundary-testing/SKILL.md) | Boundary inventory, isolated principals and per-row classification | Blocked requires a passing authorized control; a changed principal or authorization code requires replay. |
 | [failure-recovery-testing](../skills/failure-recovery-testing/SKILL.md) | Invariant list, fault schedule and per-fault classification | Violations require minimization and replay; an unfired fault stays blocked or unresolved. |
 | [load-capacity-testing](../skills/load-capacity-testing/SKILL.md) | Workload, pinned environment, ramp measurements and candidate boundary | A boundary requires a clean-state repeat; an incomplete ramp stays partial, never a boundary. |

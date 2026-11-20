@@ -418,6 +418,18 @@ unexplored, leaving product fixes for a subsequent task.
 /exploratory-testing Try implementing a small feature through the TUI
 ```
 
+In **customer-promise mode**, the customer's expectations are the test oracle:
+it extracts verifiable promises from the pricing page, documentation, onboarding,
+and product UI; tests each against the actual experience through the same
+journeys and candidate lifecycle; and reports a promise → observed behaviour
+→ evidence → discrepancy matrix. Paid-tier access, quotas, cancellation,
+data export, and renewal states get an explicit matrix row or a "no such
+promise found" entry.
+
+```text
+/exploratory-testing Check it against its pricing page and docs
+```
+
 Pass notes: [2026-09-26 skills](docs/exploratory-testing/2026-09-26-skills.md),
 [2026-10-03 resume skills](docs/exploratory-testing/2026-10-03-resume-skills.md),
 [2026-10-10 PR hosts and install](docs/exploratory-testing/2026-10-10-pr-hosts-and-install.md),
