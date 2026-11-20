@@ -102,12 +102,13 @@ Classify every boundary row as:
   control;
 - **Tested** — the probe ran and demonstrated a boundary failure: a
   cross-principal read or write succeeded, confirmed by replay;
-- **Untested** — a setup blocker or missing principal prevented the probe
-  from running.
+- **Untested** — no usable probe exists: a setup blocker or missing
+  principal prevented it from running, or the run was inconclusive
+  because its positive control failed.
 
 Keep the vocabulary exact: blocked means the probe ran and was denied,
-tested means the probe broke it, untested means it did not run. Never
-merge them into a single "pass".
+tested means the probe broke it, untested means no classification is
+possible yet. Never merge them into a single "pass".
 
 Minimize each confirmed violation to the smallest actor, resource, and
 action that reproduces it, then replay from the recorded starting state.
@@ -117,18 +118,20 @@ reading another user's data and writing it carry different impact.
 ## Boundary states
 
 Start each boundary row at **Unmapped** and track it independently, so a
-blocked principal does not stop probes on other rows.
+principal that cannot be created does not stop probes on other rows.
 
 | State | Event and guard | Next state and action |
 | --- | --- | --- |
 | Unmapped | Step 1 records an expected decision for this actor class. | Mapped. Create the principals for step 2. |
 | Mapped | The principals exist and each owns its seeded resources. | Probing. Run every differing actor class, each with its positive control. |
 | Probing | The unprivileged actor is denied, no durable effect occurs, and the positive control passes. | Blocked. Record the response and effect check. |
+| Probing | The request succeeds but the durable-effect check shows no lasting change. | Blocked. Record the empty effect; a 200 alone is not a violation. |
 | Probing | The unprivileged actor reads or changes the resource. | Candidate. Minimize before calling it a violation. |
 | Mapped | The principal or prerequisite cannot be created. | Untested. Record the blocker and next check. |
 | Probing | The positive control fails, so the run is inconclusive. | Untested. Record the control failure; do not report the boundary as held or broken. |
 | Candidate | The minimized replay from the starting state does not reproduce the access. | Probing. Retain the observation; re-probe from a clean start. |
 | Candidate | The minimized replay from the starting state reproduces the access. | Tested. Preserve the reproducer. |
+| Untested | The prerequisite becomes available. | Mapped. Create the principals and probe. |
 | Blocked, tested, or candidate | The build, authorization code, or account state changes. | Mapped. Replay under the new conditions before reusing the outcome. |
 
 ## 5. Preserve the result

@@ -102,12 +102,12 @@ leaked connections, or durable-state corruption remain. Recovery is part
 of the boundary claim; a service that degrades gracefully and heals is a
 different result from one that must be restarted.
 
-Distinguish capacity from correctness: restore durable state to the known
-starting point, verify its counts, balances, and idempotency where the
-workload touches them (see
+Distinguish capacity from correctness: compare durable state against the
+recorded starting point and verify its counts, balances, and idempotency
+where the workload touches them (see
 [`failure-recovery-testing`](../failure-recovery-testing/SKILL.md) for the
 invariant method), then repair or reset anything the run changed. Verify
-first — restoring before checking destroys the evidence. A capacity pass
+before repairing — restoring first destroys the evidence. A capacity pass
 that silently corrupts state has found a defect, not a boundary.
 
 ## Load-run states
@@ -138,6 +138,9 @@ Include:
   rates, queue and saturation gauges at each step, and recovery times;
 - the measured boundary, its failure mode, the validation repeats, and
   the durable-state check;
+- any Defect outcome (failed recovery or corrupt state) and any Lower-bound
+  outcome (healthy through the recorded ceiling), reported as results of
+  their own — Lower bound is a capacity result, Defect is a defect;
 - the exact run commands, so an independent engineer can reproduce the
   workload on the same environment.
 

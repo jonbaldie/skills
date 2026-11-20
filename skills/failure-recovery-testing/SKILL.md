@@ -97,7 +97,7 @@ A fault run is only complete when every invariant has an observed
 decision: holds, violated, or unverifiable (the check itself failed).
 Violations are named with the durable-state evidence: the duplicate
 charge, the missing record, the operation still pending long after its
-terminal deadline.
+recovery deadline.
 
 Distinguish the fault's own blast radius from an invariant violation. A
 429 that surfaces as a clean "try again" error is the system working;
@@ -131,15 +131,16 @@ Start each scheduled fault at **Unscheduled** and track it independently.
 | --- | --- | --- |
 | Unscheduled | Step 2 fixes the operation, fault, and trigger position. | Scheduled. Run from the recorded starting state. |
 | Scheduled | The fault fires at its trigger and the operation's outcome is captured. | Running. Execute recovery to its end. |
+| Scheduled | The injection is attempted but the fault does not fire. | Unresolved. Record that the conditions were healthy for this run. |
 | Scheduled | The fault mechanism cannot reach the operation. | Blocked. Record the missing mechanism. |
 | Running | Recovery completes and every invariant has an independent check result. | Classified. Apply step 5. |
-| Running | Recovery does not complete within the declared deadline. | Unresolved. Record the stuck operation. |
+| Running | Recovery does not complete within the recovery deadline. | Unresolved. Record the stuck operation. |
 | Classified | Every invariant holds through its independent check. | Recovered. Preserve the schedule, outcome, and checks. |
 | Classified | At least one invariant fails. | Violated. Minimize and replay before preserving the report. |
 | Classified | A check cannot run or recovery misses its deadline. | Unresolved. Record the missing check. |
 | Violated | Minimization fails to reproduce the failure. | Unresolved. Record the flaky observations; do not report a defect. |
 | Blocked | The fault mechanism becomes available. | Scheduled. Run from the recorded starting state. |
-| Scheduled or later | The build, workflow, or check path changes. | Scheduled. Replay under the new conditions before reusing the outcome. |
+| Scheduled or later | The build, workflow, or check path changes. | Unscheduled. Rebuild the schedule from step 2 before reusing the outcome. |
 
 ## 6. Preserve the result
 
