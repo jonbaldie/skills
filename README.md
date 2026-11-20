@@ -427,6 +427,46 @@ Pass notes: [2026-09-26 skills](docs/exploratory-testing/2026-09-26-skills.md),
 
 ---
 
+### I want to test that users cannot reach each other's data
+
+**The problem.** Invalid-input fuzzing never proves that one customer cannot
+read another's resources. A valid request from the wrong principal can still
+succeed, and a hidden button is not enforcement.
+
+**The fix.** [`access-boundary-testing`](./skills/access-boundary-testing/SKILL.md)
+tests as different real users: it creates isolated accounts, tenants, roles,
+and subscription states; tries other users' resource IDs, prohibited writes,
+direct API calls bypassing the UI, and access after downgrade or expiry; and
+classifies every discovered boundary as tested (a replayable failure was
+found), blocked (the probe was denied, with a successful authorised control),
+or untested (no usable probe or a failed control).
+
+```text
+/access-boundary-testing
+```
+
+---
+
+### I want to know whether my system survives failures without corrupting state
+
+**The problem.** Stateful testing generates sequences of operations under
+healthy conditions, but production delivers timeouts, provider errors, and
+crashes mid-write. A system can pass every healthy-condition sequence and
+still double-charge customers or lose committed data under fault.
+
+**The fix.** [`failure-recovery-testing`](./skills/failure-recovery-testing/SKILL.md)
+deliberately injects timeouts, HTTP 429/500 errors, dropped connections,
+duplicate webhook deliveries, restarts, and interrupted writes into a
+disposable environment, then checks invariants after recovery: no duplicate
+charges, no missing committed data, no permanently stuck operations, and
+correct retry behaviour, verified through independent durable-state reads.
+
+```text
+/failure-recovery-testing
+```
+
+---
+
 ### I need to make slow code faster
 
 **The problem.** Performance work can point at the wrong code or produce a
@@ -489,6 +529,26 @@ measurements, and a report within a bounded search budget.
 ```text
 /perffuzz
 /perffuzz parser — search for 20 minutes
+```
+
+---
+
+### I want to find where my service stops coping with load
+
+**The problem.** Latency work optimises one journey and input-shape fuzzing
+finds pathological cases, but neither says how much traffic the service can
+carry before queues, saturation, or error rates cross a boundary.
+
+**The fix.** [`load-capacity-testing`](./skills/load-capacity-testing/SKILL.md)
+runs representative user journeys under increasing concurrency, bursts, and
+sustained traffic, measuring p95/p99 latency, error rates, queues,
+throughput, and resource saturation. It produces an independently
+reproducible workload, a documented environment and resource budget, and a
+measured boundary at which the service degrades or remains healthy.
+
+```text
+/load-capacity-testing
+/load-capacity-testing Checkout — 30 minutes
 ```
 
 ---

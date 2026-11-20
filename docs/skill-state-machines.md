@@ -5,8 +5,12 @@ state, the event and evidence required to leave it, and the next state or
 action. A waiting, blocked, incomplete, or unverified result is distinct from
 completion. These are agent instructions, not a runtime orchestration engine.
 
-This inventory covers 27 skills, including the in-progress Tutor and deprecated
-ship-spec. The installer continues to exclude both draft and deprecated skills.
+This inventory lists every skill definition with a workflow table, including
+the in-progress Tutor and deprecated ship-spec. The installer continues to
+exclude both draft and deprecated skills. Do not rely on a remembered total:
+list the current set with `find skills -name SKILL.md | sort` (the installer
+set is the same command excluding `skills/in-progress/` and
+`skills/deprecated/`).
 
 | Skills | State carried between actions | Main recovery guard |
 | --- | --- | --- |
@@ -15,6 +19,9 @@ ship-spec. The installer continues to exclude both draft and deprecated skills.
 | [to-summary](../skills/to-summary/SKILL.md) | Source snapshot, ordered chunk lineage, hashes and attempts | Rebuild invalid outputs; repeated failure or nonprogress ends as incomplete. |
 | [worked-example](../skills/worked-example/SKILL.md) | Current mechanism and learner response | Trace the unclear decision again or confirm demonstrated understanding. |
 | [exploratory-testing](../skills/exploratory-testing/SKILL.md) | Candidate evidence and owned resources | Confirm by replay; verify cleanup before completion. |
+| [access-boundary-testing](../skills/access-boundary-testing/SKILL.md) | Boundary inventory, isolated principals and per-row classification | Blocked requires a passing authorized control; a changed principal or authorization code requires replay. |
+| [failure-recovery-testing](../skills/failure-recovery-testing/SKILL.md) | Invariant list, fault schedule and per-fault classification | Violations require minimization and replay; an unfired fault stays blocked or unresolved. |
+| [load-capacity-testing](../skills/load-capacity-testing/SKILL.md) | Workload, pinned environment, ramp measurements and candidate boundary | A boundary requires a clean-state repeat; an incomplete ramp stays partial, never a boundary. |
 | [finding-bugs](../skills/finding-bugs/SKILL.md) | Search feedback, replay state and candidate disposition | Verify resets and stable reproduction; keep deferred or unstable work visible. |
 | [mutation-testing](../skills/mutation-testing/SKILL.md) | Exact baseline, one active mutant and check configuration | Restore and reverify before classifying or proceeding. |
 | [perffuzz](../skills/perffuzz/SKILL.md) | Campaign configuration, per-location maxima and witnesses | Reset incompatible evidence; replay and reduce a reproducible impact predicate. |
@@ -28,8 +35,10 @@ ship-spec. The installer continues to exclude both draft and deprecated skills.
 | [ship-spec](../skills/deprecated/ship-spec/SKILL.md) | Parent, dependency-ready child and verified remote target | Remote integration gates selection of the next child. |
 | [sync-jonbaldie-skills](../skills/sync-jonbaldie-skills/SKILL.md) | Source commits, managed names and selected destinations | Validate before copying; preserve failed replacements and report partial application. |
 
-Six skills remain procedures or classifiers rather than acquiring artificial
-lifecycle states. They are [deintrovert-tests](../skills/deintrovert-tests/SKILL.md),
+Skills without a workflow table remain procedures or classifiers rather than
+acquiring artificial lifecycle states; find them with
+`find skills -name SKILL.md -exec grep -L '^| State ' {} +`. They are
+currently [deintrovert-tests](../skills/deintrovert-tests/SKILL.md),
 [finding-seams](../skills/finding-seams/SKILL.md), [options](../skills/options/SKILL.md),
 [seeking-performance](../skills/seeking-performance/SKILL.md),
 [user-journeys](../skills/user-journeys/SKILL.md), and
