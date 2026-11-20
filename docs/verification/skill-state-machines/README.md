@@ -1,5 +1,10 @@
 # Verification record
 
+Snapshot: 13 November 2026 (commit 4ca8bac). Counts in this record describe
+that date's inventory and are not updated as skills change; see
+[skill-state-machines.md](../../skill-state-machines.md) for how to count
+the current set.
+
 The [inventory](../../skill-state-machines.md) covers all 27 skill definitions.
 Twenty-one now have operative transition tables. Six remain procedures or
 classifiers. Skill frontmatter is unchanged, including invocation controls.
