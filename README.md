@@ -413,6 +413,17 @@ a few user-critical journeys, follows unexpected behaviour, and records
 reproducible bugs with evidence. It reports what was explored and what remains
 unexplored, leaving product fixes for a subsequent task.
 
+In **customer-promise mode**, the customer's expectations are the test oracle:
+it extracts verifiable promises from the pricing page, documentation, onboarding,
+and product UI; tests each against the actual experience through the same
+journeys and candidate lifecycle; and reports a promise → observed behaviour
+→ evidence → discrepancy matrix. Paid-tier access, quotas, cancellation,
+data export, and renewal states get explicit attention where promised.
+
+```text
+/exploratory-testing Check it against its pricing page and docs
+```
+
 ```text
 /exploratory-testing
 /exploratory-testing Try implementing a small feature through the TUI

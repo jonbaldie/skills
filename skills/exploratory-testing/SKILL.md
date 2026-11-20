@@ -1,6 +1,6 @@
 ---
 name: exploratory-testing
-description: Find reproducible bugs by using software for realistic tasks through its supported interface. Use when asked to try software as a user or explore what breaks during actual use.
+description: Find reproducible bugs by using software for realistic tasks through its supported interface. Use when asked to try software as a user, explore what breaks during actual use, or test the product against the promises made on the pricing page, in documentation, onboarding, and the product UI (customer-promise mode).
 ---
 
 # Exploratory testing
@@ -31,6 +31,62 @@ Make teardown run on normal completion and early exit.
 
 Establish that the software is ready to use. If setup or access is blocked, report
 the concrete blocker and what was attempted.
+
+## Customer-promise mode
+
+Use this mode — rather than a separate skill — when the customer-facing
+promise is the test oracle: the agent tests what the product told customers
+they would get, not merely what the current implementation does. The rest
+of the pass (journeys, candidate lifecycle, resource lifecycle) is
+unchanged: only the source of the expectation changes.
+
+1. **Collect the promise sources and freeze them.** Read the pricing page,
+   the documentation, the onboarding flow, and the relevant product UI.
+   Save the exact wording with its source and date (copy, link, or
+   screenshot) in the evidence directory. If two sources say different
+   things, record both; the stricter customer reading is the one to test,
+   and the disagreement between sources is itself a candidate finding.
+
+2. **Extract verifiable promises.** Rewrite each customer-facing claim as
+   a testable assertion — who it applies to, under what condition, and
+   the observable outcome. Split compound claims (a price line often
+   hides three). Check every source for these categories where they
+   apply, and give each an explicit row or an explicit "no such promise
+   found" entry:
+   - **paid-tier access** — what a paying customer can use;
+   - **quotas and limits** — usage allowances and what happens at the limit;
+   - **cancellation** — how to cancel and what happens to access and data;
+   - **data export** — what can be taken out, in what format, and whether it works after cancellation;
+   - **renewal** — whether the plan renews, at what price, and how to stop it.
+
+   Use isolated test accounts and tier states for these checks; never
+   cancel or export a real customer's account to test a promise.
+
+3. **Build the promise matrix before testing.** One row per promise:
+
+   | Promise | Source | Test or journey | Observed behaviour | Evidence | Discrepancy |
+   | --- | --- | --- | --- | --- | --- |
+   | the exact verifiable claim | pricing/docs/onboarding/UI, with date | the journey from step 2 that exercises it | what the product actually did | screenshots, output, exported files | none, candidate ID, or confirmed-bug ID |
+
+   Freeze the promise wording now. What the implementation currently does
+   is the observed behaviour column, never the oracle: if promise and
+   implementation disagree, the promise wins and the disagreement is the
+   discrepancy. Record subjective or marketing claims ("effortless",
+   "best-in-class") as **unverifiable** with their source, rather than
+   inventing a test for them.
+
+4. **Test through the normal pass.** Drive each promise as a grounded
+   journey in steps 2–4, with the promise wording as the expectation.
+   A discrepancy becomes a candidate under step 3; record its lifecycle
+   outcome (confirmed, rejected, unresolved) in the Discrepancy column
+   rather than asserting a bug directly. A promise whose test is blocked
+   by access or tooling is **not tested**, with the blocker recorded.
+
+Complete this mode when every verifiable promise from the collection
+sources has a matrix row with observed behaviour, evidence, and a
+discrepancy entry or a concrete blocker — and every category above is
+either covered or explicitly marked "no such promise found". Report the
+matrix in step 5 alongside the usual findings.
 
 ## 2. Attempt complete journeys
 
