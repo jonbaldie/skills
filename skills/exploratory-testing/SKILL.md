@@ -1,6 +1,6 @@
 ---
 name: exploratory-testing
-description: Find reproducible bugs by using software for realistic tasks through its supported interface. Use when asked to try software as a user, explore what breaks during actual use, or test the product against the promises made on the pricing page, in documentation, onboarding, and the product UI (customer-promise mode).
+description: Find reproducible bugs by using software for realistic tasks through its supported interface. Use when asked to try software as a user, explore what breaks during actual use, or check the product against promises on its pricing page, docs, onboarding, and UI (customer-promise mode).
 ---
 
 # Exploratory testing
@@ -36,7 +36,7 @@ the concrete blocker and what was attempted.
 
 Use this mode — rather than a separate skill — when the customer-facing
 promise is the test oracle: the agent tests what the product told customers
-they would get, not merely what the current implementation does. The rest
+they would get, not what the current implementation does. The rest
 of the pass (journeys, candidate lifecycle, resource lifecycle) is
 unchanged: only the source of the expectation changes.
 
@@ -44,8 +44,9 @@ unchanged: only the source of the expectation changes.
    the documentation, the onboarding flow, and the relevant product UI.
    Save the exact wording with its source and date (copy, link, or
    screenshot) in the evidence directory. If two sources say different
-   things, record both; the stricter customer reading is the one to test,
-   and the disagreement between sources is itself a candidate finding.
+   things, record both; the reading most favourable to the customer is the
+   one to test, and the disagreement between sources is recorded as a
+   finding confirmed by the saved sources, not as a candidate.
 
 2. **Extract verifiable promises.** Rewrite each customer-facing claim as
    a testable assertion — who it applies to, under what condition, and
@@ -66,7 +67,7 @@ unchanged: only the source of the expectation changes.
 
    | Promise | Source | Test or journey | Observed behaviour | Evidence | Discrepancy |
    | --- | --- | --- | --- | --- | --- |
-   | the exact verifiable claim | pricing/docs/onboarding/UI, with date | the journey from step 2 that exercises it | what the product actually did | screenshots, output, exported files | none, candidate ID, or confirmed-bug ID |
+   | the exact verifiable claim | pricing/docs/onboarding/UI, with date | the journey described in section 2 that exercises it | what the product actually did | screenshots, output, exported files | none, a candidate with its lifecycle outcome, a confirmed-bug ID, unverifiable, or blocked |
 
    Freeze the promise wording now. What the implementation currently does
    is the observed behaviour column, never the oracle: if promise and
@@ -76,17 +77,22 @@ unchanged: only the source of the expectation changes.
    inventing a test for them.
 
 4. **Test through the normal pass.** Drive each promise as a grounded
-   journey in steps 2–4, with the promise wording as the expectation.
-   A discrepancy becomes a candidate under step 3; record its lifecycle
-   outcome (confirmed, rejected, unresolved) in the Discrepancy column
-   rather than asserting a bug directly. A promise whose test is blocked
-   by access or tooling is **not tested**, with the blocker recorded.
+   journey in sections 2–4, with the promise wording as the expectation.
+   A discrepancy becomes a candidate under the lifecycle in section 3;
+   record its lifecycle outcome (confirmed, rejected, unresolved) in the
+   Discrepancy column rather than asserting a bug directly. A promise
+   whose test is blocked by access or tooling is recorded as **blocked**
+   (the journey state in section 4), with the blocker.
 
-Complete this mode when every verifiable promise from the collection
-sources has a matrix row with observed behaviour, evidence, and a
-discrepancy entry or a concrete blocker — and every category above is
-either covered or explicitly marked "no such promise found". Report the
-matrix in step 5 alongside the usual findings.
+The promise matrix defines this mode's scope: it supersedes the
+"up to three journeys" default in section 2. Complete this mode when every
+verifiable promise from the collection sources has a matrix row with
+observed behaviour, evidence, and a discrepancy entry or a concrete
+blocker — and every category above is either covered or explicitly marked
+"no such promise found". If the user budget ends first, leftover promises
+are recorded as **unfinished** (the journey state in section 4) with the
+remaining work, not as blockers. Report the matrix in section 5 alongside
+the usual findings.
 
 ## 2. Attempt complete journeys
 
@@ -162,7 +168,8 @@ observations, and links to captured evidence. Separate unresolved candidates
 from confirmed findings.
 
 Include the journeys exercised, blocked and unexplored areas, and any limitations
-introduced by the environment or instrumentation. Include usability observations
+introduced by the environment or instrumentation. In customer-promise mode,
+report the promise matrix alongside the findings. Include usability observations
 grounded in the attempted journeys, distinguishing observations from suggested
 improvements. A pass with no confirmed bugs still reports what was exercised
 and observed.
