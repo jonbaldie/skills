@@ -7,7 +7,7 @@ description: Test access boundaries by acting as different real users. Create is
 
 Test **as different real users**, not just against invalid inputs. A
 malformed request proves nothing about authorization; a valid request from
-the wrong principal proves everything. This addresses object-level and
+the wrong principal proves that one boundary is broken. This addresses object-level and
 function-level authorization risks identified by OWASP: [API1:2023 Broken
 Object Level Authorization](https://owasp.org/API-Security/top-10/2023/#api1broken-object-level-authorization)
 (BOLA, often called IDOR) and [API5:2023 Broken Function Level
@@ -53,8 +53,9 @@ that any cross-principal effect is attributable. Include:
   credentials.
 
 Where the system does not let you create these principals directly (for
-example, an approval-gated role), record that as a blocked setup step with
-the concrete prerequisite, and continue with the principals that exist.
+example, an approval-gated role), record a setup blocker with the concrete
+prerequisite — the row stays Untested, never Blocked — and continue with the
+principals that exist.
 
 Record the build, configuration, and starting state. These principals are
 the test fixtures: every probe below names its actor and its target.
@@ -62,10 +63,10 @@ the test fixtures: every probe below names its actor and its target.
 ## 3. Probe across the boundaries
 
 For each boundary row, attempt the operation with every actor class whose
-expected decision differs from the owner's. Use the real client path —
-the public API or another supported interface — with the actor's genuine
-credentials or session, not a hand-built request that skips the client's
-own behavior.
+expected decision differs from the owner's. Use the supported interface —
+the public API or another real interface — under the actor's genuine
+credentials or session. Requests may be hand-built against that interface;
+what must be genuine is the identity they carry.
 
 Vary the attack, not just the actor:
 
@@ -124,9 +125,11 @@ blocked principal does not stop probes on other rows.
 | Mapped | The principals exist and each owns its seeded resources. | Probing. Run every differing actor class, each with its positive control. |
 | Probing | The unprivileged actor is denied, no durable effect occurs, and the positive control passes. | Blocked. Record the response and effect check. |
 | Probing | The unprivileged actor reads or changes the resource. | Candidate. Minimize before calling it a violation. |
-| Probing | The principal or prerequisite cannot be created. | Untested. Record the blocker and next check. |
+| Mapped | The principal or prerequisite cannot be created. | Untested. Record the blocker and next check. |
+| Probing | The positive control fails, so the run is inconclusive. | Untested. Record the control failure; do not report the boundary as held or broken. |
+| Candidate | The minimized replay from the starting state does not reproduce the access. | Probing. Retain the observation; re-probe from a clean start. |
 | Candidate | The minimized replay from the starting state reproduces the access. | Tested. Preserve the reproducer. |
-| Blocked or candidate | The build, authorization code, or account state changes. | Mapped. Replay under the new conditions before reusing the outcome. |
+| Blocked, tested, or candidate | The build, authorization code, or account state changes. | Mapped. Replay under the new conditions before reusing the outcome. |
 
 ## 5. Preserve the result
 

@@ -437,8 +437,9 @@ succeed, and a hidden button is not enforcement.
 tests as different real users: it creates isolated accounts, tenants, roles,
 and subscription states; tries other users' resource IDs, prohibited writes,
 direct API calls bypassing the UI, and access after downgrade or expiry; and
-classifies every discovered boundary as tested, blocked, or untested, with
-successful authorised controls and replayable failures.
+classifies every discovered boundary as tested (a replayable failure was
+found), blocked (the probe was denied, with a successful authorised control),
+or untested (the probe never ran).
 
 ```text
 /access-boundary-testing

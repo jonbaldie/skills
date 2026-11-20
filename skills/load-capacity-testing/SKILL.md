@@ -53,9 +53,13 @@ lag, disk, lock contention). Warm up caches and JIT before measuring and
 exclude warmup from the numbers.
 
 Verify the harness measures the system, not itself: the load generator
-must not be the bottleneck (its own CPU, connections, or ports), the
-clock and percentiles must be computed over completed attempts only, and
-a rerun at baseline must reproduce the baseline within recorded spread.
+must not be the bottleneck (its own CPU, connections, or ports). Compute
+percentiles over all attempts, counting failed and timed-out attempts
+(at their timeout value where the wait was bounded, or reported
+separately alongside the percentiles) — dropping them inflates measured
+capacity. Use open-loop arrival for rate phases, or correct for
+coordinated omission, so overload does not quietly slow the generator.
+A rerun at baseline must reproduce the baseline within recorded spread.
 
 Complete this step when the baseline repeats within noise and every
 metric has a named source.
@@ -99,11 +103,12 @@ of the boundary claim; a service that degrades gracefully and heals is a
 different result from one that must be restarted.
 
 Distinguish capacity from correctness: restore durable state to the known
-starting point and verify counts, balances, and idempotency where the
+starting point, verify its counts, balances, and idempotency where the
 workload touches them (see
 [`failure-recovery-testing`](../failure-recovery-testing/SKILL.md) for the
-invariant method). A capacity pass that silently corrupts state has
-found a defect, not a boundary.
+invariant method), then repair or reset anything the run changed. Verify
+first — restoring before checking destroys the evidence. A capacity pass
+that silently corrupts state has found a defect, not a boundary.
 
 ## Load-run states
 
@@ -118,6 +123,8 @@ budget from step 2.
 | Candidate boundary | The clean-state repeat reproduces the mode near the same load. | Bounded. Record the measured boundary and recovery time. |
 | Candidate boundary | The repeat does not reproduce it. | Ramping. The spike was noise; continue stepping. |
 | Bounded | Recovery to baseline is verified and durable state is checked. | Finished. Preserve the report in step 5. |
+| Bounded | Recovery needs a restart or durable state is corrupt. | Defect. Record the recovery failure or corruption; do not report it as a boundary. |
+| Blocked | The recorded ceiling is the bound the user asked to report and no degradation appeared up to it. | Lower bound. Report as healthy through that load, unmeasured above it. |
 | Blocked | The budget or authorization extends. | Baseline. Re-verify the baseline before ramping again. |
 
 ## 5. Preserve the result

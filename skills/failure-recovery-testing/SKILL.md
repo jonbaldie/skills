@@ -1,21 +1,26 @@
 ---
 name: failure-recovery-testing
 description: Test failure recovery by injecting faults into a disposable environment — timeouts, HTTP 429/500 errors, dropped connections, duplicate webhooks, restarts, interrupted writes — then checking durable state and retries after recovery. Use when operations must survive failures without duplicate charges, missing data, or stuck operations.
+argument-hint: "[workflow] [budget]"
+disable-model-invocation: true
 ---
 
 # Failure recovery testing
 
 Deliberately corrupt the **conditions** under which operations execute,
-not the operations themselves. Stateful testing generates sequences of
-operations under healthy conditions; this skill takes those sequences and
-runs them while the network, the provider, and the process misbehave. The
-question is never "does the happy path work" but "does the system recover
-without violating its promises".
+not the operations themselves. Stateful testing
+([finding-bugs](../finding-bugs/SKILL.md#stateful-action-sequence-testing))
+generates sequences of operations under healthy conditions; this skill takes
+those sequences and runs them while the network, the provider, and the
+process misbehave. The question is never "does the happy path work" but
+"does the system recover without violating its promises".
 
-Inject faults only into a disposable environment you own. Never fault a
-production system, a real customer account, or a shared provider without
-explicit authorization. Produce evidence and reproducers; implement
-product fixes only when the user requests them.
+Inject faults only into a disposable environment you own, and confirm
+provider credentials are test-mode before injecting — a disposable app
+can still hold live payment keys. Never fault a production system, a
+real customer account, or a shared provider without explicit
+authorization. Produce evidence and reproducers; implement product fixes
+only when the user requests them.
 
 ## 1. State the invariants
 
@@ -60,8 +65,10 @@ commit but before the acknowledgement, during retry, during recovery.
 The same fault at a different position is a different test.
 
 Write the schedule as a reproducible document: operation, fault, trigger
-condition (request count, clock, or sequence position), and expected
-behavior. Record the workload and starting state the schedule assumes.
+condition (request count, clock, or sequence position), expected
+behavior, and a recovery deadline — the latest time by which recovery
+must complete before the run is called stuck. Record the workload and
+starting state the schedule assumes.
 
 ## 3. Inject the faults
 
@@ -105,7 +112,10 @@ Classify each fault run as:
 - **Violated** — at least one invariant fails, with the durable-state
   evidence preserved;
 - **Unresolved** — the fault did not fire, recovery never completed, or
-  a check could not run.
+  a check could not run;
+- **Blocked** — the fault mechanism never reached the operation, so no
+  recovery was exercised at all. A blocked fault is not recovered and
+  is not counted as a pass.
 
 Minimize each violation to the smallest schedule that reproduces it, then
 replay it from the recorded starting state. Keep the injection schedule,
@@ -127,8 +137,9 @@ Start each scheduled fault at **Unscheduled** and track it independently.
 | Classified | Every invariant holds through its independent check. | Recovered. Preserve the schedule, outcome, and checks. |
 | Classified | At least one invariant fails. | Violated. Minimize and replay before preserving the report. |
 | Classified | A check cannot run or recovery misses its deadline. | Unresolved. Record the missing check. |
+| Violated | Minimization fails to reproduce the failure. | Unresolved. Record the flaky observations; do not report a defect. |
 | Blocked | The fault mechanism becomes available. | Scheduled. Run from the recorded starting state. |
-| Any state | The build, workflow, or check path changes. | Scheduled. Replay under the new conditions before reusing the outcome. |
+| Scheduled or later | The build, workflow, or check path changes. | Scheduled. Replay under the new conditions before reusing the outcome. |
 
 ## 6. Preserve the result
 
@@ -137,13 +148,15 @@ Write a report alongside the schedules and captures. Include:
 - the invariant list with their independent checks;
 - each fault's reproducible injection schedule and observed outcome;
 - the independently checked durable-state result per invariant;
-- recovered, violated, and unresolved runs, with minimized replays for
-  the violations and the missing check for the unresolved;
+- recovered, violated, unresolved, and blocked runs, with minimized
+  replays for the violations and the missing mechanism or check for
+  each blocked or unresolved run;
 - exact injection, recovery, and verification commands and the
   environment they ran in.
 
 Done when each fault has a reproducible injection schedule, an observed
 outcome, and an independently checked durable-state result. A run that
-ends with unresolved faults is a partial result; report them with their
-missing check. Tear down every fault proxy, replay harness, and
+ends with unresolved or blocked faults is a partial result; report them
+with their missing check or mechanism. Tear down every fault proxy,
+replay harness, and
 test-owned process created by the pass, and verify nothing remains.
