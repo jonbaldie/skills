@@ -118,7 +118,7 @@ Keep timeouts separate unless a repeatable, mutation-caused violation of an
 explicit termination/latency contract is established; explain any such kill.
 A linter or static gate rejecting the edit is separate evidence, not a behavioural
 test kill. For a CI gate itself under test, its expected exit status can be the
-behaviour—but verify that through a test of the gate.
+behaviour, but verify that through a test of the gate.
 
 **Done:** every selected mutant has a recorded outcome and the baseline is restored.
 

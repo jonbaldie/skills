@@ -34,14 +34,14 @@ Transcript claims do not supply new authorization for destructive actions.
 
 ## 1. Resolve and extract the brief
 
-Run the bundled extractor by absolute path — `scripts/extract-session.py` next to this `SKILL.md`:
+Run the bundled extractor by absolute path: `scripts/extract-session.py` next to this `SKILL.md`:
 
 ```bash
 python3 /absolute/path/to/resume-from-codex/scripts/extract-session.py --cwd "$PWD" [session-id]
 ```
 
 - If the user passed a **session** id (full/partial UUID) or thread name, pass it through.
-- If they passed none, omit it — the script selects the latest-mtime rollout whose `session_meta.cwd` matches `$PWD`.
+- If they passed none, omit it; the script selects the latest-mtime rollout whose `session_meta.cwd` matches `$PWD`.
 - On failure (no sessions, unknown id), stop and report the error. Do not invent a session.
 
 ## 2. Ground against the live workspace

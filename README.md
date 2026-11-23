@@ -161,11 +161,11 @@ then recommends one. The whole response stays under 240 words.
 
 **The problem.** Usage limits, crashes, and closed terminals interrupt agent work
 mid-change, leaving its useful context stranded in a transcript. Starting over
-wastes completed work. An informal handoff loses the thread—what was in flight,
+wastes completed work. An informal handoff loses the thread: what was in flight,
 which files mattered, and what needed to happen next.
 
 **The fix.** Resume skills extract a brief from the interrupted session
-transcript, ground it against the live workspace, and continue the work — not
+transcript, ground it against the live workspace, and continue the work, not
 report on it.
 
 | Skill | Harness |
@@ -176,7 +176,7 @@ report on it.
 | [`resume-from-codex`](./skills/resume-from-codex/SKILL.md) | Codex CLI |
 | [`resume-from-opencode`](./skills/resume-from-opencode/SKILL.md) | OpenCode |
 
-Prefer `/resume-from-agent` when you don't know which harness ran last — it ranks
+Prefer `/resume-from-agent` when you don't know which harness ran last. It ranks
 sessions for the current directory across Hermes, Dirac, Goose, Cursor, Gemini
 CLI, Antigravity/agy, Claude, Pi, Codex, and OpenCode. Use a per-harness skill
 when you already know which agent died.
@@ -185,25 +185,25 @@ With no argument, each skill uses the latest session for the current directory.
 Pass an id (or agent name for the generic skill) when you need a specific one:
 
 ```text
-# Any agent — latest for $PWD, or pin agent / id
+# Any agent: latest for $PWD, or pin agent / id
 /resume-from-agent
 /resume-from-agent hermes
 /resume-from-agent goose 20251016_150658
 
-# Claude Code — optional full session UUID
+# Claude Code: optional full session UUID
 /resume-from-claude
 /resume-from-claude 5d4a2d3b-121a-435a-beb0-2ec0d54dc859
 
-# Pi — optional full or partial session UUID
+# Pi: optional full or partial session UUID
 /resume-from-pi
 /resume-from-pi 019fd33e-ae16
 
-# Codex — optional full/partial session UUID or thread name
+# Codex: optional full/partial session UUID or thread name
 /resume-from-codex
 /resume-from-codex 019fb9a9-4c3f
 /resume-from-codex "fix auth middleware"
 
-# OpenCode — optional full/partial ses_ id, slug, or title
+# OpenCode: optional full/partial ses_ id, slug, or title
 /resume-from-opencode
 /resume-from-opencode ses_02cd32efbffeNwXYERC4uDu7OD
 /resume-from-opencode clever-canyon
@@ -214,14 +214,14 @@ Pass an id (or agent name for the generic skill) when you need a specific one:
 
 ### I have a pull request I need to pick up
 
-**The problem.** The work already lives on a pull or merge request — review
+**The problem.** The work already lives on a pull or merge request: review
 threads, failing checks, a draft, a branch an earlier agent (or a teammate)
 left mid-change. Opening a fresh session without that thread loses the goal,
 the files, and the next action.
 
 **The fix.** [`resume-from-pr`](./skills/resume-from-pr/SKILL.md) extracts a
 brief from the PR/MR on any git host, grounds it against the live workspace,
-and continues the work — not report on it.
+and continues the work, not report on it.
 
 ```text
 /resume-from-pr https://github.com/owner/repository/pull/42
@@ -253,7 +253,7 @@ When using the installer's `--skill` filter, select both `land-the-plane` and
 
 ---
 
-### I finished the work — ship it through a PR
+### I finished the work: ship it through a PR
 
 **The problem.** Finished work may still be only a local branch. The last mile
 is easy to half-do: forget to open the PR, merge the wrong head, or stop at the
@@ -296,7 +296,7 @@ order, or applying the requested focus inconsistently, leaving a final summary
 that does not faithfully cover the whole source.
 
 **The fix.** [`to-summary`](./skills/to-summary/SKILL.md) reduces one source
-through successive layers — chunk, summarise, repeat — until a final pass fits,
+through successive layers (chunk, summarise, repeat) until a final pass fits,
 then writes the summary you asked for.
 
 ```text
@@ -311,7 +311,7 @@ Accepts a file, URL, or pasted text. Optional focus, audience, format, or length
 
 **The problem.** You have an important specification and want an LLM's help
 turning it into a clean, implementable design. A fluent rewrite can quietly
-change behavior, drop an edge case, or smuggle in an assumption—and still sound
+change behavior, drop an edge case, or smuggle in an assumption, and still sound
 completely convincing. With correctness at stake, "looks reasonable" is not
 enough.
 
@@ -320,7 +320,7 @@ calculational method for deriving programs from specifications. It starts from
 the obviously correct version and changes one thing at a time, showing why each
 step preserves the meaning you care about. You get the practical design first,
 followed by an audit trail of every transformation, assumption, and unresolved
-obligation—written for developers, not mathematicians.
+obligation, written for developers, not mathematicians.
 
 ```text
 /bmf
@@ -356,7 +356,7 @@ Haskell runners, then covers other ecosystems.
 
 ```text
 /mutation-testing
-/mutation-testing src/payments — focus on validation and retries
+/mutation-testing Focus on validation and retries in src/payments
 ```
 
 Uses the codebase supplied by your instruction or conversation, falling back to
@@ -367,7 +367,7 @@ the current repository. [Audit and rationale](docs/research/mutation-testing-aud
 ### I want to find real bugs before my users do
 
 **The problem.** Agents wrote the code. TDD says the behavior you anticipated
-works, so you are reasonably confident—but you will not really know until
+works, so you are reasonably confident, but you will not really know until
 people use it. Their time is the expensive part. Before asking humans to test
 the software, you want automation to explore beyond the examples you thought
 to write and find as many of the remaining bugs as it can.
@@ -523,7 +523,7 @@ a regression ceiling. It keeps work within a budget and distinguishes local
 benchmark wins from improvements verified with real users.
 
 ```text
-/hill-climbing Feedback export — 25 minutes
+/hill-climbing Feedback export for 25 minutes
 ```
 
 ---
@@ -540,7 +540,7 @@ measurements, and a report within a bounded search budget.
 
 ```text
 /perffuzz
-/perffuzz parser — search for 20 minutes
+/perffuzz parser for 20 minutes
 ```
 
 ---
@@ -560,7 +560,7 @@ measured boundary at which the service degrades or remains healthy.
 
 ```text
 /load-capacity-testing
-/load-capacity-testing Checkout — 30 minutes
+/load-capacity-testing Checkout for 30 minutes
 ```
 
 ---

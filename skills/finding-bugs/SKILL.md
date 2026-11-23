@@ -26,7 +26,7 @@ We can marry these approaches up together with CGPT.
 3. Grill the codebase for the most user-critical properties or specifications. The user MAY provide this themselves but it is not required to proceed.
 4. Turn each chosen property into an executable predicate over a real user-facing SUT entry point. A metamorphic predicate must run both the original and transformed inputs, then compare their results according to the named relationship. Treat inputs that fail the property's precondition as discards, not bugs. This is complete when every run returns success, discard, or a concrete counterexample.
 5. Build a random generator and a type-aware mutator for the property's input. Prefer automatically derived, structure-aware mutations: recursively mutate fields, replace a value with a same-type subterm, switch to a smaller constructor while reusing compatible fields, or switch to a larger constructor and randomly generate its missing fields. This is complete when every mutation remains a valid value of the input type.
-6. Instrument the property and the SUT code it exercises—not the testing framework—for control-flow coverage. This is complete when coverage reflects paths through the tested behaviour.
+6. Instrument the property and the SUT code it exercises, rather than the testing framework, for control-flow coverage. This is complete when coverage reflects paths through the tested behaviour.
 
 Start this search controller at **Generate** once the executable property and
 feedback are ready. Mostly mutate coverage-increasing seeds after the corpus
@@ -73,13 +73,13 @@ Runtime instrumentation adds checks to a running program so that invalid behavio
 
 ## Stateful action-sequence testing
 
-Some bugs appear only after a particular sequence of actions changes the system's state. Stateful action-sequence testing builds a **replayable harness** that generates and runs whole sequences through a real user or API interface, checks the system after every action, and reduces failures to the smallest replayable sequence. The harness — not a one-off run — is the deliverable.
+Some bugs appear only after a particular sequence of actions changes the system's state. Stateful action-sequence testing builds a **replayable harness** that generates and runs whole sequences through a real user or API interface, checks the system after every action, and reduces failures to the smallest replayable sequence. The harness, not a one-off run, is the deliverable.
 
 Here, state is anything one action leaves for the next: stored data, login status, an open resource, a cache entry, or a protocol phase. Before generating sequences, define how to return the system to a known starting point and what must remain true after each action.
 
 1. Choose a user-critical workflow in which earlier actions can affect later ones. Record the real user or API interface and the known state from which every sequence will begin.
 2. List the actions available through that interface. For each action, define when it is valid, what data it accepts, how it may change the state, and what must remain true afterwards. This is complete when every action can be executed and checked automatically.
-3. Define a **reset** to the known starting state and a **probe** for each piece of state an action can read or leave behind. The reset is complete only when a probe confirms every relevant state field is back to its starting value — running the reset command is not sufficient. A probe must capture structured state, not just the command's stdout, and a probe that itself errors is a first-class failure to investigate, not noise to discard, because a broken observation hides every bug it would have reported.
+3. Define a **reset** to the known starting state and a **probe** for each piece of state an action can read or leave behind. The reset is complete only when a probe confirms every relevant state field is back to its starting value; running the reset command is not sufficient. A probe must capture structured state, not just the command's stdout, and a probe that itself errors is a first-class failure to investigate, not noise to discard, because a broken observation hides every bug it would have reported.
 4. Build the harness: an ordered sequence of actions, the reset, and the per-action probes, runnable from a single command, recording each action's data, its stdout and stderr, and every probe's structured result after every action. This is complete when the harness can re-run any recorded sequence from a clean start and reproduce the same observations.
 5. Generate sequences using only actions that are valid in the current state. Vary their data and favour actions and combinations that previous sequences have not exercised.
 6. Return the system to the known starting state, execute one sequence, and check the visible result and every probed state field after every action. On any mismatch, record the prefix that failed.
@@ -117,10 +117,10 @@ svc prime          # use the hook; fails if the worker lacks it
 svc down --force   # tear everything down
 ```
 
-A bug where `svc up` prints a spurious "session already exists" error — because a prior `svc rig add` already seeded the worker session — will not surface from any single command; it lives in the state `up`'s predecessor left behind. The harness encodes:
+A bug where `svc up` prints a spurious "session already exists" error, because a prior `svc rig add` already seeded the worker session, will not surface from any single command; it lives in the state `up`'s predecessor left behind. The harness encodes:
 
-- **Reset.** `svc down --force`, then a probe asserts the worker session dir is gone and no daemon process remains. A probe that itself errors is the first failure to investigate, not noise — a broken observation hides every bug it would report.
-- **Probes after each action.** Capture `svc status --json` and the hook file the worker reads, not just each command's stdout. After `svc prime`, probe whether the prime bead landed in the worker's state — that observation is separate from `prime`'s exit code, and it is what tells you `prime` actually succeeded.
+- **Reset.** `svc down --force`, then a probe asserts the worker session dir is gone and no daemon process remains. A probe that itself errors is the first failure to investigate, not noise: a broken observation hides every bug it would report.
+- **Probes after each action.** Capture `svc status --json` and the hook file the worker reads, not just each command's stdout. After `svc prime`, probe whether the prime bead landed in the worker's state: that observation is separate from `prime`'s exit code, and it is what tells you `prime` actually succeeded.
 - **Replay.** On any probe mismatch, re-run the full sequence from the verified reset up to three times. Keep the failure only if it reproduces three consecutive times.
 - **Minimise.** Drop `svc rig add` from the start: the spurious error disappears, so the `rig add`/`up` interaction *is* the bug. Drop `svc hook install`: `svc prime` now fails for a *different* reason (no hook), proving `hook install` was a precondition, not the bug. The minimal stable sequence is the report, and the harness is kept to replay it against a fix.
 

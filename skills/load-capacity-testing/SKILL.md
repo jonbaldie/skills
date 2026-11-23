@@ -56,7 +56,7 @@ Verify the harness measures the system, not itself: the load generator
 must not be the bottleneck (its own CPU, connections, or ports). Compute
 percentiles over all attempts, counting failed and timed-out attempts
 (at their timeout value where the wait was bounded, or reported
-separately alongside the percentiles) — dropping them inflates measured
+separately alongside the percentiles); dropping them inflates measured
 capacity. Use open-loop arrival for rate phases, or correct for
 coordinated omission, so overload does not quietly slow the generator.
 A rerun at baseline must reproduce the baseline within recorded spread.
@@ -66,8 +66,8 @@ metric has a named source.
 
 ## 3. Ramp to the boundary
 
-Increase load in fixed steps — concurrency, burst size, then sustained
-rate — holding each step steady long enough for queues and caches to
+Increase load in fixed steps, using concurrency, burst size, then sustained
+rate, and holding each step steady long enough for queues and caches to
 reach equilibrium (at least the longest expected queue drain). At each
 step record:
 
@@ -92,8 +92,8 @@ not where the system fails.
 
 Return to the candidate boundary and repeat it from a clean state. The
 boundary holds only if the degradation mode and approximate load repeat.
-Vary one factor at a time where it matters — concurrency with loose
-locking versus a contended key, burst versus sustained — to say whether
+Vary one factor at a time where it matters, such as concurrency with loose
+locking versus a contended key, or burst versus sustained, to say whether
 the boundary is load-shaped or contention-shaped.
 
 Check recovery after each validation: the system returns to baseline
@@ -107,7 +107,7 @@ recorded starting point and verify its counts, balances, and idempotency
 where the workload touches them (see
 [`failure-recovery-testing`](../failure-recovery-testing/SKILL.md) for the
 invariant method), then repair or reset anything the run changed. Verify
-before repairing — restoring first destroys the evidence. A capacity pass
+before repairing; restoring first destroys the evidence. A capacity pass
 that silently corrupts state has found a defect, not a boundary.
 
 ## Load-run states
@@ -140,7 +140,7 @@ Include:
   the durable-state check;
 - any Defect outcome (failed recovery or corrupt state) and any Lower-bound
   outcome (healthy through the recorded ceiling), reported as results of
-  their own — Lower bound is a capacity result, Defect is a defect;
+  their own: Lower bound is a capacity result and Defect is a defect;
 - the exact run commands, so an independent engineer can reproduce the
   workload on the same environment.
 
