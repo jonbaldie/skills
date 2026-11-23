@@ -85,9 +85,13 @@ done
 # canonical copy.
 project="${test_root}/project"
 local_install "${project}" "${test_root}/project-home" --project --agent gemini --skill bmf \
-  >"${test_root}/project.log" 2>&1 || {
-  cat "${test_root}/project.log" >&2
+  >"${test_root}/project.log" 2>"${test_root}/project.err" || {
+  cat "${test_root}/project.log" "${test_root}/project.err" >&2
   fail "project install for gemini failed"
+}
+[[ ! -s "${test_root}/project.err" ]] || {
+  cat "${test_root}/project.err" >&2
+  fail "successful project install wrote to stderr"
 }
 grep -Fq 'Installing to: Gemini CLI' "${test_root}/project.log" ||
   fail "project install did not name Gemini CLI: $(<"${test_root}/project.log")"
