@@ -1,6 +1,6 @@
 ---
 name: failure-recovery-testing
-description: Test failure recovery by injecting faults into a disposable environment — timeouts, HTTP 429/500 errors, dropped connections, duplicate webhooks, restarts, interrupted writes — then checking durable state and retries after recovery. Use when operations must survive failures without duplicate charges, missing data, or stuck operations.
+description: Test failure recovery by injecting faults into a disposable environment, such as timeouts, HTTP 429/500 errors, dropped connections, duplicate webhooks, restarts, and interrupted writes, then checking durable state and retries after recovery. Use when operations must survive failures without duplicate charges, missing data, or stuck operations.
 argument-hint: "[workflow] [budget]"
 disable-model-invocation: true
 ---
@@ -16,7 +16,7 @@ process misbehave. The question is never "does the happy path work" but
 "does the system recover without violating its promises".
 
 Inject faults only into a disposable environment you own, and confirm
-provider credentials are test-mode before injecting — a disposable app
+provider credentials are test-mode before injecting; a disposable app
 can still hold live payment keys. Never fault a production system, a
 real customer account, or a shared provider without explicit
 authorization. Produce evidence and reproducers; implement product fixes
@@ -37,7 +37,7 @@ fault, in checkable form. Typical invariants:
 - correct retry behavior: retries reuse the original idempotency key,
   back off under rate limits, and converge instead of amplifying load.
 
-For each invariant, name the independent check that verifies it — a
+For each invariant, name the independent check that verifies it, a
 direct read of the database, ledger, event log, or provider state through
 a path other than the one under test. An API response is never its own
 check.
@@ -66,7 +66,7 @@ The same fault at a different position is a different test.
 
 Write the schedule as a reproducible document: operation, fault, trigger
 condition (request count, clock, or sequence position), expected
-behavior, and a recovery deadline — the latest time by which recovery
+behavior, and a recovery deadline, the latest time by which recovery
 must complete before the run is called stuck. Record the workload and
 starting state the schedule assumes.
 
@@ -74,7 +74,7 @@ starting state the schedule assumes.
 
 Run the workflow from its recorded starting state. Inject each fault at
 its scheduled point using a local fault proxy, chaos tool, test double,
-or replay harness — the smallest mechanism that reaches production code.
+or replay harness, the smallest mechanism that reaches production code.
 Record the exact injection commands and their observed behavior (did the
 fault actually fire, and did the operation see it?).
 
@@ -89,8 +89,8 @@ it as faulted.
 
 ## 4. Verify durable state after recovery
 
-Wait for recovery — retries exhausted, background workers drained, the
-restarted process warm — then check each invariant through its independent
+Wait until retries are exhausted, background workers have drained, and the
+restarted process is warm. Then check each invariant through its independent
 read path from step 1.
 
 A fault run is only complete when every invariant has an observed
@@ -108,12 +108,12 @@ not.
 
 Classify each fault run as:
 
-- **Recovered** — all invariants hold through the independent checks;
-- **Violated** — at least one invariant fails, with the durable-state
+- **Recovered**: all invariants hold through the independent checks;
+- **Violated**: at least one invariant fails, with the durable-state
   evidence preserved;
-- **Unresolved** — the fault did not fire, recovery never completed, or
+- **Unresolved**: the fault did not fire, recovery never completed, or
   a check could not run;
-- **Blocked** — the fault mechanism never reached the operation, so no
+- **Blocked**: the fault mechanism never reached the operation, so no
   recovery was exercised at all. A blocked fault is not recovered and
   is not counted as a pass.
 

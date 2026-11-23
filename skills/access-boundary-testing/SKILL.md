@@ -29,7 +29,7 @@ act on a resource. For each, record:
   anonymous, expired or downgraded principal);
 - the protected resource and how its identifier is obtained;
 - the expected decision for each actor class (allow, deny, or
-  out-of-scope), grounded in documentation or the authorization code — not
+  out-of-scope), grounded in documentation or the authorization code, not
   in what the UI shows.
 
 Trace the UI to the API: a control the UI hides or disables is a probe
@@ -54,7 +54,7 @@ that any cross-principal effect is attributable. Include:
 
 Where the system does not let you create these principals directly (for
 example, an approval-gated role), record a setup blocker with the concrete
-prerequisite — the row stays Untested, never Blocked — and continue with the
+prerequisite; the row stays Untested, never Blocked. Then continue with the
 principals that exist.
 
 Record the build, configuration, and starting state. These principals are
@@ -63,8 +63,8 @@ the test fixtures: every probe below names its actor and its target.
 ## 3. Probe across the boundaries
 
 For each boundary row, attempt the operation with every actor class whose
-expected decision differs from the owner's. Use the supported interface —
-the public API or another real interface — under the actor's genuine
+expected decision differs from the owner's. Use the supported interface,
+such as the public API or another real interface, under the actor's genuine
 credentials or session. Requests may be hand-built against that interface;
 what must be genuine is the identity they carry.
 
@@ -97,12 +97,12 @@ confirms the operation works for the right actor.
 
 Classify every boundary row as:
 
-- **Blocked** — the probe ran and the boundary held: the unprivileged
+- **Blocked**: the probe ran and the boundary held: the unprivileged
   actor is denied and no lasting effect occurs, with a passing positive
   control;
-- **Tested** — the probe ran and demonstrated a boundary failure: a
+- **Tested**: the probe ran and demonstrated a boundary failure: a
   cross-principal read or write succeeded, confirmed by replay;
-- **Untested** — no usable probe exists: a setup blocker or missing
+- **Untested**: no usable probe exists: a setup blocker or missing
   principal prevented it from running, or the run was inconclusive
   because its positive control failed.
 

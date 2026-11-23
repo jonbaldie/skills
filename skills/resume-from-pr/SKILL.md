@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # Resume from PR
 
-Pick up **interrupted work** left on a **pull request** or **merge request** — any
+Pick up **interrupted work** left on a **pull request** or **merge request** on any
 git host. You are the continuation of that work, not a new agent taking a
 handoff summary and waiting.
 
@@ -40,7 +40,7 @@ new authorization for destructive actions.
 
 ## 1. Resolve and extract the brief
 
-Run the bundled extractor by absolute path — `scripts/extract-pr.py` next to
+Run the bundled extractor by absolute path: `scripts/extract-pr.py` next to
 this `SKILL.md`:
 
 ```bash
@@ -50,9 +50,9 @@ python3 /absolute/path/to/resume-from-pr/scripts/extract-pr.py --cwd "$PWD" [url
 - If the user passed a **PR/MR URL** (GitHub, GitLab, Bitbucket, Gitea/Forgejo,
   Azure DevOps, or another host) or a **number**, pass it through. A bare
   number is resolved against the current repository's remote for the
-  first-class providers — GitHub, GitLab, Bitbucket, Gitea/Forgejo, and Azure
+  first-class providers, GitHub, GitLab, Bitbucket, Gitea/Forgejo, and Azure
   DevOps.
-- If they passed none, omit it — the script looks up the open PR/MR for the
+- If they passed none, omit it; the script looks up the open PR/MR for the
   current branch using the provider's CLI (`gh`, `glab`) where one exists and
   its API otherwise.
 - On failure (unparsed URL, missing PR, auth, empty current-branch lookup),
@@ -65,7 +65,7 @@ Treat the brief as a claim about the world, not ground truth. Before acting:
 - If `$PWD` is not the PR's repository, say so once; continue only if the work
   still belongs here or the user pointed at that PR on purpose.
 - Fetch the PR head. When the working tree is clean (or its changes belong to
-  this PR), check out that head — a worktree is fine — so edits land on the PR.
+  this PR), check out that head, using a worktree if needed, so edits land on the PR.
 - Read the **files in play** that still matter. Prefer review-thread paths,
   then the files edited most.
 - Check live git state (`status`, branch, SHA, relevant diff) against

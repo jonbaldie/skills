@@ -14,7 +14,7 @@ Turn a slow user journey into a repeatable optimization loop.
 
 2. **Build feedback.** Trace the slow stretch and reproduce it in a benchmark.
    Save the workload, environment, commands, and baseline. Prefer repeatable
-   work counts—such as instructions, renders, or layout recalculations—for
+   work counts, such as instructions, renders, or layout recalculations, for
    rapid iteration. Before adopting a counter, demonstrate that reducing it
    also reduces wall-clock latency on the same representative workload. Replace
    flaky or misleading benchmarks.
