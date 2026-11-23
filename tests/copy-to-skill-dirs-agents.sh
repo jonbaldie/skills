@@ -20,7 +20,13 @@ make_project() {
 }
 
 run_copy() {
-  "${copy_script}" "${project}" "$@" >"${test_root}/copy.log" 2>&1
+  local status=0
+  "${copy_script}" "${project}" "$@" >"${test_root}/copy.log" 2>"${test_root}/copy.err" || status=$?
+  if ((status == 0)) && [[ -s "${test_root}/copy.err" ]]; then
+    cat "${test_root}/copy.err" >&2
+    fail "successful copy wrote to stderr"
+  fi
+  return "${status}"
 }
 
 copied_to() {
@@ -38,6 +44,11 @@ for copy_script in \
   "${installed_skill}/scripts/copy-to-skill-dirs.sh"; do
 
   # Named agents resolve to their project destinations.
+  make_project
+  run_copy --agent claude-code || fail "claude-code copy failed"
+  cmp -s "${project}/.agents/skills/alpha/SKILL.md" "${project}/.claude/skills/alpha/SKILL.md" ||
+    fail "claude-code copy changed skill bytes"
+
   make_project
   run_copy --agent claude-code --agent=gemini --agent pi || {
     cat "${test_root}/copy.log" >&2
@@ -81,10 +92,10 @@ make_project
 if run_copy .claude/skills --agent nope; then
   fail "accepted unknown agent"
 fi
-grep -q '^error: unknown agent: nope' "${test_root}/copy.log" ||
-  fail "unknown agent not reported: $(<"${test_root}/copy.log")"
-grep -Fq 'codex, claude-code, opencode, pi, cursor, gemini, universal' "${test_root}/copy.log" ||
-  fail "unknown agent error does not list supported agents: $(<"${test_root}/copy.log")"
+grep -q '^error: unknown agent: nope' "${test_root}/copy.err" ||
+  fail "unknown agent not reported: $(<"${test_root}/copy.err")"
+grep -Fq 'codex, claude-code, opencode, pi, cursor, gemini, universal' "${test_root}/copy.err" ||
+  fail "unknown agent error does not list supported agents: $(<"${test_root}/copy.err")"
 [[ ! -e "${project}/.claude" ]] || fail "destination written before rejecting unknown agent"
 
 # --agent needs a value, and at least one destination is required.
