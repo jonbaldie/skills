@@ -22,6 +22,7 @@ is not a merged PR.
 | `Gate` | A required check fails or is canceled, or a protection blocks merging. | `Stopped`. Report the failed gate. |
 | `Gate`, `Merge`, or `Queued` | The PR head changes or compare-and-merge reports a mismatch. | `Gate`. Capture the new head and invalidate the old gate results. |
 | `Merge` | The host queues the merge. | `Queued`. Observe the same PR until its state changes. |
+| `Merge` | No permitted merge route can be established. | `Stopped`. Report the conflict or missing information. |
 | `Merge` or `Queued` | The host reports `MERGED`. | `Verify`. Fetch and check the remote target. |
 | `Merge` or `Queued` | The entry is canceled or ejected, or the PR closes unmerged. | `Stopped`. Report the host reason. Any retry must re-enter `Gate`. |
 | `Merge` | The host rejects the merge for another reason. | `Stopped`. Report the host error and preserve the PR. |
@@ -63,11 +64,24 @@ with administrator privileges.
 
 ## 3. Merge
 
-Use the user's merge method, otherwise the repository convention, otherwise
-squash.
+Find the methods allowed for this PR's base branch. On GitHub, read the base
+repository's `mergeCommitAllowed`, `squashMergeAllowed`, and `rebaseMergeAllowed`
+with `gh repo view`. Intersect those methods with `allowed_merge_methods` from
+each applicable pull-request rule returned by
+`gh api --paginate repos/OWNER/REPO/rules/branches/BRANCH` (URL-encode the branch).
+Check classic branch protection as well. Exclude merge commits when the target
+requires linear history.
 
-Merge through the host. On GitHub, pass `--match-head-commit <sha>` and
-`--delete-branch`. A head mismatch restarts the gate.
+Use an explicitly requested method only if allowed. Otherwise report the
+conflict and stop. When the user leaves the method open, prefer the repository
+convention if allowed, then the first allowed method in this order: squash,
+merge commit, rebase. Stop if no permitted route can be established.
+
+For a direct GitHub merge, pass the selected method, `--match-head-commit <sha>`
+and `--delete-branch`. For a required GitHub queue, first confirm any explicitly
+requested method matches the queue configuration. Stop if the match cannot be
+confirmed. Enqueue via `enqueuePullRequest` with the PR ID and `expectedHeadOid`
+set to the gated SHA. A head mismatch restarts the gate.
 
 Observe any merge queue using the transitions above. Continue to verification
 only after the host reports `MERGED`.
@@ -76,6 +90,11 @@ only after the host reports `MERGED`.
 
 Read the PR back. Fetch the target from the base repository and verify the
 host-reported merge commit is reachable from that remote branch.
+
+After verifying a queued merge, remove its head branch where permitted. Use a
+conditional deletion in the head repository that requires the ref to match the
+recorded SHA. Preserve the branch if conditional deletion is unavailable or
+the ref has moved.
 
 Close any selected issue still open, linking the merged PR. Verify the remote
 head branch was deleted where permitted; otherwise report why it remains.
