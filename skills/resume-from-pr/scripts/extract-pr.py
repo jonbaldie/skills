@@ -173,7 +173,10 @@ def parse_git_remote(url: str) -> tuple[str, str]:
         rest = text[4:]
         host, _, path = rest.partition(":")
         return host, path.lstrip("/")
-    parsed = urllib.parse.urlparse(ensure_scheme(text) if "://" in text else text)
+    try:
+        parsed = urllib.parse.urlparse(ensure_scheme(text) if "://" in text else text)
+    except ValueError as exc:
+        raise FetchError(f"Could not parse git remote: {url}") from exc
     if parsed.scheme in {"http", "https", "ssh", "git"}:
         host = parsed.hostname or ""
         path = parsed.path.lstrip("/")

@@ -400,6 +400,13 @@ class RemoteAndApiRootTests(unittest.TestCase):
         self.assertEqual(host, "gitlab.com")
         self.assertEqual(path, "group/app")
 
+    def test_parse_git_remote_rejects_malformed_ipv6(self):
+        remote = "https://[::1/o/r"
+        with self.assertRaises(self.mod.FetchError) as caught:
+            self.mod.parse_git_remote(remote)
+        self.assertEqual(str(caught.exception), f"Could not parse git remote: {remote}")
+        self.assertIsNone(self.mod.repo_from_remote(remote))
+
     def test_target_from_remote(self):
         t = self.mod.target_from_remote(
             "5", "https://github.com/acme/app.git"
