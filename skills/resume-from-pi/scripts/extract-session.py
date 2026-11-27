@@ -189,6 +189,8 @@ def parse_session(path: Path) -> dict:
                 obj = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if not isinstance(obj, dict):
+                continue
 
             kind = obj.get("type")
             if kind == "session":

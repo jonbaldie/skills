@@ -160,13 +160,15 @@ def parse_session(path: Path) -> dict:
                 obj = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if not isinstance(obj, dict):
+                continue
 
             kind = obj.get("type")
             if kind == "ai-title":
                 meta["title"] = obj.get("aiTitle") or meta["title"]
             elif kind == "last-prompt":
                 meta["last_prompt"] = obj.get("lastPrompt") or meta["last_prompt"]
-            elif kind in {"user", "assistant"}:
+            elif isinstance(kind, str) and kind in {"user", "assistant"}:
                 if obj.get("cwd"):
                     meta["cwd"] = obj["cwd"]
                 if obj.get("gitBranch"):

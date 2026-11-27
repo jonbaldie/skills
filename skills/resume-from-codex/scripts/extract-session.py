@@ -39,7 +39,7 @@ def read_session_meta(path: Path) -> dict:
         obj = json.loads(line)
     except json.JSONDecodeError:
         return {}
-    if obj.get("type") != "session_meta":
+    if not isinstance(obj, dict) or obj.get("type") != "session_meta":
         return {}
     payload = obj.get("payload") or {}
     return {
@@ -78,6 +78,8 @@ def load_thread_names() -> dict[str, str]:
             try:
                 obj = json.loads(line)
             except json.JSONDecodeError:
+                continue
+            if not isinstance(obj, dict):
                 continue
             sid = obj.get("id")
             name = obj.get("thread_name")
@@ -234,6 +236,8 @@ def parse_session(path: Path) -> dict:
             try:
                 obj = json.loads(line)
             except json.JSONDecodeError:
+                continue
+            if not isinstance(obj, dict):
                 continue
 
             kind = obj.get("type")
